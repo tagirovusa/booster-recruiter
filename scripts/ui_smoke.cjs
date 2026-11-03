@@ -79,7 +79,7 @@ const { execFileSync } = require("node:child_process");
         { exact: true },
       ),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Вернуться к списку" }).click();
+    await page.getByRole("button", { name: "Вернуться к настройкам" }).click();
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page
       .getByRole("radiogroup", { name: "Способ связи" })
@@ -90,9 +90,13 @@ const { execFileSync } = require("node:child_process");
     ).toBeChecked();
     await page.getByLabel("Бюджет InMail · кредитов").fill("2");
     await page.getByLabel("Подписка для InMail").selectOption("recruiter");
-    await expect(page.getByRole("button", { name: "Открыть аккаунты", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Открыть аккаунты", exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
-    await expect(page.getByRole("button", { name: "Проверить запуск", exact: true })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+    ).toBeDisabled();
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page.getByLabel("Подписка для InMail").selectOption("linkedin");
     const invitations = page.locator("details").filter({
@@ -141,9 +145,9 @@ const { execFileSync } = require("node:child_process");
       page.getByText("InMail · Recruitment opportunity", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(/экономный режим, не более 1 кредитов/),
+      page.getByText("Бюджет InMail на всю кампанию: 1 кредит.", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Вернуться к списку" }).click();
+    await page.getByRole("button", { name: "Вернуться к настройкам" }).click();
     await page.getByRole("button", { name: "Кандидаты", exact: true }).click();
     await page
       .getByRole("combobox", { name: "Группа Sam Taylor" })
@@ -168,7 +172,9 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("heading", { name: "LinkedIn-аккаунты" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Подключить Recruiter", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Подключить Recruiter", exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Добавить аккаунт" }).click();
     await expect(
       page.getByRole("dialog", { name: "Подключить LinkedIn" }),

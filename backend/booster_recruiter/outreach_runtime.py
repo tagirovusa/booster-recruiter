@@ -70,6 +70,9 @@ class OutreachRuntime:
         try:
             async with self.rt.browser_lock:
                 if cid in self.rt.pause_flags:
+                    self.store.progress(
+                        cid, "paused", "Проверка контактов приостановлена."
+                    )
                     return
                 await self.rt.verify(c["account_id"])
                 candidates = self.store.detail(cid)["candidates"]
@@ -82,7 +85,7 @@ class OutreachRuntime:
                         f"Проверяем контакт {index} из {len(candidates)}…",
                     )
                     observation = await self.rt.worker(c["account_id"]).call(
-                        "observe", {"url": p["url"]}
+                        "observe", {"url": p["url"], "check_history": True}
                     )
                     import json
 
@@ -93,10 +96,13 @@ class OutreachRuntime:
                             "UPDATE candidates SET data=? WHERE id=?",
                             (json.dumps(data, ensure_ascii=False), p["id"]),
                         )
+                    self.repo.refresh_unattempted(cid, p["id"], observation)
             self.store.progress(
                 cid,
-                "ready",
-                "Состояние контактов проверено. Приглашения и сообщения не отправлялись.",
+                "paused" if cid in self.rt.pause_flags else "ready",
+                "Проверка контактов приостановлена."
+                if cid in self.rt.pause_flags
+                else "Состояние контактов проверено. Приглашения и сообщения не отправлялись.",
             )
         except Exception as exc:
             self.store.progress(cid, "paused", self.rt.friendly(exc))
@@ -104,6 +110,9 @@ class OutreachRuntime:
     async def process(self, rid):
         run = self.repo.run(rid)
         cid, aid, rules = run["campaign_id"], run["account_id"], run["rules"]
+        if run["status"] == "paused":
+            self.store.progress(cid, "paused", "Кампания приостановлена.")
+            return
         if run["status"] != "active":
             raise AppError("План не утверждён или приостановлен.")
         try:
@@ -112,6 +121,7 @@ class OutreachRuntime:
                     cid in self.rt.pause_flags
                     or self.repo.run(rid)["status"] != "active"
                 ):
+                    self.store.progress(cid, "paused", "Кампания приостановлена.")
                     return
                 if not within_hours(rules):
                     self.store.progress(
@@ -238,6 +248,7 @@ class OutreachRuntime:
                     if (
                         cid in self.rt.pause_flags
                         or self.repo.run(rid)["status"] != "active"
+                        or not within_hours(rules)
                     ):
                         break
                     try:
@@ -347,9 +358,7 @@ class OutreachRuntime:
                             detail="Результат не подтверждён. Повтор для этого человека заблокирован.",
                         )
                     if result.get("account_restricted"):
-                        raise AppError(
-                            "LinkedIn ограничил действия аккаунта. Кампания приостановлена."
-                        )
+                        raise AppError(self.rt.restrict_account(aid))
                 self.store.progress(
                     cid,
                     "waiting" if self.repo.run(rid)["status"] == "active" else "paused",

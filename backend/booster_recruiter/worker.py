@@ -6,27 +6,70 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
+
+from booster_linkedin.linkedin.identifiers import (
+    normalize_person_identifier,
+    person_profile_url,
+)
 
 from .identity import PROFILE_JS, resolve_own_profile
 
 SEARCH_JS = r"""() => {
  const main=document.querySelector('main'); if(!main)return [];
+ const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+ const screens=[...main.querySelectorAll('[data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsPeople"]')].filter(visible);
+ if(screens.length!==1)return [];
+ const markers=[...screens[0].querySelectorAll('[componentkey="SearchResults_FirstResult_people"]')].filter(visible);
+ if(markers.length!==1)return [];
+ const list=markers[0].closest('[role="list"]');
+ if(!list||!screens[0].contains(list))return [];
+ const profile=a=>{try{const u=new URL(a.href,location.href);
+  if(u.protocol!=='https:'||u.username||u.password||!/(^|\.)linkedin\.com$/.test(u.hostname))return null;
+  const match=u.pathname.match(/^\/in\/([^/]+)\/?$/);
+  return match?'https://www.linkedin.com/in/'+match[1]:null;
+ }catch{return null;}};
  const found=new Map();
- for(const a of main.querySelectorAll('a[href*="/in/"]')) {
-  if(a.closest('aside,nav,header,footer'))continue;
-  const u=new URL(a.href,location.href);
-  if(!/(^|\.)linkedin\.com$/.test(u.hostname))continue;
-  const match=u.pathname.match(/^\/in\/([^/]+)\/?$/);if(!match)continue;
-  const label=(a.innerText||a.getAttribute('aria-label')||'').trim();
+ for(const row of list.querySelectorAll('[role="listitem"]')) {
+  if(!visible(row)||row.closest('[role="list"]')!==list||row.closest('aside,nav,header,footer'))continue;
+  // One result owns this primary clickable profile wrapper. Its nested
+  // mutual-connection links are context, never additional search results.
+  const links=[...row.querySelectorAll('a[href][tabindex="0"][componentkey]')].filter(a=>visible(a)&&profile(a));
+  const identities=[...new Set(links.map(profile))];
+  if(identities.length!==1)continue;
+  const url=identities[0];
+  const names=[...row.querySelectorAll('a[href]')].filter(e=>visible(e)&&profile(e)===url).map(e=>(e.innerText||'').trim());
+  const labels=[...names,...links.map(a=>(a.getAttribute('aria-label')||a.innerText||'').trim())].filter(Boolean).sort((a,b)=>a.length-b.length);
+  const label=labels[0];
   if(!label)continue;
-  found.set('https://www.linkedin.com/in/'+match[1],label.slice(0,200));
+  found.set(url,label.slice(0,200));
  }
  return Array.from(found,([url,label])=>({url,label}));
 }"""
+
+
+def direct_profile_search(keywords, page=1):
+    """An explicitly pasted profile URL is one target, never a keyword slug."""
+    value = keywords.strip()
+    if not re.match(r"(?i)^https?:", value):
+        return None
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or re.fullmatch(r"/in/[^/]+/?", parsed.path) is None
+    ):
+        raise ValueError(
+            "Вставьте полную ссылку на профиль LinkedIn вида https://www.linkedin.com/in/имя."
+        )
+    username = normalize_person_identifier(value)
+    url = person_profile_url(username)
+    return [{"url": url, "label": username}] if page == 1 else []
 
 
 async def serve(profile: Path, *, visible=False):
@@ -143,6 +186,19 @@ async def serve(profile: Path, *, visible=False):
                         PageSession(browser.page), result["url"]
                     )
                 elif action == "search":
+                    direct = direct_profile_search(p["keywords"], int(p.get("page", 1)))
+                    if direct is not None:
+                        result = {
+                            "profiles": direct,
+                            "url": direct[0]["url"] if direct else "",
+                            "text": "",
+                        }
+                        payload = {"id": request["id"], "result": result}
+                        sys.__stdout__.write(
+                            json.dumps(payload, ensure_ascii=False) + "\n"
+                        )
+                        sys.__stdout__.flush()
+                        continue
                     extractor = await get_ready_extractor(
                         None, tool_name="search_people"
                     )

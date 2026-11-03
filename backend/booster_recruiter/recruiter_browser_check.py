@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 from urllib.parse import quote
 
-from .recruiter_browser import RecruiterBrowser
+from .recruiter_browser import RECIPIENT_IDENTITY_JS, RecruiterBrowser
 from .store import AppError
 
 
@@ -20,6 +20,12 @@ async def check_recruiter_browser(page):
         "followup",
         "contract",
         "draft",
+        "stale_recipient",
+        "missing_recipient",
+        "missing_mapping",
+        "free_ok",
+        "free_channel_changed",
+        "paid_channel_changed",
     ]
     for case in cases:
         await page.goto(
@@ -42,6 +48,11 @@ async def check_recruiter_browser(page):
           window.sendCount=0;
           document.querySelector('button').onclick=()=>window.sendCount++;
           const editor=document.querySelector('[contenteditable]');
+          if(mode==='free_ok'||mode==='free_channel_changed'){
+            const price=document.querySelector('[data-test-inmail-credits-text]');price.setAttribute('data-test-inmail-credits-text','FREE_INMAIL');price.textContent='Free to InMail';
+          }
+          if(mode==='stale_recipient')document.querySelector('[data-test-recipient-pill]').setAttribute('data-recipient-pill-id','urn:li:ts_profile:Other');
+          if(mode==='missing_recipient')document.querySelector('[data-test-recipient-pill]').removeAttribute('data-recipient-pill-id');
           if(mode==='draft')editor.textContent='Existing personal draft';
           editor.addEventListener('input',()=>{
             if(mode==='recipient')document.querySelector('[data-test-recipient-pill]').setAttribute('data-recipient-pill-id','urn:li:ts_profile:Other');
@@ -50,6 +61,8 @@ async def check_recruiter_browser(page):
             if(mode==='credits')document.querySelector('[data-test-inmail-credits-text]').textContent='1/0 InMail Credits';
             if(mode==='followup'){const extra=document.createElement('div');extra.dataset.testMessagingComposer='';document.querySelector('[data-view-name]').append(extra);}
             if(mode==='contract')document.querySelector('[data-test-user-contract-name]').textContent='Other contract';
+            if(mode==='free_channel_changed')document.querySelector('[data-test-inmail-credits-text]').setAttribute('data-test-inmail-credits-text','INMAIL_GUARD');
+            if(mode==='paid_channel_changed')document.querySelector('[data-test-inmail-credits-text]').setAttribute('data-test-inmail-credits-text','FREE_INMAIL');
           });
         }""",
             case,
@@ -67,31 +80,81 @@ async def check_recruiter_browser(page):
                 "inmail": True,
                 "credits": 8,
                 "recruiter_target": {
-                    "profile_url": "https://www.linkedin.com/talent/profile/ACoATest"
+                    "profile_url": "https://www.linkedin.com/talent/profile/ACoATest",
+                    "recipient_urn": None
+                    if case == "missing_mapping"
+                    else "urn:li:ts_profile:Test",
                 },
                 "recruiter_composer": {
-                    "channel": "INMAIL_GUARD",
+                    "channel": "FREE_INMAIL"
+                    if case in {"free_ok", "free_channel_changed"}
+                    else "INMAIL_GUARD",
                     "signature": "Recruiter",
-                    "recipient": "urn:li:ts_profile:Test",
+                    "recipient": "urn:li:ts_profile:Other"
+                    if case == "stale_recipient"
+                    else None
+                    if case == "missing_recipient"
+                    else "urn:li:ts_profile:Test",
                     "name": "Test Recipient",
                 },
             }
         )
         adapter.confirm = AsyncMock(return_value=True)
-        result = await adapter.send(
-            "https://www.linkedin.com/in/test",
-            "Hello, test recipient.\n\nRecruiter",
-            "Approved subject",
-            {"contract": "Approved contract", "signature": "Recruiter"},
-            1,
-        )
-        assert result["sent"] is (case == "ok"), (case, result)
-        assert await page.evaluate("window.sendCount") == int(case == "ok"), case
+        try:
+            result = await adapter.send(
+                "https://www.linkedin.com/in/test",
+                "Hello, test recipient.\n\nRecruiter",
+                "Approved subject",
+                {"contract": "Approved contract", "signature": "Recruiter"},
+                0 if case in {"free_ok", "free_channel_changed"} else 1,
+            )
+        except AppError:
+            assert case in {
+                "stale_recipient",
+                "missing_recipient",
+                "missing_mapping",
+            }, case
+        else:
+            assert result["sent"] is (case in {"ok", "free_ok"}), (case, result)
+        assert await page.evaluate("window.sendCount") == int(
+            case in {"ok", "free_ok"}
+        ), case
+        if case in {"ok", "free_ok"}:
+            assert result["credit_cost"] == int(case == "ok")
         if case == "draft":
             assert (
                 await page.locator("[contenteditable]").inner_text()
                 == "Existing personal draft"
             )
+    identity_cases = [
+        "ok",
+        "sidebar",
+        "foreign",
+        "ambiguous",
+        "missing",
+        "duplicate_parameter",
+    ]
+    for case in identity_cases:
+        await page.goto("https://www.linkedin.com/talent/profile/ACoATest")
+        href = "/talent/search?firstDegreeConnectionId=urn%3Ali%3Ats_profile%3ATest"
+        if case == "foreign":
+            href = "https://example.invalid" + href
+        if case == "duplicate_parameter":
+            href += "&firstDegreeConnectionId=urn%3Ali%3Ats_profile%3AOther"
+        link = f'<a data-test-connections-link href="{href}">Connections</a>'
+        top = "" if case in {"sidebar", "missing"} else link
+        await page.set_content(
+            "<div data-test-profile-topcard-wrapper>"
+            + top
+            + (link if case == "ambiguous" else "")
+            + "</div>"
+            + (link if case == "sidebar" else "")
+        )
+        identity = await page.evaluate(RECIPIENT_IDENTITY_JS)
+        assert identity == ("urn:li:ts_profile:Test" if case == "ok" else None), (
+            case,
+            identity,
+        )
     # Real Chromium, observed Recruiter history schema, synthetic identities.
     # A colleague's message or the Pending label is never a candidate reply.
     history_cases = ["outgoing", "reply", "colleague", "foreign_thread"]
@@ -145,4 +208,37 @@ async def check_recruiter_browser(page):
                 target, context, "Approved body", "Approved subject"
             )
             assert adapter.confirmed_thread == "recruiter:" + urn
-    return len(cases) + len(history_cases)
+    empty_cases = [
+        "empty",
+        "hidden_empty",
+        "stale_empty_with_history",
+        "loading",
+        "ambiguous_empty",
+    ]
+    for case in empty_cases:
+        await page.goto(base)
+        marker = "<p data-test-empty-messages>No messages</p>"
+        if case == "hidden_empty":
+            marker = '<p data-test-empty-messages style="display:none">No messages</p>'
+        elif case == "loading":
+            marker = ""
+        elif case == "ambiguous_empty":
+            marker += marker
+        rows = (
+            "<div data-test-message-threads-list-item>Existing thread</div>"
+            if case == "stale_empty_with_history"
+            else ""
+        )
+        await page.set_content(
+            '<span data-test-user-contract-name>Approved contract</span><div data-live-test-profile-messages-tab-content style="min-height:20px">'
+            + marker
+            + rows
+            + "</div>"
+        )
+        adapter = RecruiterBrowser(page, None, None)
+        adapter.go = AsyncMock()
+        empty = await adapter.empty_history(
+            target | {"recipient_urn": "urn:li:ts_profile:Test"}, "Approved contract"
+        )
+        assert empty is (case == "empty"), (case, empty)
+    return len(cases) + len(identity_cases) + len(history_cases) + len(empty_cases)

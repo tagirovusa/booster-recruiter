@@ -3,6 +3,43 @@ from unittest.mock import AsyncMock
 
 import pytest
 from booster_recruiter.recruiter_browser import RecruiterBrowser
+from booster_recruiter.store import AppError
+
+
+@pytest.mark.parametrize("recipient", ["urn:li:ts_profile:Other", None])
+async def test_compose_rejects_existing_composer_for_unapproved_recipient(recipient):
+    button = SimpleNamespace(
+        wait_for=AsyncMock(), count=AsyncMock(return_value=1), click=AsyncMock()
+    )
+    state = {"valid": True, "recipient": recipient}
+    page = SimpleNamespace(
+        locator=lambda _: button,
+        wait_for_selector=AsyncMock(),
+        wait_for_timeout=AsyncMock(),
+        evaluate=AsyncMock(return_value=state),
+    )
+    adapter = RecruiterBrowser(page, None, None)
+    adapter.go = AsyncMock()
+    adapter.contract = AsyncMock()
+    with pytest.raises(AppError, match="не совпадает"):
+        await adapter.compose(
+            {
+                "profile_url": "https://www.linkedin.com/talent/profile/Approved",
+                "recipient_urn": "urn:li:ts_profile:Approved",
+            },
+            "Contract",
+        )
+
+
+async def test_compose_without_independent_recipient_does_not_open_editor():
+    adapter = RecruiterBrowser(None, None, None)
+    adapter.go = AsyncMock()
+    with pytest.raises(AppError, match="идентификатор адресата"):
+        await adapter.compose(
+            {"profile_url": "https://www.linkedin.com/talent/profile/Approved"},
+            "Contract",
+        )
+    adapter.go.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 [project]
 name = "booster-recruiter"
-version = "0.2.2"
+version = "0.2.4"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "booster-linkedin-runtime", "uvicorn>=0.30", "openpyxl>=3.1.5",

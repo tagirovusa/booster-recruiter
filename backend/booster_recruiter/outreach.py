@@ -474,6 +474,38 @@ class OutreachStore:
                     )
         return run
 
+    def refresh_unattempted(self, cid, candidate_id, observation):
+        """Recover read-only detection failures in a paused, approved plan.
+
+        Never clear an uncertain send, an action history, a suppression, or a
+        pause. The normal processor re-observes before reserving any action.
+        """
+        for member in self.s.rows(
+            "SELECT m.* FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id "
+            "WHERE r.campaign_id=? AND r.status='paused' AND m.candidate_id=? "
+            "AND m.status='needs_review' AND m.invitation_at IS NULL AND m.sent_at IS NULL "
+            "AND m.thread_id IS NULL AND m.reply_text='' "
+            "AND NOT EXISTS(SELECT 1 FROM outreach_actions a WHERE a.member_id=m.id)",
+            (cid, candidate_id),
+        ):
+            if member["detail"] not in {
+                "Не подтверждён владелец открытого профиля.",
+                "Доступный способ связи не удалось подтвердить.",
+            } or self.blocked(member["url"], member["id"]):
+                continue
+            action, reason = route(self.run(member["run_id"])["rules"], observation)
+            if action not in {"invite", "message", "inmail", "waiting_acceptance"}:
+                continue
+            self.update_member(
+                member["id"],
+                status="planned",
+                observation=observation,
+                relationship=observation.get("relationship", "unknown"),
+                checked_at=now(),
+                next_check=now(),
+                detail="Контакт проверен. Продолжите кампанию для обработки по плану.",
+            )
+
     def update_member(self, mid, **fields):
         allowed = {
             "status",
@@ -538,15 +570,14 @@ class OutreachStore:
             ):
                 raise AppError("Этот канал не был утверждён.")
             day = now()[:10]
+            sender_ids = self.sender_ids(r["account_id"])
+            placeholders = ",".join("?" for _ in sender_ids)
             used = self.s.one(
-                "SELECT COUNT(*) n FROM outreach_actions WHERE account_id=? AND kind=? AND substr(created,1,10)=?",
-                (r["account_id"], kind, day),
+                f"SELECT COUNT(*) n FROM outreach_actions WHERE account_id IN ({placeholders}) AND kind=? AND substr(created,1,10)=?",
+                (*sender_ids, kind, day),
             )["n"]
             if kind == "message":
-                used += self.s.one(
-                    "SELECT COUNT(*) n FROM deliveries d JOIN batches b ON d.batch_id=b.id WHERE b.account_id=? AND d.status IN ('sent','sending','unknown','blocked','failed','replied') AND substr(d.updated,1,10)=?",
-                    (r["account_id"], day),
-                )["n"]
+                used, _ = self.message_budget(r["account_id"])
             # Apply the strictest approved policy among this sender's active plans.
             key = {
                 "invite": "daily_invites",
@@ -554,8 +585,8 @@ class OutreachStore:
                 "inmail": "daily_inmails",
             }[kind]
             policies = self.s.rows(
-                "SELECT rules FROM outreach_runs WHERE account_id=? AND status IN ('active','paused')",
-                (r["account_id"],),
+                f"SELECT rules FROM outreach_runs WHERE account_id IN ({placeholders}) AND status IN ('active','paused')",
+                sender_ids,
             )
             limit = min([rules[key]] + [json.loads(p["rules"])[key] for p in policies])
             if used >= limit:
@@ -587,6 +618,42 @@ class OutreachStore:
                 ),
             )
             return action
+
+    def sender_ids(self, account_id):
+        """A verified LinkedIn identity may occupy more than one browser slot."""
+        account = self.s.account(account_id)
+        if not account["url"]:
+            return [account_id]
+        return [
+            row["id"]
+            for row in self.s.rows(
+                "SELECT id FROM accounts WHERE url=?", (account["url"],)
+            )
+        ]
+
+    def message_budget(self, account_id, default_limit=None):
+        """Share ordinary-message attempt limits across both queue formats."""
+        day = now()[:10]
+        sender_ids = self.sender_ids(account_id)
+        placeholders = ",".join("?" for _ in sender_ids)
+        used = self.s.one(
+            f"SELECT COUNT(*) n FROM outreach_actions WHERE account_id IN ({placeholders}) AND kind='message' AND substr(created,1,10)=?",
+            (*sender_ids, day),
+        )["n"]
+        used += self.s.one(
+            f"SELECT COUNT(*) n FROM deliveries d JOIN batches b ON d.batch_id=b.id WHERE b.account_id IN ({placeholders}) AND d.status IN ('sent','sending','unknown','blocked','failed','replied') AND substr(d.updated,1,10)=?",
+            (*sender_ids, day),
+        )["n"]
+        limits = [
+            json.loads(p["rules"])["daily_messages"]
+            for p in self.s.rows(
+                f"SELECT rules FROM outreach_runs WHERE account_id IN ({placeholders}) AND status IN ('active','paused')",
+                sender_ids,
+            )
+        ]
+        if default_limit is not None:
+            limits.append(default_limit)
+        return used, min(limits) if limits else None
 
     def finish(self, action, status, detail, thread_id=None):
         if status not in ("sent", "unknown", "blocked"):

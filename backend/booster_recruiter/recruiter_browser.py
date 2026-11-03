@@ -17,6 +17,17 @@ CONTRACT_JS = """() => {
  const names=[...new Set(nodes.map(e=>e.textContent.trim()).filter(Boolean))];
  return names.length===1?names[0]:null;
 }"""
+RECIPIENT_IDENTITY_JS = r"""() => {
+ const cards=[...document.querySelectorAll('[data-test-profile-topcard-wrapper]')];
+ if(cards.length!==1)return null;
+ const ids=[...cards[0].querySelectorAll('a[data-test-connections-link][href]')].map(a=>{
+  try{const u=new URL(a.href);if(u.origin!==location.origin||u.pathname!=='/talent/search')return null;
+   const values=u.searchParams.getAll('firstDegreeConnectionId');
+   return values.length===1&&/^urn:li:ts_profile:[A-Za-z0-9_-]+$/.test(values[0])?values[0]:null;
+  }catch{return null;}
+ });
+ return ids.length===1?ids[0]:null;
+}"""
 COMPOSER_JS = (
     """() => {"""
     + VISIBLE_JS
@@ -168,6 +179,9 @@ class RecruiterBrowser:
             raise AppError("Не удалось найти историю этого профиля в Recruiter.")
         return {
             "url": url,
+            # Read the Recruiter namespace from the independently verified
+            # target card, never derive it from its different public ID.
+            "recipient_urn": await self.page.evaluate(RECIPIENT_IDENTITY_JS),
             "name": (
                 await self.page.locator(
                     "[data-test-profile-topcard-wrapper] [data-test-row-lockup-full-name]"
@@ -186,9 +200,28 @@ class RecruiterBrowser:
             0
         ].rstrip("/"):
             raise AppError("История Recruiter открылась для другого профиля.")
-        return await pane.locator("[data-test-empty-messages]").count() == 1
+        if not target.get("recipient_urn"):
+            # The connections link can finish mounting while history loads.
+            # This is still the same exact route and public-profile backlink.
+            public = self.page.locator("[data-test-personal-info-profile-link]")
+            if (
+                await public.count() == 1
+                and canonical(await public.get_attribute("href")) == target["url"]
+            ):
+                target["recipient_urn"] = await self.page.evaluate(
+                    RECIPIENT_IDENTITY_JS
+                )
+        return await pane.evaluate("""node=>{
+          const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+          const empty=[...node.querySelectorAll('[data-test-empty-messages]')].filter(visible);
+          return empty.length===1&&!node.querySelector('[data-test-message-threads-list-item]');
+        }""")
 
     async def compose(self, target, contract):
+        if not target.get("recipient_urn"):
+            raise AppError(
+                "Не удалось подтвердить идентификатор адресата Recruiter в карточке профиля. Отправка остановлена."
+            )
         await self.go(target["profile_url"])
         await self.contract(contract)
         button = self.page.locator(
@@ -206,6 +239,10 @@ class RecruiterBrowser:
         )
         await self.page.wait_for_timeout(500)
         state = await self.page.evaluate(COMPOSER_JS)
+        if state.get("recipient") != target["recipient_urn"]:
+            raise AppError(
+                "Адресат редактора Recruiter не совпадает с утверждённым профилем. Отправка остановлена."
+            )
         if not state.get("valid") or state["followups"] or state["scheduled"]:
             raise AppError(
                 "Проверьте редактор Recruiter: требуется одно сообщение без запланированных продолжений."
@@ -273,6 +310,13 @@ class RecruiterBrowser:
             observation["recruiter_composer"],
             observation["recruiter_target"],
         )
+        if (
+            not target.get("recipient_urn")
+            or state.get("recipient") != target["recipient_urn"]
+        ):
+            raise AppError(
+                "Адресат Recruiter не подтверждён для утверждённого профиля."
+            )
         cost = 0 if state["channel"] == "FREE_INMAIL" else 1
         if (
             type(credit_cost) is not int
@@ -306,7 +350,7 @@ class RecruiterBrowser:
         expected = {
             "route": self.page.url,
             "contract": context["contract"],
-            "recipient": state["recipient"],
+            "recipient": target["recipient_urn"],
             "name": state["name"],
             "signature": signature,
             "channel": state["channel"],

@@ -4,6 +4,7 @@ Unknown layouts fail closed. No private API, premium bypass or inferred send
 success. Paid composers must expose both a subject and a current credit balance.
 """
 
+from booster_linkedin.linkedin.connection import ActionSignals
 from booster_linkedin.linkedin.connection_actions import ConnectionActions
 from booster_linkedin.linkedin.identifiers import normalize_person_identifier
 from booster_linkedin.linkedin.message_sender import (
@@ -19,22 +20,47 @@ from .store import canonical
 
 PROFILE_CONTACT_JS = r"""({username}) => {
  const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
- const path='/in/'+username.toLowerCase();
- if(location.pathname.replace(/\/$/,'').toLowerCase()!==path) return {identity_verified:false};
+ const decoded=value=>{try{return decodeURIComponent(value).normalize('NFC').toLowerCase();}catch{return null;}};
+ const path='/in/'+username.normalize('NFC').toLowerCase();
+ if(decoded(location.pathname.replace(/\/$/,''))!==path) return {identity_verified:false};
  const main=document.querySelector('main');
  const heading=Array.from(main?.querySelectorAll('h1,h2')||[]).find(e=>visible(e)&&!e.closest('aside'));
  const card=heading?.closest('section');
  if(!card||Array.from(card.querySelectorAll('h1,h2,h3')).filter(visible).length!==1)return {identity_verified:false};
  const links=Array.from(card.querySelectorAll('a[href]')).filter(visible);
- const invite=links.some(a=>{try{const u=new URL(a.href);return u.origin===location.origin&&u.pathname==='/preload/custom-invite/'&&u.searchParams.get('vanityName')?.toLowerCase()===username.toLowerCase();}catch{return false;}});
- const self=links.some(a=>new URL(a.href).pathname.toLowerCase()===path+'/edit/intro/');
+ const self=links.some(a=>new URL(a.href).origin===location.origin&&decoded(new URL(a.href).pathname)===path+'/edit/intro/');
  const menuLinks=Array.from(document.querySelectorAll('[role="menu"] a[href]')).filter(visible);
- const pending=[...links,...menuLinks].some(a=>{const u=new URL(a.href);return u.origin===location.origin&&u.pathname.replace(/\/$/,'').toLowerCase()===path&&/pending|withdraw invitation|ожидан|приглашение отправлено|отозвать приглашение/i.test([a.getAttribute('aria-label'),...Array.from(a.querySelectorAll('[aria-label]')).map(e=>e.getAttribute('aria-label'))].join(' '));});
+ const ownProfile=a=>{try{const u=new URL(a.href);return u.origin===location.origin&&decoded(u.pathname.replace(/\/$/,''))===path;}catch{return false;}};
+ // The new Connect anchors link back to the profile, not custom-invite.
+ // Require LinkedIn's invitation-state key AND the exact requested profile.
+ // A portal menu also requires the top card's expanded menu and a unique menu.
+ const menus=Array.from(document.querySelectorAll('[role="menu"]')).filter(visible);
+ const menuOwned=menus.length===1&&Array.from(card.querySelectorAll('button[aria-expanded="true"]')).some(visible);
+ const invite=[...links,...(menuOwned?menuLinks:[])].some(a=>{
+   if(a.getAttribute('aria-disabled')==='true')return false;
+   try{const u=new URL(a.href);if(u.origin===location.origin&&u.pathname==='/preload/custom-invite/'&&u.searchParams.get('vanityName')?.normalize('NFC').toLowerCase()===username.normalize('NFC').toLowerCase())return true;}catch{return false;}
+   return ownProfile(a)&&/^ConnectButtonstate:invitation:urn:li:member:\d+_connect$/.test(a.getAttribute('componentkey')||'');
+ });
+ const pending=[...links,...menuLinks].some(a=>ownProfile(a)&&/pending|withdraw invitation|ожидан|приглашение отправлено|отозвать приглашение/i.test([a.getAttribute('aria-label'),...Array.from(a.querySelectorAll('[aria-label]')).map(e=>e.getAttribute('aria-label'))].join(' ')));
  const connected=Array.from(card.querySelectorAll('.distance-badge,.dist-value,[data-test-distance-badge],span,p')).filter(visible).some(e=>/^(1st(?: degree connection)?|1-й|контакт 1-го уровня)$/i.test((e.getAttribute('aria-label')||e.innerText||'').replace(/·/g,'').trim()));
  const buttons=Array.from(card.querySelectorAll('button[aria-label]')).filter(visible);
  const incoming=buttons.some(e=>/^(Accept\b.*request to connect|Принять\b.*приглашени)/i.test(e.getAttribute('aria-label')))&&buttons.some(e=>/^(Ignore\b.*request to connect|Отклонить\b.*приглашени)/i.test(e.getAttribute('aria-label')));
- return {identity_verified:true,relationship:self?'self':incoming?'incoming':pending?'pending':connected?'connected':invite?'not_connected':'unknown',can_invite:invite&&!self&&!incoming&&!pending&&!connected};
+ return {identity_verified:true,display_name:heading.innerText.trim(),relationship:self?'self':incoming?'incoming':pending?'pending':connected?'connected':invite?'not_connected':'unknown',can_invite:invite&&!self&&!incoming&&!pending&&!connected};
 }"""
+
+INVITE_DIALOG_GUARD_JS = r"""
+ const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+ const norm=s=>(s||'').normalize('NFC').replace(/\s+/g,' ').trim();
+ const u=new URL(location.href);
+ const names=u.searchParams.getAll('vanityName');
+ const dialogs=[...document.querySelectorAll('dialog[open],[role="dialog"]')].filter(e=>visible(e)&&!e.querySelector('[contenteditable="true"]'));
+ const recipient=[...node.querySelectorAll('.artdeco-modal__content p strong')].filter(visible);
+ const valid=()=>node.isConnected&&visible(node)&&dialogs.length===1&&dialogs[0]===node&&
+  node.matches('div[role="dialog"].send-invite[aria-labelledby="send-invite-modal"]')&&
+  u.origin==='https://www.linkedin.com'&&u.pathname==='/preload/custom-invite/'&&
+  names.length===1&&norm(names[0]).toLowerCase()===norm(arg.username).toLowerCase()&&
+  location.href===arg.route&&recipient.length===1&&norm(recipient[0].innerText)===norm(arg.name);
+"""
 
 # Shared inspector: reads pricing chrome without counting the message body.
 COMPOSER_INSPECT = r"""
@@ -177,24 +203,130 @@ class GuardedSender(MessageSender):
 
 
 class InviteOnly(ConnectionActions):
+    async def connect_with_person(self, username, *, note=None):
+        self._booster_invite_attempted = False
+        try:
+            return await super().connect_with_person(username, note=note)
+        except Exception:
+            if self._booster_invite_attempted:
+                return {
+                    "status": "outcome_unknown",
+                    "message": "Исход отправки приглашения не подтверждён.",
+                }
+            raise
+
     async def _read_action_signals(self, username):
-        signals = await super()._read_action_signals(username)
-        # A Message button also appears on non-connections with Recruiter.
-        # The vendor's early "already_connected" branch otherwise prevents
-        # discovery of Connect inside More after its profile re-navigation.
+        contact = await self._session.run_on_linkedin(
+            PROFILE_CONTACT_JS, {"username": username}
+        )
         if (
-            not signals.has_invite_anchor
-            and not signals.has_edit_intro_anchor
-            and not signals.has_incoming_action_row
-            and not signals.has_labeled_action_anchor
+            contact.get("identity_verified")
+            and contact.get("relationship") == "unknown"
         ):
             await self._open_more_menu()
-            signals = await super()._read_action_signals(username)
-        return signals
+            contact = await self._session.run_on_linkedin(
+                PROFILE_CONTACT_JS, {"username": username}
+            )
+        relationship = (
+            contact.get("relationship") if contact.get("identity_verified") else None
+        )
+        if relationship == "not_connected" and contact.get("can_invite") is True:
+            self._booster_invite_target = {
+                "username": username,
+                "name": contact.get("display_name", ""),
+            }
+        # Feed the vendor's dialog workflow only positively verified states.
+        # An aria-labelled anchor can now mean Connect as well as Pending;
+        # Message alone is never proof of an existing connection.
+        return ActionSignals(
+            has_invite_anchor=relationship == "not_connected"
+            and contact.get("can_invite") is True,
+            has_compose_anchor_in_action_root=relationship == "connected",
+            has_edit_intro_anchor=relationship == "self",
+            has_labeled_action_button=False,
+            has_labeled_action_anchor=relationship == "pending",
+            has_incoming_action_row=relationship == "incoming",
+        )
 
     async def _click_incoming_accept(self):
         # An invitation approval never authorizes accepting an incoming request.
         return False
+
+    async def _submit_invite_dialog(self, note):
+        target = getattr(self, "_booster_invite_target", None)
+        if not target or not target["name"]:
+            return False, False, None
+        selector = 'div[role="dialog"].send-invite[aria-labelledby="send-invite-modal"]'
+        try:
+            owner = await self._session.page.wait_for_selector(
+                selector, state="visible", timeout=5000
+            )
+        except Exception:
+            return False, False, None
+        arg = target | {"route": self._session.page.url, "note": note or ""}
+        # Pin one known invitation dialog and keep personal drafts untouched.
+        initial = await owner.evaluate(
+            "(node,arg)=>{"
+            + INVITE_DIALOG_GUARD_JS
+            + """
+             if(!valid())return false;
+             const areas=[...node.querySelectorAll('textarea')];
+             if(areas.length>1||areas.some(e=>e.value))return false;
+             node.__boosterInvite={clicked:false};return true;
+            }""",
+            arg,
+        )
+        if initial is not True:
+            return False, False, None
+        if note:
+            opened = await owner.evaluate(
+                "(node,arg)=>{"
+                + INVITE_DIALOG_GUARD_JS
+                + """
+                 if(!valid())return false;
+                 if([...node.querySelectorAll('textarea')].some(visible))return true;
+                 const buttons=[...node.querySelectorAll('.artdeco-modal__actionbar button.artdeco-button--secondary')].filter(visible);
+                 if(buttons.length!==1||buttons[0].disabled)return false;
+                 buttons[0].click();return true;
+                }""",
+                arg,
+            )
+            if not opened:
+                return False, False, None
+            try:
+                textarea = await owner.wait_for_selector(
+                    "textarea", state="visible", timeout=3000
+                )
+            except Exception:
+                # Reading the native quota message never authorizes no-note fallback.
+                return False, False, await self._get_premium_upsell_message()
+            if await textarea.input_value():
+                return False, False, None
+            await textarea.fill(note)
+        # A response can disappear after dispatch. Mark uncertainty before the
+        # atomic click and never retry via Enter or a second locator click.
+        self._booster_invite_attempted = True
+        submitted = await owner.evaluate(
+            "(node,arg)=>{"
+            + INVITE_DIALOG_GUARD_JS
+            + """
+             const p=node.__boosterInvite;
+             if(!valid()||!p||p.clicked)return false;
+             const areas=[...node.querySelectorAll('textarea')];
+             if(arg.note?(areas.length!==1||!visible(areas[0])||areas[0].value!==arg.note):areas.some(e=>e.value))return false;
+             const buttons=[...node.querySelectorAll('.artdeco-modal__actionbar button.artdeco-button--primary')].filter(visible);
+             if(buttons.length!==1||buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return false;
+             p.clicked=true;buttons[0].click();return true;
+            }""",
+            arg,
+        )
+        if submitted is not True:
+            self._booster_invite_attempted = False
+            return False, False, None
+        # Allow the native request to settle before the vendor reopens the
+        # profile. A persistent dialog after a click is an uncertain outcome.
+        await owner.wait_for_element_state("hidden", timeout=5000)
+        return True, bool(note), None
 
 
 class BrowserOutreach:
@@ -244,21 +376,13 @@ class BrowserOutreach:
         result.update(refreshed)
         if signals.has_incoming_action_row:
             result.update(relationship="incoming", can_invite=False)
-        elif result["relationship"] == "unknown" and not result["can_invite"]:
-            # Opening More only reveals actions. The invitation still needs its
-            # own approval and exact-username anchor before it can be submitted.
-            if not signals.has_invite_anchor:
-                await connector._open_more_menu()
-                signals = await connector._read_action_signals(username)
-            if signals.has_invite_anchor:
-                result.update(relationship="not_connected", can_invite=True)
         if relationship_only:
             return result
         target = resolution.target
         if (
             not target
-            or target.profile_path.rstrip("/").casefold()
-            != "/in/" + username.casefold()
+            or normalize_person_identifier(target.profile_path).casefold()
+            != username.casefold()
         ):
             return result
         await self.navigator._navigate_to_page(target.compose_url)

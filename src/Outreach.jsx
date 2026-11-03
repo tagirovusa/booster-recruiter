@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   UserRoundPlus,
   UserRound,
@@ -87,23 +87,47 @@ export function Automation({
   onPause,
   onCheckNow,
   onPeople,
+  onHistory,
   onAccounts,
+  initialDraft,
+  onDraftChange,
 }) {
-  const [rules, setRules] = useState(data.rules);
+  const draft =
+    initialDraft?.baseRules === JSON.stringify(data.rules) &&
+    initialDraft?.baseTexts ===
+      JSON.stringify([campaign.template_open, campaign.template_neutral])
+      ? initialDraft
+      : null;
+  const serverRules = useRef(JSON.stringify(data.rules));
+  const serverTexts = useRef(
+    JSON.stringify([campaign.template_open, campaign.template_neutral]),
+  );
+  const [rules, setRules] = useState(draft?.rules || data.rules);
   const [texts, setTexts] = useState({
-    open: campaign.template_open,
-    neutral: campaign.template_neutral,
+    open: draft?.texts.open ?? campaign.template_open,
+    neutral: draft?.texts.neutral ?? campaign.template_neutral,
   });
   const [step, setStep] = useState(0);
-  useEffect(() => setRules(data.rules), [JSON.stringify(data.rules)]);
-  useEffect(
-    () =>
+  useEffect(() => {
+    const next = JSON.stringify(data.rules);
+    if (serverRules.current !== next) {
+      serverRules.current = next;
+      setRules(data.rules);
+    }
+  }, [JSON.stringify(data.rules)]);
+  useEffect(() => {
+    const next = JSON.stringify([
+      campaign.template_open,
+      campaign.template_neutral,
+    ]);
+    if (serverTexts.current !== next) {
+      serverTexts.current = next;
       setTexts({
         open: campaign.template_open,
         neutral: campaign.template_neutral,
-      }),
-    [campaign.id, campaign.template_open, campaign.template_neutral],
-  );
+      });
+    }
+  }, [campaign.template_open, campaign.template_neutral]);
   const field = (key, value) => setRules((r) => ({ ...r, [key]: value }));
   const mode = !rules.allow_inmail
     ? "free"
@@ -153,6 +177,29 @@ export function Automation({
     JSON.stringify(rules) !== JSON.stringify(data.rules) ||
     texts.open !== campaign.template_open ||
     texts.neutral !== campaign.template_neutral;
+  useEffect(() => {
+    onDraftChange?.(
+      dirty
+        ? {
+            rules,
+            texts,
+            baseRules: JSON.stringify(data.rules),
+            baseTexts: JSON.stringify([
+              campaign.template_open,
+              campaign.template_neutral,
+            ]),
+          }
+        : null,
+    );
+  }, [
+    JSON.stringify(rules),
+    texts.open,
+    texts.neutral,
+    dirty,
+    JSON.stringify(data.rules),
+    campaign.template_open,
+    campaign.template_neutral,
+  ]);
   const peopleLabel = {
     one: "кандидат",
     few: "кандидата",
@@ -171,7 +218,34 @@ export function Automation({
   const recruiterReady =
     account?.services?.recruiter?.status === "ready" &&
     account.services.recruiter.manual_texts;
+  const limits = {
+    wait_days: [1, 60],
+    check_hours: [1, 72],
+    inmail_budget: [0, 1000],
+    daily_invites: [1, 100],
+    daily_messages: [1, 200],
+    daily_inmails: [1, 100],
+    monitor_days: [1, 90],
+  };
+  const numberLabels = {
+    wait_days: "Ждать принятия · дней",
+    check_hours: "Проверять контакты каждые · ч",
+    inmail_budget: "Бюджет InMail · кредитов",
+    daily_invites: "Приглашений в сутки",
+    daily_messages: "Сообщений в сутки",
+    daily_inmails: "InMail в сутки",
+    monitor_days: "Следить за ответами · дней",
+  };
+  const invalidNumber = Object.entries(limits).find(
+    ([key, [min, max]]) =>
+      !Number.isInteger(rules[key]) || rules[key] < min || rules[key] > max,
+  );
+  const invalidHours = rules.start_hour >= rules.end_hour;
+  const invalidInmailBudget = rules.allow_inmail && rules.inmail_budget < 1;
+  const validRules = !invalidNumber && !invalidHours && !invalidInmailBudget;
   const canReview =
+    account?.status === "ready" &&
+    validRules &&
     selected.length > 0 &&
     !missingText &&
     !missingSubject &&
@@ -250,13 +324,19 @@ export function Automation({
       text: "Ответ появится в истории. Дальнейшие обращения остановятся.",
     },
   ];
+  const reviewMembers =
+    active?.members.filter((m) => m.status === "needs_review") || [];
+  const recoverableMembers = reviewMembers.filter(
+    (m) => !active.actions.some((a) => a.member_id === m.id),
+  );
+  const uncertainActions = active?.actions.some((a) =>
+    ["unknown", "submitting"].includes(a.status),
+  );
   const counts = active
     ? {
         waiting: active.members.filter((m) => m.status === "waiting_acceptance")
           .length,
-        sent: active.members.filter((m) =>
-          ["sent", "replied", "finished"].includes(m.status),
-        ).length,
+        sent: active.members.filter((m) => m.sent_at).length,
         replied: active.members.filter((m) => m.status === "replied").length,
       }
     : null;
@@ -301,7 +381,35 @@ export function Automation({
               <strong>{counts.replied}</strong>
               <span>Ответы получены</span>
             </div>
+            {reviewMembers.length > 0 && (
+              <div>
+                <strong>{reviewMembers.length}</strong>
+                <span>Требуют проверки</span>
+              </div>
+            )}
           </div>
+          {active.status === "paused" && recoverableMembers.length > 0 && (
+            <div className="recovery-check">
+              <p>
+                Повторная проверка уточнит состояние контактов. Она не
+                отправляет приглашения или сообщения.
+              </p>
+              <button className="button" disabled={disabled} onClick={onCheck}>
+                <RefreshCw size={16} /> Повторно проверить контакты · без
+                отправки
+              </button>
+            </div>
+          )}
+          {(uncertainActions || reviewMembers.length > 0) && (
+            <p className="recovery-history">
+              {uncertainActions
+                ? "Есть действия с неподтверждённым результатом. Проверьте их в LinkedIn и укажите результат в истории."
+                : "Причины остановки каждого контакта доступны в истории."}{" "}
+              <button className="text-link" onClick={onHistory}>
+                Открыть историю
+              </button>
+            </p>
+          )}
           {active.status === "active" && (
             <button
               className="button"
@@ -625,6 +733,12 @@ export function Automation({
                               : "нейтральное"}
                           </span>
                           <textarea
+                            aria-label={
+                              "Сообщение · " +
+                              (segment === "open"
+                                ? "Open to Work"
+                                : "нейтральное")
+                            }
                             rows={7}
                             value={texts[segment]}
                             onChange={(e) =>
@@ -699,6 +813,7 @@ export function Automation({
                 <div>
                   <button
                     className="button"
+                    disabled={!step && !validRules}
                     onClick={() =>
                       step ? setStep(0) : onSave(rules, texts, false)
                     }
@@ -715,6 +830,7 @@ export function Automation({
                   {step === 1 && (
                     <button
                       className="text-link"
+                      disabled={!validRules}
                       onClick={() => onSave(rules, texts, false)}
                     >
                       Сохранить без запуска
@@ -732,15 +848,26 @@ export function Automation({
                   <ArrowRight size={16} />
                 </button>
               </footer>
-              {step === 1 && !canReview && (
+              {(!validRules || (step === 1 && !canReview)) && (
                 <p className="setup-validation" role="status">
-                  {!selected.length
-                    ? "Сначала выберите кандидатов для этой кампании."
-                    : missingText
-                      ? "Добавьте текст для каждой выбранной группы."
-                      : missingSubject
-                        ? "Добавьте тему InMail для каждой выбранной группы."
-                        : "Укажите бюджет InMail не меньше одного кредита."}
+                  {invalidHours
+                    ? "Время окончания должно быть позже начала в пределах суток."
+                    : invalidNumber
+                      ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
+                      : invalidInmailBudget
+                        ? "Укажите бюджет InMail не меньше одного кредита."
+                        : account?.status !== "ready"
+                          ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
+                          : !selected.length
+                            ? "Сначала выберите кандидатов для этой кампании."
+                            : missingText
+                              ? "Добавьте текст для каждой выбранной группы."
+                              : missingSubject
+                                ? "Добавьте тему InMail для каждой выбранной группы."
+                                : rules.inmail_channel === "recruiter" &&
+                                    !recruiterReady
+                                  ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
+                                  : "Укажите бюджет InMail не меньше одного кредита."}
                 </p>
               )}
             </fieldset>
@@ -996,6 +1123,9 @@ export function DesktopPreferences() {
             />
             <span>Запускать при входе в систему</span>
           </label>
+          {!prefs.packaged && (
+            <p>Автозапуск доступен в установленной версии приложения.</p>
+          )}
           <p>
             Работа продолжается только для утверждённых кампаний и в выбранные
             часы. Для полной остановки выберите «Завершить работу» в меню значка

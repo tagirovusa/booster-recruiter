@@ -113,6 +113,71 @@ async def test_invite_accept_message_and_reply_are_one_durable_sequence(store):
     assert len(worker.actions) == 2
 
 
+async def test_contact_recheck_recovers_detection_failure_without_sending_or_resuming(
+    store,
+):
+    a, c, person, p, rt, worker = activate(store)
+    mid = p["messages"][0]["id"]
+    store.outreach.status(p["run_id"], "paused")
+    store.outreach.update_member(
+        mid,
+        status="needs_review",
+        detail="Доступный способ связи не удалось подтвердить.",
+    )
+    await rt.outreach.check(c["id"])
+    member = store.outreach.members(p["run_id"])[0]
+    assert member["status"] == "planned" and member["observation"]["can_invite"]
+    assert store.outreach.run(p["run_id"])["status"] == "paused"
+    assert not worker.actions
+    assert not store.rows("SELECT * FROM outreach_actions")
+
+
+@pytest.mark.parametrize(
+    "guard",
+    [
+        "unknown_send",
+        "blocked_attempt",
+        "suppressed",
+        "invalid_identity",
+        "existing_message",
+        "active",
+        "cancelled",
+    ],
+)
+async def test_contact_recheck_preserves_send_and_approval_guards(store, guard):
+    a, c, person, p, rt, worker = activate(store)
+    mid = p["messages"][0]["id"]
+    if guard in {"unknown_send", "blocked_attempt"}:
+        action = store.outreach.reserve(mid, "invite")
+        store.outreach.finish(
+            action, "unknown" if guard == "unknown_send" else "blocked", "test"
+        )
+    store.outreach.status(
+        p["run_id"],
+        "active"
+        if guard == "active"
+        else "cancelled"
+        if guard == "cancelled"
+        else "paused",
+    )
+    store.outreach.update_member(
+        mid, status="needs_review", detail="Не подтверждён владелец открытого профиля."
+    )
+    if guard == "suppressed":
+        store.db.execute(
+            "INSERT INTO suppression(url,reason,created) VALUES(?,?,?)",
+            (person["url"], "test", now()),
+        )
+        store.db.commit()
+    if guard == "invalid_identity":
+        worker.observation["identity_verified"] = False
+    if guard == "existing_message":
+        worker.observation["has_outgoing"] = True
+    await rt.outreach.check(c["id"])
+    assert store.outreach.members(p["run_id"])[0]["status"] == "needs_review"
+    assert not worker.actions
+
+
 async def test_check_now_retains_pending_invite_then_sends_on_acceptance(store):
     _, _, _, p, rt, worker = activate(store)
     rid = p["run_id"]

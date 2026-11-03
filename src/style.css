@@ -1616,3 +1616,50 @@ input[type="checkbox"] {
 .credit-budget > .hint {
   grid-column: 1 / -1;
 }
+
+.campaign-entry {
+  font-weight: 800;
+  text-align: left;
+}
+
+/* Supporting guidance stays readable at the minimum desktop size. */
+.setup-steps button,
+.setup-details summary > small,
+.details-body .settings-footnote,
+.setup-footer .text-link,
+.save-indicator,
+.plan-account .text-link,
+.plan-flow b,
+.plan-flow p,
+.plan-meta p,
+.plan-note,
+.message-group-title small,
+.setup-message-card > p,
+.setup-message-card .field small,
+.setup-message-card code,
+.automation-live > .text-link {
+  font-size: 12px;
+}
+.setup-message-card textarea {
+  font-size: 13px;
+}
+
+.automation-results {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.recovery-check {
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+.recovery-check p,
+.recovery-history {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.recovery-check .button {
+  justify-self: start;
+}
+.recovery-history {
+  margin: 14px 0;
+}

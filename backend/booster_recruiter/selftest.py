@@ -111,11 +111,16 @@ async def check():
                 <a href="https://www.linkedin.com/in/test-candidate/">Candidate</a></section>
                 <aside><a href="https://www.linkedin.com/in/unrelated/">Unrelated</a></aside></main>""")
             person = await page.evaluate(PROFILE_JS)
-            links = await page.evaluate(SEARCH_JS)
             assert (
                 person["name"] == "Test Recruiter"
                 and person["headline"] == "Recruitment Manager"
             )
+            await page.set_content("""<main><div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsPeople">
+              <div role="list"><div componentkey="SearchResults_FirstResult_people"><div role="listitem">
+              <a tabindex="0" componentkey="candidate" href="https://www.linkedin.com/in/test-candidate/">Candidate</a>
+              <a href="https://www.linkedin.com/in/mutual-person/">Mutual connection</a>
+              </div></div></div></div><a href="https://www.linkedin.com/in/unrelated/">Unrelated</a></main>""")
+            links = await page.evaluate(SEARCH_JS)
             assert len(links) == 1 and links[0]["url"].endswith("test-candidate")
 
             # Synthetic LinkedIn documents served entirely by route.fulfill:

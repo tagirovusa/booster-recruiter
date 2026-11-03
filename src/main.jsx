@@ -34,12 +34,19 @@ import {
 } from "./Outreach";
 
 const api = window.booster;
+const frameLabels = {
+  open_to_work: "Open to Work",
+  hiring: "Hiring — нанимает сотрудников",
+  none: "Без рамки",
+  unknown: "Не определена",
+};
 const labels = {
   new: "Не подключён",
   ready: "Готово",
   needs_login: "Требуется вход",
   connecting: "Ожидаем вход",
   identity_mismatch: "Другой профиль",
+  restricted: "Ограничение LinkedIn",
   disconnected: "Отключён",
   draft: "Черновик",
   collecting: "Собираем профили",
@@ -82,7 +89,7 @@ function Button({ children, kind = "secondary", ...rest }) {
     </button>
   );
 }
-function Modal({ title, subtitle, children, onClose, wide = false }) {
+function Modal({ title, subtitle, children, onClose, wide = false, error }) {
   const container = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -133,6 +140,12 @@ function Modal({ title, subtitle, children, onClose, wide = false }) {
             <X size={20} />
           </button>
         </header>
+        {error && (
+          <div className="alert error" role="alert">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        )}
         {children}
       </section>
     </div>
@@ -159,6 +172,7 @@ function App() {
   const [person, setPerson] = useState(null);
   const [preview, setPreview] = useState(null);
   const [config, setConfig] = useState("");
+  const automationDrafts = useRef({});
   const refresh = useCallback(async () => {
     if (!api) {
       setLoading(false);
@@ -181,6 +195,7 @@ function App() {
   }, [refresh]);
   const act = async (op, p = {}, success = "") => {
     setError("");
+    setNotice("");
     setBusy(true);
     try {
       const r = await api.command(op, p);
@@ -269,10 +284,11 @@ function App() {
           template_open: texts.open,
           template_neutral: texts.neutral,
         });
+      delete automationDrafts.current[cid];
       await refresh();
       if (reviewAfterSave)
         setPreview(await api.command("outreach.preview", { id: cid }));
-      else setNotice("");
+      else setNotice("Настройки и тексты сохранены. Кампания не запущена.");
       return true;
     } catch (e) {
       setError(e.message);
@@ -345,7 +361,7 @@ function App() {
             Локальное приложение
           </span>
         </div>
-        {error && (
+        {error && !modal && !person && !preview && (
           <div className="alert error" role="alert">
             <AlertCircle size={18} />
             <span>{error}</span>
@@ -414,6 +430,14 @@ function App() {
                           : "Вход ещё не выполнен"}
                       </p>
                       {a.error && <div className="hint warning">{a.error}</div>}
+                      {a.status === "restricted" && (
+                        <div className="hint warning">
+                          LinkedIn ограничил действия аккаунта. Откройте
+                          LinkedIn, проверьте уведомления и выполните требования
+                          сервиса. Повторный вход сам по себе не снимает
+                          ограничение.
+                        </div>
+                      )}
                       <div className="account-actions">
                         <Button
                           kind={a.status === "ready" ? "secondary" : "primary"}
@@ -432,8 +456,19 @@ function App() {
                         {a.url && (
                           <button
                             className="icon"
-                            title="Открыть профиль"
-                            onClick={() => api.openProfile(a.url)}
+                            title="Открыть профиль в обычном браузере"
+                            aria-label={
+                              "Открыть профиль " +
+                              a.label +
+                              " в обычном браузере"
+                            }
+                            onClick={async () => {
+                              try {
+                                await api.openProfile(a.url);
+                              } catch (e) {
+                                setError(e.message);
+                              }
+                            }}
                           >
                             <ExternalLink size={18} />
                           </button>
@@ -545,7 +580,10 @@ function App() {
                     Выберите получателей, проверьте тексты и подтвердите
                     отправку.
                   </li>
-                  <li>Сохраните список в Excel или CSV.</li>
+                  <li>
+                    Сохраните список профилей в Excel, а результаты сообщений —
+                    в CSV из истории.
+                  </li>
                 </ol>
                 <h2>Подключение ИИ-агента</h2>
                 <p>
@@ -553,7 +591,15 @@ function App() {
                   Приложение должно быть открыто. Агент не может самостоятельно
                   подтвердить новую рассылку.
                 </p>
-                <Button onClick={async () => setConfig(await api.mcpConfig())}>
+                <Button
+                  onClick={async () => {
+                    try {
+                      setConfig(await api.mcpConfig());
+                    } catch (e) {
+                      setError(e.message);
+                    }
+                  }}
+                >
                   Показать настройки подключения
                 </Button>
                 {config && (
@@ -574,10 +620,12 @@ function App() {
                 </p>
                 <h2>Поддерживаемые сообщения</h2>
                 <p>
-                  Отправляются обычные сообщения, доступные выбранному аккаунту.
-                  Если нужен InMail или сначала приглашение, профиль останется в
-                  списке с причиной пропуска. Open to Work и текущая занятость —
-                  разные признаки.
+                  Сначала программа проверяет возможность бесплатного сообщения.
+                  В настройках кампании можно разрешить приглашения в контакты и
+                  InMail в пределах выбранного бюджета. После принятия
+                  приглашения утверждённое сообщение отправится автоматически.
+                  Ответ остановит дальнейшие обращения. Open to Work и текущая
+                  занятость — разные признаки.
                 </p>
               </section>
             </>
@@ -598,7 +646,9 @@ function App() {
                   }
                 >
                   <Plus size={18} />
-                  Новая кампания
+                  {state.accounts.length
+                    ? "Новая кампания"
+                    : "Подключить LinkedIn"}
                 </Button>
               </div>
               <div className="stats">
@@ -657,7 +707,15 @@ function App() {
                           onClick={() => openCampaign(c.id)}
                         >
                           <td>
-                            <b>{c.name}</b>
+                            <button
+                              className="text-button campaign-entry"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCampaign(c.id);
+                              }}
+                            >
+                              {c.name}
+                            </button>
                             <small>{c.keywords}</small>
                           </td>
                           <td>
@@ -734,6 +792,22 @@ function App() {
                   )}
                 </div>
               </div>
+              {account?.status !== "ready" && (
+                <div className="hint warning">
+                  Подключите аккаунт отправителя, чтобы искать кандидатов и
+                  запускать кампанию.{" "}
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setPage("accounts");
+                      setCid(null);
+                      setDetail(null);
+                    }}
+                  >
+                    Открыть аккаунты
+                  </button>
+                </div>
+              )}
               {(tab === "people" || active || campaign.status === "paused") && (
                 <div className={"progress-card " + (active ? "working" : "")}>
                   <div>
@@ -791,6 +865,12 @@ function App() {
               </div>
               {tab === "automation" ? (
                 <Automation
+                  key={cid}
+                  initialDraft={automationDrafts.current[cid]}
+                  onDraftChange={(draft) => {
+                    if (draft) automationDrafts.current[cid] = draft;
+                    else delete automationDrafts.current[cid];
+                  }}
                   data={detail.outreach}
                   campaign={campaign}
                   account={account}
@@ -798,7 +878,12 @@ function App() {
                   disabled={active || busy}
                   onSave={saveAutomation}
                   onPeople={() => setTab("people")}
-                  onAccounts={() => setPage("accounts")}
+                  onHistory={() => setTab("history")}
+                  onAccounts={() => {
+                    setPage("accounts");
+                    setCid(null);
+                    setDetail(null);
+                  }}
                   onCheck={() => act("campaign.check", { id: cid })}
                   onResume={(id) => act("outreach.resume", { id })}
                   onCheckNow={(id) => act("outreach.check_now", { id })}
@@ -1119,6 +1204,7 @@ function App() {
       </main>
       {modal === "account" && (
         <AccountForm
+          error={error}
           onClose={() => setModal(null)}
           busy={busy}
           onSubmit={async (label) => {
@@ -1134,6 +1220,7 @@ function App() {
       )}
       {modal === "campaign" && (
         <CampaignForm
+          error={error}
           accounts={state.accounts}
           busy={busy}
           onClose={() => setModal(null)}
@@ -1154,6 +1241,7 @@ function App() {
       )}
       {person && (
         <Modal
+          error={error}
           title={person.data.name || "Профиль кандидата"}
           subtitle="Проверка исходных сведений"
           onClose={() => setPerson(null)}
@@ -1171,8 +1259,10 @@ function App() {
               <Badge value={person.segment} />
               <h3>{person.data.headline || "Заголовок не определён"}</h3>
               <p>
-                Рамка: {person.data.photo_frame?.status || "unknown"}.
-                Отсутствие подтверждения не означает, что человек не ищет
+                Рамка:{" "}
+                {frameLabels[person.data.photo_frame?.status] ||
+                  "Не определена"}
+                . Отсутствие подтверждения не означает, что человек не ищет
                 работу.
               </p>
               <Button onClick={() => openInSenderAccount(person.url)}>
@@ -1191,15 +1281,16 @@ function App() {
             <Button
               kind="danger"
               onClick={async () => {
-                await act(
+                const result = await act(
                   "candidate.suppress",
                   { url: person.url, reason: "Исключён рекрутером" },
                   "Профиль исключён из будущих отправок.",
                 );
-                setPerson(null);
+                if (result) setPerson(null);
               }}
+              disabled={busy || person.blocked}
             >
-              Не контактировать
+              {person.blocked ? "Контакт исключён" : "Не контактировать"}
             </Button>
             <Button onClick={() => setPerson(null)}>Готово</Button>
           </div>
@@ -1207,24 +1298,43 @@ function App() {
       )}
       {preview && (
         <Modal
+          error={error}
           title="Проверьте отправку"
-          subtitle={`${preview.messages.length} получателей · Отправитель: ${preview.account.label}`}
+          subtitle={`${preview.messages.length} ${{ one: "получатель", few: "получателя", many: "получателей", other: "получателя" }[new Intl.PluralRules("ru").select(preview.messages.length)]} · Отправитель: ${preview.account.label}`}
           wide
           onClose={() => setPreview(null)}
         >
           <div className="hint">
-            Утверждаются эти получатели, тексты и дальнейшие действия по
-            правилам кампании. Приглашения:{" "}
-            {preview.rules.allow_invites ? "разрешены" : "выключены"}. InMail:{" "}
-            {preview.rules.allow_inmail
-              ? `${preview.rules.strategy === "economy" ? "экономный режим" : "быстрый режим"}, не более ${preview.maximum_credits} кредитов`
-              : "выключен"}
-            . Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}:00
-            ({preview.rules.timezone}). После принятия приглашения сообщение
-            отправится автоматически. Любой ответ остановит обращения.
+            Если доступно бесплатное сообщение, программа отправит ваш текст.
+            {preview.rules.allow_invites &&
+              " При необходимости отправит приглашение, а после его принятия — сообщение."}
+            {preview.rules.allow_inmail &&
+              (preview.rules.strategy === "economy" &&
+              preview.rules.allow_invites
+                ? ` Если приглашение не примут за ${preview.rules.wait_days} дн., сможет отправить InMail.`
+                : " Если бесплатное сообщение недоступно, сможет отправить InMail.")}{" "}
+            После ответа кандидата автоматические обращения прекратятся.
           </div>
           <div className="message-preview">
             <p>Профиль отправителя: {preview.account.url}</p>
+            {preview.rules.allow_inmail && (
+              <p>
+                <strong>
+                  Бюджет InMail на всю кампанию: {preview.maximum_credits}{" "}
+                  {
+                    {
+                      one: "кредит",
+                      few: "кредита",
+                      many: "кредитов",
+                      other: "кредита",
+                    }[
+                      new Intl.PluralRules("ru").select(preview.maximum_credits)
+                    ]
+                  }
+                  .
+                </strong>
+              </p>
+            )}
             {preview.context?.contract && (
               <p>
                 InMail через Recruiter:{" "}
@@ -1232,17 +1342,25 @@ function App() {
                 включена в текст ниже.
               </p>
             )}
-            <p>
-              Проверка каждые {preview.rules.check_hours} ч. · Наблюдение{" "}
-              {preview.rules.monitor_days} дней.
-              {preview.rules.allow_inmail &&
-                preview.rules.strategy === "economy" &&
-                ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}{" "}
-              Бюджеты попыток на отправителя за сутки UTC:{" "}
-              {preview.rules.daily_invites} приглашений,{" "}
-              {preview.rules.daily_messages} сообщений,{" "}
-              {preview.rules.daily_inmails} InMail.
-            </p>
+            <details>
+              <summary>Расписание и лимиты</summary>
+              <p>
+                Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}
+                :00 ({preview.rules.timezone}). Проверка каждые{" "}
+                {preview.rules.check_hours} ч. · Наблюдение{" "}
+                {preview.rules.monitor_days} дней.
+                {preview.rules.allow_inmail &&
+                  preview.rules.strategy === "economy" &&
+                  ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}{" "}
+                Общий лимит попыток для этого аккаунта за сутки UTC:{" "}
+                {preview.rules.allow_invites &&
+                  `${preview.rules.daily_invites} приглашений, `}
+                {preview.rules.daily_messages} сообщений
+                {preview.rules.allow_inmail &&
+                  `, ${preview.rules.daily_inmails} InMail`}
+                .
+              </p>
+            </details>
             {preview.messages.map((m) => (
               <article key={m.id}>
                 <h3>{m.name || m.url}</h3>
@@ -1270,7 +1388,9 @@ function App() {
             </p>
           )}
           <div className="modal-footer">
-            <Button onClick={() => setPreview(null)}>Вернуться к списку</Button>
+            <Button onClick={() => setPreview(null)}>
+              Вернуться к настройкам
+            </Button>
             <Button
               kind="primary"
               disabled={busy}
@@ -1311,10 +1431,11 @@ function Stat({ label, value }) {
     </div>
   );
 }
-function AccountForm({ onClose, onSubmit, busy }) {
+function AccountForm({ onClose, onSubmit, busy, error }) {
   const [label, setLabel] = useState("");
   return (
     <Modal
+      error={error}
       title="Подключить LinkedIn"
       subtitle="Отдельная сессия для каждого аккаунта"
       onClose={onClose}
@@ -1359,7 +1480,7 @@ function AccountForm({ onClose, onSubmit, busy }) {
     </Modal>
   );
 }
-function CampaignForm({ accounts, busy, onClose, onSubmit }) {
+function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
   const [d, setD] = useState({
     name: "",
     account_id:
@@ -1372,6 +1493,7 @@ function CampaignForm({ accounts, busy, onClose, onSubmit }) {
   const change = (key, v) => setD({ ...d, [key]: v });
   return (
     <Modal
+      error={error}
       title="Новая кампания"
       subtitle="Начните с поиска. Сообщения можно заполнить после сбора профилей."
       onClose={onClose}
@@ -1407,7 +1529,7 @@ function CampaignForm({ accounts, busy, onClose, onSubmit }) {
           </select>
         </label>
         <label className="field">
-          Ключевые слова
+          Ключевые слова или ссылка на профиль
           <textarea
             required
             rows={3}
@@ -1417,8 +1539,8 @@ function CampaignForm({ accounts, busy, onClose, onSubmit }) {
             maxLength={1000}
           />
           <small>
-            Используйте название роли и отрасль. Можно использовать AND, OR и
-            кавычки.
+            Укажите роль и отрасль или одну ссылку на профиль LinkedIn. В
+            поисковом запросе можно использовать AND, OR и кавычки.
           </small>
         </label>
         <label className="field">

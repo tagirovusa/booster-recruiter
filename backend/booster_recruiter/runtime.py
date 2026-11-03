@@ -208,6 +208,19 @@ class Runtime:
             raise AppError("Аккаунт в браузере изменился. Обработка остановлена.")
         return actual
 
+    def restrict_account(self, aid):
+        detail = "LinkedIn ограничил действия аккаунта. Кампания приостановлена."
+        sender_ids = self.store.outreach.sender_ids(aid)
+        for sender_id in sender_ids:
+            self.store.set_account(sender_id, "restricted", error=detail)
+        placeholders = ",".join("?" for _ in sender_ids)
+        for run in self.store.rows(
+            f"SELECT id FROM outreach_runs WHERE account_id IN ({placeholders}) AND status='active'",
+            sender_ids,
+        ):
+            self.store.outreach.status(run["id"], "paused", detail)
+        return detail
+
     async def recruiter(self, aid, prepare=False):
         self.store.set_service(aid, "recruiter", {"status": "connecting"})
         try:
@@ -354,18 +367,10 @@ class Runtime:
                 while cid not in self.pause_flags:
                     # A budget is an application stop condition, not a promise
                     # about LinkedIn's permitted sending volume.
-                    today = self.store.rows(
-                        "SELECT d.id FROM deliveries d JOIN batches b ON b.id=d.batch_id WHERE b.account_id=? AND d.status IN ('sent','unknown','sending','blocked','failed','replied') AND substr(d.updated,1,10)=substr(?,1,10)",
-                        (
-                            aid,
-                            __import__("datetime")
-                            .datetime.now(__import__("datetime").timezone.utc)
-                            .isoformat(),
-                        ),
-                    )
-                    if len(today) >= 20:
+                    used, limit = self.store.outreach.message_budget(aid, 20)
+                    if used >= limit:
                         raise AppError(
-                            "Достигнут дневной бюджет приложения: 20 попыток. Оставшаяся очередь сохранена."
+                            f"Достигнут дневной бюджет приложения: {limit} попыток (UTC). Оставшаяся очередь сохранена."
                         )
                     row = self.store.claim(bid)
                     if not row:
@@ -388,6 +393,11 @@ class Runtime:
                             "Ответ браузера не получен. Проверьте диалог перед дальнейшими действиями.",
                         )
                         raise
+                    restriction = (
+                        self.restrict_account(aid)
+                        if result.get("account_restricted")
+                        else None
+                    )
                     if result.get("sent") is True:
                         self.store.finish(
                             row["id"],
@@ -413,6 +423,8 @@ class Runtime:
                         raise AppError(
                             "Результат последней отправки неизвестен. Очередь остановлена для проверки."
                         )
+                    if restriction:
+                        raise AppError(restriction)
                     await asyncio.sleep(7)
                 self.store.progress(
                     cid,
