@@ -94,6 +94,7 @@ class BrowserManager:
         headless: bool = True,
         slow_mo: int = 0,
         viewport: dict[str, int] | None = None,
+        native_headless: bool = False,
         **launch_options: Any,
     ):
         # ``launch_options`` is spread straight into the context options, so a
@@ -124,6 +125,7 @@ class BrowserManager:
 
         self.user_data_dir = str(Path(user_data_dir).expanduser())
         self.headless = headless
+        self.native_headless = native_headless
         self.slow_mo = slow_mo
         # Kept as passed, including ``None``. The old ``viewport or {...}``
         # meant "no viewport" could not be expressed at all, which is what
@@ -201,6 +203,7 @@ class BrowserManager:
         """
         return (
             self.headless
+            and not self.native_headless
             and hidden_target_is_supported()
             and not self._no_window_available
         )

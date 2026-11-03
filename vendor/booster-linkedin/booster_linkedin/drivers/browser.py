@@ -333,6 +333,7 @@ def _make_browser(
     return BrowserManager(
         user_data_dir=profile_dir,
         headless=_headless,
+        native_headless=config.browser.native_headless,
         slow_mo=config.browser.slow_mo,
         viewport=viewport,
         **launch_options,

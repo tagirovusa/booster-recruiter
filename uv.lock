@@ -100,7 +100,7 @@ wheels = [
 
 [[package]]
 name = "booster-recruiter"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },
@@ -690,7 +690,7 @@ wheels = [
 
 [[package]]
 name = "booster-linkedin-runtime"
-version = "4.29.0+booster.1"
+version = "4.29.0+booster.2"
 source = { directory = "vendor/booster-linkedin" }
 dependencies = [
     { name = "anyio" },

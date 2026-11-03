@@ -30,15 +30,28 @@ class Worker:
         self.lock = asyncio.Lock()
         self.serial = 0
         self.log = None
+        self.visible = None
 
     async def call(self, action, params=None):
         async with self.lock:
+            visible = (
+                action == "open_profile" or (params or {}).get("interactive") is True
+            )
+            if (
+                self.process
+                and self.process.returncode is None
+                and self.visible != visible
+            ):
+                # The previous request has completed under this lock. Close its
+                # browser before reopening the same persistent profile in a new mode.
+                await self.stop(graceful=True)
             if not self.process or self.process.returncode is not None:
                 self.log = open(self.root / "worker.log", "ab", buffering=0)
                 self.process = await asyncio.create_subprocess_exec(
                     *executable_args(),
                     "--worker",
                     str(self.root / "profile"),
+                    *(["--browser-visible"] if visible else []),
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=self.log,
@@ -46,6 +59,7 @@ class Worker:
                     limit=8 * 1024 * 1024,
                     start_new_session=sys.platform != "win32",
                 )
+                self.visible = visible
             self.serial += 1
             self.process.stdin.write(
                 (
@@ -82,9 +96,9 @@ class Worker:
                 )
             return data["result"]
 
-    async def stop(self):
+    async def stop(self, *, graceful=None):
         if self.process and self.process.returncode is None:
-            if not self.lock.locked():
+            if graceful is True or (graceful is None and not self.lock.locked()):
                 # EOF exits the MCP lifespan and closes Chromium cleanly.
                 self.process.stdin.close()
                 try:
@@ -114,6 +128,7 @@ class Worker:
             self.log.close()
             self.log = None
         self.process = None
+        self.visible = None
 
 
 class Runtime:
@@ -158,7 +173,7 @@ class Runtime:
         self.store.set_account(aid, "connecting")
         try:
             async with self.browser_lock:
-                result = await self.worker(aid).call("login")
+                result = await self.worker(aid).call("login", {"interactive": True})
             self.store.set_account(
                 aid, "ready", result["url"], name=result.get("name") or None
             )
@@ -183,11 +198,11 @@ class Runtime:
             return "Завершите вход или проверку в окне LinkedIn, затем нажмите «Проверить вход»."
         return text[:600]
 
-    async def verify(self, aid):
+    async def verify(self, aid, *, interactive=False):
         account = self.store.account(aid)
         if account["status"] != "ready":
             raise AppError("Аккаунт не готов. Выполните вход.")
-        actual = await self.worker(aid).call("login")
+        actual = await self.worker(aid).call("login", {"interactive": interactive})
         if canonical(actual["url"]) != account["url"]:
             self.store.set_account(aid, "identity_mismatch")
             raise AppError("Аккаунт в браузере изменился. Обработка остановлена.")
@@ -197,9 +212,10 @@ class Runtime:
         self.store.set_service(aid, "recruiter", {"status": "connecting"})
         try:
             async with self.browser_lock:
-                await self.verify(aid)
+                await self.verify(aid, interactive=True)
                 result = await self.worker(aid).call(
-                    "recruiter_prepare" if prepare else "recruiter_status"
+                    "recruiter_prepare" if prepare else "recruiter_status",
+                    {"interactive": True},
                 )
             self.store.set_service(aid, "recruiter", result)
         except Exception as exc:
@@ -311,7 +327,7 @@ class Runtime:
                 "Браузер занят. Приостановите обработку и дождитесь завершения текущего действия."
             )
         async with self.browser_lock:
-            await self.verify(aid)
+            await self.verify(aid, interactive=True)
             return await self.worker(aid).call("open_profile", {"url": url})
 
     async def send_batch(self, bid):

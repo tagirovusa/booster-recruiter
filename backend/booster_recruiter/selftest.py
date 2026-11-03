@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -24,6 +25,7 @@ def bundled_browsers():
 
 async def check():
     from fastmcp import Client
+    from booster_linkedin.core.browser import BrowserManager
     from booster_linkedin.linkedin.session import PageSession
     from booster_linkedin.process_tree import (
         release_browser_guardian,
@@ -62,6 +64,44 @@ async def check():
         names = {tool.name for tool in await client.list_tools()}
         assert {"get_my_profile", "get_person_profile", "send_message"} <= names
     async with async_playwright() as playwright:
+        # Exercise the same manager/mode as background campaigns, including
+        # persistence after a clean close. No account or LinkedIn request.
+        with tempfile.TemporaryDirectory(prefix="booster-background-") as folder:
+            for attempt in range(2):
+                manager = BrowserManager(
+                    folder,
+                    headless=True,
+                    native_headless=True,
+                    executable_path=playwright.chromium.executable_path,
+                )
+                async with manager:
+                    assert manager.headless and not manager._windowless
+                    await manager.page.route("**/*", lambda route: route.abort())
+                    await manager.page.set_content("<h1>Background browser check</h1>")
+                    assert (
+                        await manager.page.locator("h1").inner_text()
+                        == "Background browser check"
+                    )
+                    if attempt == 0:
+                        await manager.context.add_cookies(
+                            [
+                                {
+                                    "name": "booster_test",
+                                    "value": "persisted",
+                                    "url": "https://booster.invalid",
+                                    "expires": time.time() + 3600,
+                                }
+                            ]
+                        )
+                    else:
+                        cookies = await manager.context.cookies(
+                            "https://booster.invalid"
+                        )
+                        assert any(
+                            c["name"] == "booster_test" and c["value"] == "persisted"
+                            for c in cookies
+                        )
+                assert manager.close_confirmed
         browser = await playwright.chromium.launch(channel="chromium", headless=True)
         try:
             page = await browser.new_page()
@@ -131,6 +171,7 @@ async def check():
         "send_confirmation_dom_cases": send_cases,
         "outreach_dom_cases": outreach_cases,
         "recruiter_dom_cases": recruiter_cases,
+        "native_background_browser": "rendering and persistent profile verified offline",
         "linkedin_accessed": False,
     }
 

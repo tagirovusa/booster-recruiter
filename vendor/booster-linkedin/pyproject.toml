@@ -1,6 +1,6 @@
 [project]
 name = "booster-linkedin-runtime"
-version = "4.29.0+booster.1"
+version = "4.29.0+booster.2"
 description = "Business Booster browser runtime for LinkedIn recruiting workflows."
 readme = "README.md"
 requires-python = ">=3.12.4,<3.15"

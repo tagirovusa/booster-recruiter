@@ -29,7 +29,7 @@ SEARCH_JS = r"""() => {
 }"""
 
 
-async def serve(profile: Path):
+async def serve(profile: Path, *, visible=False):
     from fastmcp import Client
     from booster_linkedin.bootstrap import configure_browser_environment
     from booster_linkedin.config import set_config
@@ -47,13 +47,14 @@ async def serve(profile: Path):
         "--no-daemon",
         "--user-data-dir",
         str(profile),
-        "--no-headless",
         "--no-auto-import",
         "--login-inline-wait",
         "5",
         "--browser-idle-timeout",
         "0",
     ]
+    if visible:
+        args.append("--no-headless")
     browser_path = os.environ.get("BOOSTER_BROWSER")
     if not browser_path:
         from patchright.async_api import async_playwright
@@ -71,10 +72,12 @@ async def serve(profile: Path):
     if browser_path:
         args += ["--chrome-path", browser_path]
     config = load_config(args)
+    # Explicit desktop intent wins over inherited shell configuration. Campaigns
+    # use Chromium's native headless mode; manual login and review use a window.
+    config.browser.headless = not visible
+    config.browser.native_headless = not visible
     set_config(config)
-    # Embedded servers bypass the vendor CLI, which normally applies this
-    # process-local mode. Its default otherwise creates a hidden macOS target
-    # even though the app explicitly requested a regular browser window.
+    # Embedded servers bypass the CLI that normally applies the process mode.
     set_headless(config.browser.headless)
     configure_browser_environment()
     ensure_profile_claim(profile, claim_anyway=False)
@@ -347,7 +350,7 @@ async def serve(profile: Path):
                 break
 
 
-def main(profile):
+def main(profile, *, visible=False):
     # Browser setup and library progress may print. Reserve stdout for RPC.
     with contextlib.redirect_stdout(sys.stderr):
-        asyncio.run(serve(Path(profile)))
+        asyncio.run(serve(Path(profile), visible=visible))

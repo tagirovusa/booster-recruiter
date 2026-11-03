@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--worker", type=Path)
+    parser.add_argument("--browser-visible", action="store_true")
     parser.add_argument("--mcp", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -27,7 +28,7 @@ def main():
     if args.worker:
         from .worker import main as worker_main
 
-        return worker_main(args.worker)
+        return worker_main(args.worker, visible=args.browser_visible)
     if args.data_dir is None:
         from platformdirs import user_data_dir
 

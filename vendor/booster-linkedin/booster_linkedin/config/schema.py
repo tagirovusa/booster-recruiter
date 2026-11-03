@@ -136,6 +136,8 @@ class BrowserConfig:
     """Configuration for browser settings."""
 
     headless: bool = True
+    # Opt-in for embedded desktop applications that require no startup window.
+    native_headless: bool = False
     slow_mo: int = 0  # Milliseconds between browser actions (debugging)
     viewport_width: int = 1280
     viewport_height: int = 720
