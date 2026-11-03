@@ -104,7 +104,9 @@ async def check():
                 assert manager.close_confirmed
         browser = await playwright.chromium.launch(channel="chromium", headless=True)
         try:
-            page = await browser.new_page()
+            context = await browser.new_context()
+            await context.route("**/*", lambda route: route.abort())
+            page = await context.new_page()
             await page.route("**/*", lambda route: route.abort())
             await page.set_content("""<main><section><h1>Test Recruiter</h1>
                 <p>Recruitment Manager</p><a href="https://www.linkedin.com/company/example">Example</a>

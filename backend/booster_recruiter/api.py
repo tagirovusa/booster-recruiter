@@ -72,14 +72,7 @@ def create_app(store, runtime, token):
                 runtime.start_campaign(p["id"], runtime.collect(p["id"]), "collecting")
                 result = {"started": True}
             elif op == "campaign.pause":
-                store.campaign(p["id"])
-                runtime.pause_flags.add(p["id"])
-                for run in store.outreach.detail(p["id"])["runs"]:
-                    if run["status"] == "active":
-                        store.outreach.status(
-                            run["id"], "paused", "Приостановлено пользователем."
-                        )
-                result = {"pause_requested": True}
+                result = await runtime.pause_campaign(p["id"])
             elif op == "campaign.automation":
                 result = store.outreach.configure(p["id"], p["rules"])
             elif op == "campaign.check":

@@ -217,11 +217,46 @@ class RecruiterBrowser:
           return empty.length===1&&!node.querySelector('[data-test-message-threads-list-item]');
         }""")
 
-    async def compose(self, target, contract):
-        if not target.get("recipient_urn"):
+    async def verify_recipient_profile(self, target, state, contract):
+        """Resolve a rendered recipient ID through its native profile page.
+
+        Compact cards can omit the connections link. A second read-only tab
+        checks the composer's actual ID against the approved public URL without
+        guessing an ID conversion or disturbing the composer.
+        """
+        urn = state.get("recipient", "") or ""
+        if (
+            not state.get("valid")
+            or not re.fullmatch(r"urn:li:ts_profile:[A-Za-z0-9_-]+", urn)
+            or not normalized(target.get("name"))
+            or normalized(state.get("name")) != normalized(target["name"])
+        ):
             raise AppError(
-                "Не удалось подтвердить идентификатор адресата Recruiter в карточке профиля. Отправка остановлена."
+                "Не удалось подтвердить идентификатор адресата Recruiter. Отправка остановлена."
             )
+        from booster_linkedin.linkedin.navigation import PageNavigator
+        from booster_linkedin.linkedin.session import PageSession
+
+        check = await self.page.context.new_page()
+        try:
+            session = PageSession(check)
+            reader = RecruiterBrowser(check, session, PageNavigator(session))
+            await reader.go(ORIGIN + "/talent/profile/" + urn.rsplit(":", 1)[1])
+            await reader.contract(contract)
+            public = check.locator("[data-test-personal-info-profile-link]")
+            await public.wait_for(state="attached", timeout=15000)
+            if (
+                await public.count() != 1
+                or canonical(await public.get_attribute("href")) != target["url"]
+            ):
+                raise AppError(
+                    "Профиль адресата редактора Recruiter не совпадает с утверждённым получателем."
+                )
+            return urn
+        finally:
+            await check.close()
+
+    async def compose(self, target, contract):
         await self.go(target["profile_url"])
         await self.contract(contract)
         button = self.page.locator(
@@ -239,6 +274,18 @@ class RecruiterBrowser:
         )
         await self.page.wait_for_timeout(500)
         state = await self.page.evaluate(COMPOSER_JS)
+        if not target.get("recipient_urn"):
+            route = self.page.url
+            target["recipient_urn"] = await self.verify_recipient_profile(
+                target, state, contract
+            )
+            if self.page.url != route:
+                raise AppError(
+                    "Страница Recruiter изменилась во время проверки адресата."
+                )
+            # The user or LinkedIn may have changed the editor while the
+            # separate profile tab was loading. Re-read every guard.
+            state = await self.page.evaluate(COMPOSER_JS)
         if state.get("recipient") != target["recipient_urn"]:
             raise AppError(
                 "Адресат редактора Recruiter не совпадает с утверждённым профилем. Отправка остановлена."

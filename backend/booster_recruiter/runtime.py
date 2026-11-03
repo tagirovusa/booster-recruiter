@@ -5,6 +5,7 @@ import json
 import os
 import signal
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from .store import AppError, canonical
@@ -138,6 +139,8 @@ class Runtime:
         self.workers = {}
         self.jobs = {}
         self.pause_flags = set()
+        self.campaign_operations = {}
+        self.active_campaign_tasks = set()
         # A single active browser action across the application also avoids
         # racing a manual account login with a campaign send.
         self.browser_lock = asyncio.Lock()
@@ -168,6 +171,53 @@ class Runtime:
         self.store.progress(
             cid, status, "Ожидаем завершения текущей операции браузера…"
         )
+
+    @asynccontextmanager
+    async def campaign_browser(self, cid, status, progress):
+        """Track the exact task while queued and while it owns the browser."""
+        task = asyncio.current_task()
+        self.campaign_operations[cid] = task
+        self.store.progress(
+            cid, status, "Ожидаем завершения текущей операции браузера…"
+        )
+        try:
+            async with self.browser_lock:
+                self.active_campaign_tasks.add(task)
+                try:
+                    if cid not in self.pause_flags:
+                        self.store.progress(cid, status, progress)
+                    yield
+                finally:
+                    self.active_campaign_tasks.discard(task)
+        finally:
+            if self.campaign_operations.get(cid) is task:
+                self.campaign_operations.pop(cid, None)
+
+    async def pause_campaign(self, cid):
+        self.store.campaign(cid)
+        self.pause_flags.add(cid)
+        for run in self.store.outreach.detail(cid)["runs"]:
+            if run["status"] == "active":
+                self.store.outreach.status(
+                    run["id"], "paused", "Приостановлено пользователем."
+                )
+        task = self.campaign_operations.get(cid) or self.jobs.get(cid)
+        active = task in self.active_campaign_tasks
+        if task and not task.done() and not active:
+            # No browser action can have started while this exact task is
+            # queued. Cancel only its wait, never an in-flight browser call.
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if active and not task.done():
+            campaign = self.store.campaign(cid)
+            self.store.progress(
+                cid,
+                campaign["status"],
+                "Приостанавливаем: ждём завершения текущего действия LinkedIn…",
+            )
+        else:
+            self.store.progress(cid, "paused", "Кампания приостановлена пользователем.")
+        return {"pause_requested": True, "paused": not active}
 
     async def login(self, aid):
         self.store.set_account(aid, "connecting")
@@ -257,29 +307,39 @@ class Runtime:
         ]
         if not eligible:
             raise AppError("Выберите получателей без прежних обращений.")
-        self.store.progress(
-            cid, "checking", "Проверяем Recruiter и подпись для предпросмотра…"
-        )
+        self.pause_flags.discard(cid)
         try:
-            async with self.browser_lock:
+            async with self.campaign_browser(
+                cid, "checking", "Проверяем Recruiter и подпись для предпросмотра…"
+            ):
+                if cid in self.pause_flags:
+                    raise AppError("Предпросмотр приостановлен пользователем.")
                 identity = await self.verify(campaign["account_id"])
                 context = await self.worker(campaign["account_id"]).call(
                     "recruiter_preview",
                     {"url": eligible[0]["url"], "contract": service["contract"]},
                 )
                 context["sender_name"] = identity["name"]
+            if cid in self.pause_flags:
+                raise AppError("Предпросмотр приостановлен пользователем.")
             self.store.progress(cid, "ready", "Тексты и подпись Recruiter проверены.")
             return self.store.outreach.preview(cid, recruiter_context=context)
         except BaseException:
-            self.store.progress(cid, campaign["status"], campaign["progress"])
+            if cid in self.pause_flags:
+                self.store.progress(
+                    cid, "paused", "Предпросмотр приостановлен пользователем."
+                )
+            else:
+                self.store.progress(cid, campaign["status"], campaign["progress"])
             raise
 
     async def collect(self, cid):
         campaign = self.store.campaign(cid)
         aid = campaign["account_id"]
-        self.store.progress(cid, "collecting", "Проверяем аккаунт отправителя…")
         try:
-            async with self.browser_lock:
+            async with self.campaign_browser(
+                cid, "collecting", "Проверяем аккаунт отправителя…"
+            ):
                 if cid in self.pause_flags:
                     self.store.progress(cid, "paused", "Поиск приостановлен.")
                     return
@@ -293,7 +353,7 @@ class Runtime:
                     self.store.progress(
                         cid,
                         "collecting",
-                        f"Страница {page}. Сохранено {count} профилей.",
+                        f"Страница {page}. Профилей сохранено: {count}.",
                     )
                     result = await self.worker(aid).call(
                         "search", {"keywords": campaign["keywords"], "page": page}
@@ -327,7 +387,7 @@ class Runtime:
                 self.store.progress(
                     cid,
                     "paused" if cid in self.pause_flags else "ready",
-                    f"Сохранено {count} профилей. Проверьте группы и выберите получателей.",
+                    f"Профилей сохранено: {count}. Проверьте группы и выберите получателей.",
                 )
         except Exception as exc:
             self.store.progress(cid, "paused", self.friendly(exc))
@@ -349,9 +409,10 @@ class Runtime:
         aid = batch["account_id"]
         if batch["status"] != "approved":
             raise AppError("Очередь не подтверждена в приложении.")
-        self.store.progress(cid, "sending", "Проверяем аккаунт и очередь…")
         try:
-            async with self.browser_lock:
+            async with self.campaign_browser(
+                cid, "sending", "Проверяем аккаунт и очередь…"
+            ):
                 if cid in self.pause_flags:
                     self.store.progress(cid, "paused", "Отправка приостановлена.")
                     return

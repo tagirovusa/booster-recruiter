@@ -1,6 +1,6 @@
 """Local DOM cases for Recruiter recipient, exact text and cost write guards."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
 from .recruiter_browser import RECIPIENT_IDENTITY_JS, RecruiterBrowser
@@ -126,6 +126,62 @@ async def check_recruiter_browser(page):
                 await page.locator("[contenteditable]").inner_text()
                 == "Existing personal draft"
             )
+    mapping_cases = [
+        "ok",
+        "wrong_profile",
+        "ambiguous_profile",
+        "wrong_contract",
+        "invalid_urn",
+        "wrong_name",
+    ]
+    for case in mapping_cases:
+        expected_url = "https://www.linkedin.com/in/approved-recipient"
+        link = (
+            "https://www.linkedin.com/in/someone-else"
+            if case == "wrong_profile"
+            else expected_url
+        )
+        markup = f'<span data-test-user-contract-name>{"Other" if case == "wrong_contract" else "Approved contract"}</span><a data-test-personal-info-profile-link href="{link}">Profile</a>'
+        if case == "ambiguous_profile":
+            markup += (
+                f'<a data-test-personal-info-profile-link href="{link}">Duplicate</a>'
+            )
+
+        async def document(route):
+            await route.fulfill(body=markup, content_type="text/html")
+
+        await page.context.route("**/*", document)
+
+        async def local_navigation(reader, url):
+            assert url == "https://www.linkedin.com/talent/profile/NativeRecipientId"
+            await reader.page.goto(url)
+
+        before = list(page.context.pages)
+        adapter = RecruiterBrowser(page, None, None)
+        state = {
+            "valid": True,
+            "recipient": "urn:li:ts_profile:NativeRecipientId",
+            "name": "Candidate",
+        }
+        if case == "invalid_urn":
+            state["recipient"] = "urn:li:ts_profile:../other"
+        if case == "wrong_name":
+            state["name"] = "Another candidate"
+        try:
+            with patch.object(RecruiterBrowser, "go", local_navigation):
+                result = await adapter.verify_recipient_profile(
+                    {"url": expected_url, "name": "Candidate"},
+                    state,
+                    "Approved contract",
+                )
+        except Exception:
+            if case == "ok":
+                raise
+        else:
+            assert case == "ok" and result == state["recipient"], case
+        finally:
+            await page.context.unroute("**/*", document)
+        assert list(page.context.pages) == before, case
     identity_cases = [
         "ok",
         "sidebar",
@@ -241,4 +297,10 @@ async def check_recruiter_browser(page):
             target | {"recipient_urn": "urn:li:ts_profile:Test"}, "Approved contract"
         )
         assert empty is (case == "empty"), (case, empty)
-    return len(cases) + len(identity_cases) + len(history_cases) + len(empty_cases)
+    return (
+        len(cases)
+        + len(mapping_cases)
+        + len(identity_cases)
+        + len(history_cases)
+        + len(empty_cases)
+    )

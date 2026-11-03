@@ -31,15 +31,48 @@ async def test_compose_rejects_existing_composer_for_unapproved_recipient(recipi
         )
 
 
-async def test_compose_without_independent_recipient_does_not_open_editor():
-    adapter = RecruiterBrowser(None, None, None)
+@pytest.mark.parametrize(
+    "change", [{}, {"recipient": "urn:li:ts_profile:Other"}, {"body": "Personal draft"}]
+)
+async def test_compact_card_binds_recipient_and_rereads_editor(change):
+    state = {
+        "valid": True,
+        "recipient": "urn:li:ts_profile:Approved",
+        "name": "Candidate",
+        "followups": False,
+        "scheduled": False,
+        "subject": "",
+        "body": "",
+        "generating": False,
+    }
+    button = SimpleNamespace(
+        wait_for=AsyncMock(), count=AsyncMock(return_value=1), click=AsyncMock()
+    )
+    page = SimpleNamespace(
+        url="https://www.linkedin.com/talent/profile/Approved",
+        locator=lambda _: button,
+        wait_for_selector=AsyncMock(),
+        wait_for_timeout=AsyncMock(),
+        evaluate=AsyncMock(side_effect=[state, state | change]),
+    )
+    adapter = RecruiterBrowser(page, None, None)
     adapter.go = AsyncMock()
-    with pytest.raises(AppError, match="идентификатор адресата"):
-        await adapter.compose(
-            {"profile_url": "https://www.linkedin.com/talent/profile/Approved"},
-            "Contract",
-        )
-    adapter.go.assert_not_awaited()
+    adapter.contract = AsyncMock()
+    adapter.verify_recipient_profile = AsyncMock(
+        return_value="urn:li:ts_profile:Approved"
+    )
+    target = {
+        "profile_url": page.url,
+        "url": "https://www.linkedin.com/in/candidate",
+        "name": "Candidate",
+    }
+    if change:
+        with pytest.raises(AppError):
+            await adapter.compose(target, "Contract")
+    else:
+        assert await adapter.compose(target, "Contract") == state
+    assert target["recipient_urn"] == "urn:li:ts_profile:Approved"
+    adapter.verify_recipient_profile.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

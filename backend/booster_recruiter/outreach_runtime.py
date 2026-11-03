@@ -68,7 +68,9 @@ class OutreachRuntime:
         """Explicit read-only refresh, including people not approved for outreach."""
         c = self.store.campaign(cid)
         try:
-            async with self.rt.browser_lock:
+            async with self.rt.campaign_browser(
+                cid, "checking", "Проверяем аккаунт перед проверкой контактов…"
+            ):
                 if cid in self.rt.pause_flags:
                     self.store.progress(
                         cid, "paused", "Проверка контактов приостановлена."
@@ -116,7 +118,9 @@ class OutreachRuntime:
         if run["status"] != "active":
             raise AppError("План не утверждён или приостановлен.")
         try:
-            async with self.rt.browser_lock:
+            async with self.rt.campaign_browser(
+                cid, "automating", "Проверяем аккаунт и утверждённый план…"
+            ):
                 if (
                     cid in self.rt.pause_flags
                     or self.repo.run(rid)["status"] != "active"
@@ -359,10 +363,16 @@ class OutreachRuntime:
                         )
                     if result.get("account_restricted"):
                         raise AppError(self.rt.restrict_account(aid))
+                active = (
+                    self.repo.run(rid)["status"] == "active"
+                    and cid not in self.rt.pause_flags
+                )
                 self.store.progress(
                     cid,
-                    "waiting" if self.repo.run(rid)["status"] == "active" else "paused",
-                    "Очередь сохранена. Следующие проверки выполнятся по расписанию.",
+                    "waiting" if active else "paused",
+                    "Очередь сохранена. Следующие проверки выполнятся по расписанию."
+                    if active
+                    else "Кампания приостановлена. Очередь и результаты сохранены.",
                 )
         except Exception as exc:
             for row in self.store.rows(

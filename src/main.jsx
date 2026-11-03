@@ -73,6 +73,10 @@ const fmt = (d) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+const profileWord = (count) =>
+  ({ one: "профиль", few: "профиля", many: "профилей", other: "профиля" })[
+    new Intl.PluralRules("ru").select(count)
+  ];
 const initials = (name) =>
   (name || "?")
     .split(" ")
@@ -173,6 +177,20 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [config, setConfig] = useState("");
   const automationDrafts = useRef({});
+  const viewKey = JSON.stringify([page, cid, tab]);
+  const noticeScope = useRef({ key: viewKey, revision: 0 });
+  if (noticeScope.current.key !== viewKey)
+    noticeScope.current = {
+      key: viewKey,
+      revision: noticeScope.current.revision + 1,
+    };
+  const notify = (text, revision) => {
+    if (revision === noticeScope.current.revision)
+      setNotice({ text, revision });
+  };
+  useEffect(() => {
+    setNotice("");
+  }, [page, cid, tab]);
   const refresh = useCallback(async () => {
     if (!api) {
       setLoading(false);
@@ -194,13 +212,14 @@ function App() {
     return () => clearInterval(timer);
   }, [refresh]);
   const act = async (op, p = {}, success = "") => {
+    const notificationRevision = noticeScope.current.revision;
     setError("");
     setNotice("");
     setBusy(true);
     try {
       const r = await api.command(op, p);
       await refresh();
-      if (success) setNotice(success);
+      if (success) notify(success, notificationRevision);
       return r;
     } catch (e) {
       setError(e.message);
@@ -247,8 +266,10 @@ function App() {
     setQuery("");
   };
   const doExport = async (format) => {
+    const notificationRevision = noticeScope.current.revision;
     try {
-      if (await api.export(cid, format)) setNotice("Список сохранён.");
+      if (await api.export(cid, format))
+        notify("Список сохранён.", notificationRevision);
     } catch (e) {
       setError(e.message);
     }
@@ -270,6 +291,7 @@ function App() {
     return result;
   };
   const saveAutomation = async (rules, texts, reviewAfterSave = false) => {
+    const notificationRevision = noticeScope.current.revision;
     setError("");
     setBusy(true);
     try {
@@ -288,7 +310,11 @@ function App() {
       await refresh();
       if (reviewAfterSave)
         setPreview(await api.command("outreach.preview", { id: cid }));
-      else setNotice("Настройки и тексты сохранены. Кампания не запущена.");
+      else
+        notify(
+          "Настройки и тексты сохранены. Кампания не запущена.",
+          notificationRevision,
+        );
       return true;
     } catch (e) {
       setError(e.message);
@@ -370,10 +396,10 @@ function App() {
             </button>
           </div>
         )}
-        {notice && (
+        {notice && notice.revision === noticeScope.current.revision && (
           <div className="alert success" role="status">
             <CheckCircle2 size={18} />
-            <span>{notice}</span>
+            <span>{notice.text}</span>
             <button
               onClick={() => setNotice("")}
               aria-label="Скрыть уведомление"
@@ -1192,7 +1218,8 @@ function App() {
                   )}
                   <div className="table-footer">
                     <span>
-                      {people.length} профилей · Выбрано {selected.length}
+                      {people.length} {profileWord(people.length)} · Выбрано{" "}
+                      {selected.length}
                     </span>
                     <span>Изменение группы сохраняется автоматически</span>
                   </div>
