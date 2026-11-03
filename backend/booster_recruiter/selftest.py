@@ -24,7 +24,6 @@ def bundled_browsers():
 
 
 async def check():
-    from fastmcp import Client
     from booster_linkedin.core.browser import BrowserManager
     from booster_linkedin.linkedin.session import PageSession
     from booster_linkedin.process_tree import (
@@ -34,6 +33,7 @@ async def check():
         windows_gate_command,
     )
     from booster_linkedin.server import create_mcp_server
+    from fastmcp import Client
     from patchright.async_api import async_playwright
     from PIL import Image
 

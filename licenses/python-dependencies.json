@@ -1,5 +1,17 @@
 [
   {
+    "name": "booster-recruiter",
+    "version": "0.2.8",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "booster-linkedin-runtime",
+    "version": "0.2.8",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
     "name": "uvicorn",
     "version": "0.54.0",
     "license": "BSD-3-Clause",
@@ -162,6 +174,12 @@
     "homepage": ""
   },
   {
+    "name": "unknown",
+    "version": null,
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "et_xmlfile",
     "version": "2.0.0",
     "license": "MIT",
@@ -195,12 +213,6 @@
     "name": "docstring_parser",
     "version": "0.18.0",
     "license": "MIT",
-    "homepage": ""
-  },
-  {
-    "name": "booster-recruiter",
-    "version": "0.2.0",
-    "license": "",
     "homepage": ""
   },
   {
@@ -294,12 +306,6 @@
     "homepage": ""
   },
   {
-    "name": "booster-linkedin-runtime",
-    "version": "4.29.0+booster.1",
-    "license": "Apache-2.0",
-    "homepage": ""
-  },
-  {
     "name": "tqdm",
     "version": "4.70.1",
     "license": "MPL-2.0 AND MIT",
@@ -332,6 +338,12 @@
   {
     "name": "mdurl",
     "version": "0.1.2",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.2.8",
     "license": "",
     "homepage": ""
   },
@@ -561,6 +573,12 @@
     "name": "inquirer",
     "version": "3.4.1",
     "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "booster-linkedin-runtime",
+    "version": "0.2.8",
+    "license": "Apache-2.0",
     "homepage": ""
   },
   {

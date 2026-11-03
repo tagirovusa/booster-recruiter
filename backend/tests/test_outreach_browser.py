@@ -2,14 +2,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from booster_linkedin.linkedin.connection import ActionSignals
+from booster_linkedin.linkedin.connection_actions import ConnectionActions
 from booster_recruiter.outreach import DEFAULT_RULES, route
 from booster_recruiter.outreach_browser import (
     PROFILE_CONTACT_JS,
     BrowserOutreach,
     InviteOnly,
 )
-from booster_linkedin.linkedin.connection import ActionSignals
-from booster_linkedin.linkedin.connection_actions import ConnectionActions
 
 
 @pytest.mark.parametrize("identifier", ["recipient", "julija-ambrazien%C4%97"])

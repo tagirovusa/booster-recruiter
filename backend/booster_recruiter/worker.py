@@ -73,7 +73,6 @@ def direct_profile_search(keywords, page=1):
 
 
 async def serve(profile: Path, *, visible=False):
-    from fastmcp import Client
     from booster_linkedin.bootstrap import configure_browser_environment
     from booster_linkedin.config import set_config
     from booster_linkedin.config.loaders import load_config
@@ -83,6 +82,7 @@ async def serve(profile: Path, *, visible=False):
     from booster_linkedin.linkedin.session import PageSession
     from booster_linkedin.profile_claim import ensure_profile_claim
     from booster_linkedin.server import create_mcp_server
+    from fastmcp import Client
 
     from .ocr import detect
 
