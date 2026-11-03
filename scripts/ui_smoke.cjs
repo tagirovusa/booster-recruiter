@@ -43,7 +43,13 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     await expect(
       page.getByRole("checkbox", { name: "Выбрать Sam Taylor" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("combobox", { name: "Группа Sam Taylor" }),
+    ).toHaveValue("neutral");
+    await expect(
+      page.getByRole("combobox", { name: "Группа Jamie Reed" }),
+    ).toHaveValue("neutral");
     await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).check();
     await page.getByRole("button", { name: "Проверить сообщения (1)" }).click();
     await expect(
@@ -56,6 +62,12 @@ const { execFileSync } = require("node:child_process");
       ),
     ).toBeVisible();
     await page.getByRole("button", { name: "Вернуться к списку" }).click();
+    await page
+      .getByRole("combobox", { name: "Группа Sam Taylor" })
+      .selectOption("review");
+    await expect(
+      page.getByRole("checkbox", { name: "Выбрать Sam Taylor" }),
+    ).toBeDisabled();
     await page
       .getByRole("combobox", { name: "Группа Sam Taylor" })
       .selectOption("neutral");

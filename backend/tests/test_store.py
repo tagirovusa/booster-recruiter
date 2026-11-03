@@ -100,22 +100,63 @@ def test_restart_marks_inflight_unknown_without_automatic_retry(tmp_path):
     restored.db.close()
 
 
-def test_unknown_photo_requires_review_and_does_not_get_auto_selected(store):
+@pytest.mark.parametrize("status", ["unknown", "hiring", "none", None])
+def test_non_open_photo_defaults_to_neutral_without_auto_selecting(store, status):
     _, c, _ = prepared(store)
     store.add_candidate(
         c["id"],
         {
             "url": "uncertain",
             "name": "Unknown Person",
-            "photo_frame": {"status": "unknown"},
+            "photo_frame": {"status": status},
         },
     )
     p = next(
         p for p in store.detail(c["id"])["candidates"] if p["url"].endswith("uncertain")
     )
-    assert p["segment"] == "review" and not p["selected"]
+    assert p["segment"] == "neutral" and not p["selected"]
+    store.review(p["id"], "neutral", True)
+    preview = store.preview(c["id"])
+    message = next(x for x in preview["messages"] if x["url"].endswith("uncertain"))
+    assert message["message"] == "Hello Unknown, opportunity."
     with pytest.raises(AppError):
         store.review(p["id"], "review", True)
+
+
+def test_neutral_migration_preserves_manual_review_and_runs_once(tmp_path):
+    s = Store(tmp_path)
+    _, c, _ = prepared(s)
+    for url in ("automatic", "manual"):
+        s.add_candidate(c["id"], {"url": url, "name": url})
+    manual = next(
+        p for p in s.detail(c["id"])["candidates"] if p["data"]["name"] == "manual"
+    )
+    s.review(manual["id"], "review", False)
+    with s.db:
+        s.db.execute(
+            "UPDATE candidates SET segment='review' WHERE url LIKE '%/automatic'"
+        )
+        s.db.execute("DELETE FROM migrations WHERE name='0.1.3-neutral-default'")
+    preview = s.preview(c["id"])
+    s.db.close()
+    s = Store(tmp_path)
+    rows = {p["data"]["name"]: p for p in s.detail(c["id"])["candidates"]}
+    assert rows["automatic"]["segment"] == "neutral"
+    assert rows["manual"]["segment"] == "review"
+    assert (
+        s.one("SELECT status FROM batches WHERE id=?", (preview["batch_id"],))["status"]
+        == "cancelled"
+    )
+    s.review(rows["automatic"]["id"], "review", False)
+    s.db.close()
+    s = Store(tmp_path)
+    assert (
+        s.one("SELECT segment FROM candidates WHERE id=?", (rows["automatic"]["id"],))[
+            "segment"
+        ]
+        == "review"
+    )
+    s.db.close()
 
 
 def test_wrong_account_cannot_replace_identity(store):

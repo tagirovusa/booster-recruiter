@@ -850,10 +850,38 @@ _MESSAGE_CONFIRMATION_READY_JS = (
                 return false;
             }
             const composer = inspect(arg);
-            if (composer.status !== 'valid' || composer.messageRoute === null) {
-                return false;
+            let scope = null;
+            let readOnly = false;
+            if (composer.status === 'valid' && composer.messageRoute !== null) {
+                scope = threadScope(composer.owner);
+            } else {
+                // Measured in Booster Recruiter on 2026-11-03: after the first
+                // message LinkedIn can replace compose with a read-only thread
+                // while awaiting the recipient's response. The acknowledged
+                // server message remains, but there is no editor or form.
+                // This narrow .msg-thread fallback is read-only and never
+                // authorizes a submission. Ambiguous/editable surfaces retain
+                // the existing refusal. Keep the exact route/recipient, new
+                // server ID, body and outgoing-sender checks below.
+                if (arg.threadKey || messageRoute(arg) === null ||
+                    !threadRoute(window.location.pathname)) return false;
+                if (Array.from(document.querySelectorAll(
+                    '[contenteditable="true"], textarea, [role="textbox"]'
+                )).some(visible)) return false;
+                const panes = Array.from(
+                    document.querySelectorAll('main .msg-thread')
+                ).filter(visible);
+                if (panes.length !== 1) return false;
+                scope = panes[0];
+                const recipients = Array.from(
+                    scope.querySelectorAll('a[href*="/in/"]')
+                ).filter(anchor => visible(anchor) && !anchor.closest(itemSelector));
+                if (recipients.length === 0 || !recipients.every(anchor =>
+                    profilePath(anchor.getAttribute('href') || '') !== null &&
+                    linksRecipient(anchor)
+                )) return false;
+                readOnly = true;
             }
-            const scope = threadScope(composer.owner);
             const items = Array.from(
                 scope.querySelectorAll(itemSelector)
             ).filter(visible);
@@ -867,7 +895,8 @@ _MESSAGE_CONFIRMATION_READY_JS = (
             });
             return acknowledged.length === 1 &&
                 acknowledged[0] === items[items.length - 1] &&
-                !sentByRecipient(scope, acknowledged[0]);
+                !sentByRecipient(scope, acknowledged[0]) &&
+                (!readOnly || !sentByAnotherInThread(items, acknowledged[0]));
         };
         const confirmed = (() => {
             if (!arg.owner?.isConnected) return serverAcknowledged();

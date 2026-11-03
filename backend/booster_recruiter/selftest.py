@@ -37,6 +37,7 @@ async def check():
 
     from .identity import IdentityResolutionError, resolve_own_profile
     from .ocr import detect
+    from .send_confirmation_check import check_send_confirmation
     from .worker import PROFILE_JS, SEARCH_JS
 
     bundled_browsers()
@@ -110,6 +111,7 @@ async def check():
                 pass
             else:
                 raise AssertionError("Unresolved alias accepted as an account identity")
+            send_cases = await check_send_confirmation(page)
         finally:
             await browser.close()
     png = io.BytesIO()
@@ -122,6 +124,7 @@ async def check():
         "mcp_tools": len(names),
         "process_helpers": "verified",
         "own_profile_identity": "redirect, canonical and unresolved alias verified offline",
+        "send_confirmation_dom_cases": send_cases,
         "linkedin_accessed": False,
     }
 

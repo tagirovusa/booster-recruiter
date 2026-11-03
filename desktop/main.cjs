@@ -233,6 +233,11 @@ ipcMain.handle("mcp-config", (event) => {
     2,
   );
 });
+// An isolated workspace (including acceptance tests) needs its own Electron
+// lock and browser cache, matching the backend's data directory.
+if (process.env.BOOSTER_DATA_DIR) {
+  app.setPath("userData", path.resolve(process.env.BOOSTER_DATA_DIR));
+}
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {

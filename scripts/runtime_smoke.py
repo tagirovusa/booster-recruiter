@@ -46,6 +46,10 @@ async def check():
                 )
                 response = json.load(urllib.request.urlopen(request, timeout=15))
                 assert response["result"]["accounts"] == 0
+                assert (
+                    response["result"]["version"]
+                    == json.loads((root / "package.json").read_text())["version"]
+                ), "Frozen runtime version does not match the desktop release"
                 async with Client(
                     {
                         "mcpServers": {

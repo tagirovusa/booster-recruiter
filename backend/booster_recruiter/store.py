@@ -74,6 +74,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,batch_id TEXT NOT NULL REFERENCES batches(id),candidate_id TEXT NOT NULL REFERENCES candidates(id),url TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,detail TEXT,thread_id TEXT,created TEXT NOT NULL,updated TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS suppression(url TEXT PRIMARY KEY,reason TEXT NOT NULL,created TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,created TEXT NOT NULL,kind TEXT NOT NULL,detail TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY,applied TEXT NOT NULL);
           PRAGMA user_version=1;
         """)
         # Recovery never retries an operation which may already have sent.
@@ -87,6 +88,34 @@ class Store:
             )
             self.db.execute(
                 "UPDATE accounts SET status='needs_login' WHERE status='connecting'"
+            )
+        self._migrate_neutral_default()
+
+    def _migrate_neutral_default(self):
+        """Move only old automatic review assignments; keep manual decisions."""
+        migration = "0.1.3-neutral-default"
+        with self.db:
+            if self.rows("SELECT name FROM migrations WHERE name=?", (migration,)):
+                return
+            affected = set()
+            for person in self.rows("SELECT * FROM candidates WHERE segment='review'"):
+                data = json.loads(person["data"])
+                if data.get("manual_review"):
+                    continue
+                if (data.get("photo_frame") or {}).get("status") == "open_to_work":
+                    continue
+                self.db.execute(
+                    "UPDATE candidates SET segment='neutral' WHERE id=?",
+                    (person["id"],),
+                )
+                affected.add(person["campaign_id"])
+            for cid in affected:
+                self.invalidate(cid)
+                self.db.execute(
+                    "UPDATE campaigns SET revision=revision+1 WHERE id=?", (cid,)
+                )
+            self.db.execute(
+                "INSERT INTO migrations(name,applied) VALUES(?,?)", (migration, now())
             )
 
     def rows(self, sql, params=()):
@@ -217,8 +246,8 @@ class Store:
 
     def add_candidate(self, cid, person):
         url = canonical(person["url"])
-        status = person.get("photo_frame", {}).get("status", "unknown")
-        segment = "open" if status == "open_to_work" else "review"
+        status = (person.get("photo_frame") or {}).get("status", "unknown")
+        segment = "open" if status == "open_to_work" else "neutral"
         with self.db:
             self.db.execute(
                 "INSERT OR IGNORE INTO candidates(id,campaign_id,url,data,segment,observed) VALUES(?,?,?,?,?,?)",
