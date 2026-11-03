@@ -49,6 +49,25 @@ async def test_account_change_prevents_all_sends(scenario):
     assert store.account(c["account_id"])["status"] == "identity_mismatch"
 
 
+async def test_unresolved_alias_prevents_all_sends(scenario):
+    store, runtime, p, c = scenario
+    FakeWorker.identity = "https://www.linkedin.com/in/me/"
+    await runtime.send_batch(p["batch_id"])
+    assert not FakeWorker.sent
+    assert store.campaign(c["id"])["status"] == "paused"
+    assert store.account(c["account_id"])["url"] != FakeWorker.identity
+
+
+async def test_unresolved_alias_cannot_mark_an_account_ready(scenario):
+    store, runtime, _, c = scenario
+    FakeWorker.identity = "https://www.linkedin.com/in/me/"
+    await runtime.login(c["account_id"])
+    account = store.account(c["account_id"])
+    assert account["status"] == "needs_login"
+    assert "Аккаунт пока не подтверждён" in account["error"]
+    assert account["url"] != FakeWorker.identity
+
+
 async def test_lost_send_reply_is_not_retried(scenario):
     store, runtime, p, c = scenario
     FakeWorker.fail_send = True

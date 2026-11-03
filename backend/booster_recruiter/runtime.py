@@ -157,6 +157,10 @@ class Runtime:
     @staticmethod
     def friendly(exc):
         text = str(exc)
+        if "alias for the signed-in member" in text:
+            from .identity import UNRESOLVED_IDENTITY
+
+            return UNRESOLVED_IDENTITY
         if "guardian" in text.casefold():
             return "Не удалось запустить служебный процесс браузера. Окно входа не открыто. Обновите приложение или передайте журнал разработчику."
         if any(

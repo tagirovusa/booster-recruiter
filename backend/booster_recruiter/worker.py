@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlencode
 
+from .identity import PROFILE_JS, resolve_own_profile
+
 SEARCH_JS = r"""() => {
  const main=document.querySelector('main'); if(!main)return [];
  const found=new Map();
@@ -24,19 +26,6 @@ SEARCH_JS = r"""() => {
   found.set('https://www.linkedin.com/in/'+match[1],label.slice(0,200));
  }
  return Array.from(found,([url,label])=>({url,label}));
-}"""
-
-PROFILE_JS = r"""() => {
- const main=document.querySelector('main');if(!main)return {};
- const visible=e=>e.getBoundingClientRect().width>0 && e.getBoundingClientRect().height>0;
- const headings=Array.from(main.querySelectorAll('h1,h2')).filter(e=>visible(e)&&!e.closest('aside'));
- const h=headings.find(e=>e.tagName==='H1')||headings[0];if(!h)return {};
- const section=h.closest('section')||h.parentElement;
- const text=section.innerText||'';
- const paragraphs=Array.from(section.querySelectorAll('p')).filter(e=>visible(e)&&e.getBoundingClientRect().top>=h.getBoundingClientRect().bottom);
- const first=paragraphs[0]?.innerText?.trim()||'';
- const companies=Array.from(section.querySelectorAll('a[href*="/company/"]')).map(a=>(a.innerText||'').trim()).filter(Boolean);
- return {name:h.innerText.trim(),headline:first,company:companies.length===1?companies[0]:'',location:'',top_card_text:text};
 }"""
 
 
@@ -142,10 +131,9 @@ async def serve(profile: Path):
                 if action == "login":
                     result, _ = await call("get_my_profile", {})
                     browser = await get_or_create_browser()
-                    identity = await PageSession(browser.page).run_on_linkedin(
-                        PROFILE_JS
+                    result = await resolve_own_profile(
+                        PageSession(browser.page), result["url"]
                     )
-                    result = {"url": result["url"], "name": identity.get("name", "")}
                 elif action == "search":
                     extractor = await get_ready_extractor(
                         None, tool_name="search_people"

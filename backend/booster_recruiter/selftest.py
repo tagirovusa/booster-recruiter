@@ -24,6 +24,7 @@ def bundled_browsers():
 
 async def check():
     from fastmcp import Client
+    from booster_linkedin.linkedin.session import PageSession
     from booster_linkedin.process_tree import (
         release_browser_guardian,
         release_nonce,
@@ -34,6 +35,7 @@ async def check():
     from patchright.async_api import async_playwright
     from PIL import Image
 
+    from .identity import IdentityResolutionError, resolve_own_profile
     from .ocr import detect
     from .worker import PROFILE_JS, SEARCH_JS
 
@@ -72,6 +74,42 @@ async def check():
                 and person["headline"] == "Recruitment Manager"
             )
             assert len(links) == 1 and links[0]["url"].endswith("test-candidate")
+
+            # Synthetic LinkedIn documents served entirely by route.fulfill:
+            # exercise real Chromium timing, DOM metadata and the frozen worker's
+            # resolver without contacting LinkedIn or using an account session.
+            async def own_document(route):
+                requested = route.request.url
+                head = ""
+                if "canonical-test" in requested:
+                    head = '<link rel="canonical" href="https://www.linkedin.com/in/test-recruiter/">'
+                elif "/in/me/" in requested and "unresolved-test" not in requested:
+                    head = "<script>setTimeout(()=>location.replace('/in/test-recruiter/'), 100)</script>"
+                await route.fulfill(
+                    content_type="text/html",
+                    body=f"""<html><head>{head}</head><body>
+                    <main><section><h1>Test Recruiter</h1></section>
+                    <aside><a href="/in/unrelated/">Unrelated</a></aside></main>
+                    </body></html>""",
+                )
+
+            await page.route("**/*", own_document)
+            alias = "https://www.linkedin.com/in/me/"
+            session = PageSession(page)
+            for query in ("", "?canonical-test=1"):
+                await page.goto(alias + query)
+                identity = await resolve_own_profile(session, alias, timeout=5)
+                assert identity == {
+                    "url": "https://www.linkedin.com/in/test-recruiter",
+                    "name": "Test Recruiter",
+                }
+            await page.goto(alias + "?unresolved-test=1")
+            try:
+                await resolve_own_profile(session, alias, timeout=0.3)
+            except IdentityResolutionError:
+                pass
+            else:
+                raise AssertionError("Unresolved alias accepted as an account identity")
         finally:
             await browser.close()
     png = io.BytesIO()
@@ -83,6 +121,7 @@ async def check():
         "ocr": "offline",
         "mcp_tools": len(names),
         "process_helpers": "verified",
+        "own_profile_identity": "redirect, canonical and unresolved alias verified offline",
         "linkedin_accessed": False,
     }
 
