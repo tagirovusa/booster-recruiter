@@ -1,10 +1,18 @@
 name: Build and validate desktop applications
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   build:
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -20,7 +28,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --frozen --group dev
+      - run: uv sync --frozen --python 3.13.16 --group dev
       - run: npm ci
       - run: uv run pytest
       - run: npm run build
@@ -34,8 +42,23 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - if: runner.os == 'Windows'
         run: npm run package:win
+      - name: Verify packaged Mac application with isolated test data
+        if: runner.os == 'macOS'
+        run: npm run test:ui
+        env:
+          BOOSTER_EXECUTABLE: ${{ github.workspace }}/release/mac-arm64/Booster Recruiter.app/Contents/MacOS/Booster Recruiter
+      - name: Verify packaged Windows application with isolated test data
+        if: runner.os == 'Windows'
+        run: npm run test:ui
+        env:
+          BOOSTER_EXECUTABLE: ${{ github.workspace }}\release\win-unpacked\Booster Recruiter.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: booster-recruiter-${{ runner.os }}-unsigned-test
-          path: release/
-          retention-days: 14
+          name: booster-recruiter-${{ runner.os }}-${{ github.sha }}-acceptance
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 7
