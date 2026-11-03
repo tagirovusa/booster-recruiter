@@ -330,12 +330,13 @@ class InviteOnly(ConnectionActions):
 
 
 class BrowserOutreach:
-    def __init__(self, page, read_profile=None):
+    def __init__(self, page, read_profile=None, read_conversation=None):
         self.session = PageSession(page)
         self.navigator = PageNavigator(self.session)
         self.sender = MessageSender(self.session, self.navigator)
         self.page = page
         self.read_profile = read_profile
+        self.read_conversation = read_conversation
 
     async def open_profile(self, url):
         expected = canonical(url)
@@ -437,6 +438,23 @@ class BrowserOutreach:
                 }"""
                 )
                 result["history_verified"] = bool(empty)
+                if not empty and self.read_conversation is not None:
+                    # LinkedIn can render existing messages in a new-compose
+                    # pane without the thread header that proves who owns it.
+                    # Open the real conversation and recheck its exact profile
+                    # links; never infer an empty history from that layout.
+                    await self.read_conversation({"linkedin_username": url})
+                    history = await self.session.run_on_linkedin(
+                        THREAD_JS,
+                        {"path": target.profile_path, "urn": target.profile_urn},
+                    )
+                    if history.get("verified"):
+                        result.update(
+                            history_verified=True,
+                            has_reply=history["has_reply"],
+                            has_outgoing=history["has_outgoing"],
+                            reply_text=history.get("reply_text", ""),
+                        )
             if not result["history_verified"]:
                 result.update(free_message=False, inmail=False, credits=None)
         return result

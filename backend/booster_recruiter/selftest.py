@@ -187,6 +187,7 @@ def run():
     # Avoid writing vendor lifecycle state into a real account's directory.
     from booster_linkedin.config import set_config
     from booster_linkedin.config.loaders import load_config
+    from booster_linkedin.debug_trace import reset_trace_state_for_testing
     from booster_linkedin.profile_claim import ensure_profile_claim
 
     with tempfile.TemporaryDirectory(prefix="booster-check-") as folder:
@@ -201,4 +202,11 @@ def run():
                 ]
             )
         )
-        print(json.dumps(asyncio.run(check())), flush=True)
+        try:
+            result = asyncio.run(check())
+        finally:
+            # Negative DOM fixtures may retain a trace and its .alive lease.
+            # Close that lease before TemporaryDirectory removes the test data;
+            # Windows refuses to delete the file while its descriptor is open.
+            reset_trace_state_for_testing()
+    print(json.dumps(result), flush=True)

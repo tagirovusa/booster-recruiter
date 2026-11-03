@@ -265,7 +265,12 @@ async def serve(profile: Path, *, visible=False):
                         )
                         return data
 
-                    outreach = BrowserOutreach(browser.page, read_profile)
+                    async def read_conversation(arguments):
+                        return await call("get_conversation", arguments)
+
+                    outreach = BrowserOutreach(
+                        browser.page, read_profile, read_conversation
+                    )
                     if action.startswith("recruiter_"):
                         from .recruiter_browser import RecruiterBrowser
 
