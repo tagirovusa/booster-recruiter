@@ -56,7 +56,20 @@ const { execFileSync } = require("node:child_process");
       page.getByRole("combobox", { name: "Группа Jamie Reed" }),
     ).toHaveValue("neutral");
     await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).check();
-    await page.getByRole("button", { name: "Проверить сообщения (1)" }).click();
+    await page.getByRole("button", { name: "Настроить отправку (1)" }).click();
+    await expect(
+      page.getByRole("heading", { name: "От знакомства — к разговору" }),
+    ).toBeVisible();
+    await expect(
+      page.getByLabel("Приглашений", { exact: true }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByLabel("Текст приглашения · необязательно"),
+    ).not.toBeVisible();
+    await page.getByRole("button", { name: "Далее: сообщения" }).click();
+    await page
+      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .click();
     await expect(
       page.getByRole("dialog", { name: "Проверьте отправку" }),
     ).toBeVisible();
@@ -67,36 +80,60 @@ const { execFileSync } = require("node:child_process");
       ),
     ).toBeVisible();
     await page.getByRole("button", { name: "Вернуться к списку" }).click();
+    await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page
-      .getByRole("button", { name: "Автоматизация", exact: true })
+      .getByRole("radiogroup", { name: "Способ связи" })
+      .getByText("Экономить кредиты", { exact: true })
       .click();
     await expect(
-      page.getByRole("heading", { name: "Как связываться с людьми" }),
-    ).toBeVisible();
-    await page
-      .getByRole("checkbox", { name: /Разрешить платный InMail/ })
-      .check();
-    await page
-      .getByLabel("Тема InMail · Open to Work")
-      .fill("Recruitment opportunity");
-    await page
-      .getByLabel("Тема InMail · нейтральное")
-      .fill("Recruitment leadership");
+      page.getByRole("radio", { name: /Экономить кредиты/ }),
+    ).toBeChecked();
+    await page.getByLabel("Бюджет InMail · кредитов").fill("2");
+    await page.getByLabel("Подписка для InMail").selectOption("recruiter");
+    await expect(page.getByRole("button", { name: "Открыть аккаунты", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Далее: сообщения" }).click();
+    await expect(page.getByRole("button", { name: "Проверить запуск", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Назад", exact: true }).click();
+    await page.getByLabel("Подписка для InMail").selectOption("linkedin");
+    const invitations = page.locator("details").filter({
+      has: page
+        .locator("summary")
+        .getByText("Приглашения в контакты", { exact: true }),
+    });
+    await invitations.locator("summary").click();
     await page
       .getByLabel("Текст приглашения · необязательно")
       .fill("Hi {first_name}, let us connect.");
-    await page.getByLabel("Максимум кредитов на эту кампанию").fill("2");
-    await page.getByRole("button", { name: "Сохранить правила" }).click();
+    await invitations.locator("summary").click();
+    await page
+      .getByRole("button", { name: "Сохранить настройки", exact: true })
+      .click();
     await expect(
-      page.getByText("Правила сохранены. Проверьте план перед запуском."),
+      page.locator(".save-indicator").getByText("Сохранено", { exact: true }),
     ).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: path.join(root, "..", "booster-recruiter-automation-preview.png"),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "Кандидаты", exact: true }).click();
-    await page.getByRole("button", { name: "Проверить сообщения (1)" }).click();
+    await page.getByRole("button", { name: "Далее: сообщения" }).click();
+    await expect(
+      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+    ).toBeDisabled();
+    await page
+      .getByLabel("Тема InMail · Open to Work")
+      .fill("Recruitment opportunity");
+    await page
+      .getByLabel("Тема InMail · нейтральное")
+      .fill("Recruitment leadership");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: path.join(root, "..", "booster-recruiter-messages-preview.png"),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .click();
     await expect(
       page.getByText("Hi Alex, let us connect.", { exact: true }),
     ).toBeVisible();
@@ -107,6 +144,7 @@ const { execFileSync } = require("node:child_process");
       page.getByText(/экономный режим, не более 1 кредитов/),
     ).toBeVisible();
     await page.getByRole("button", { name: "Вернуться к списку" }).click();
+    await page.getByRole("button", { name: "Кандидаты", exact: true }).click();
     await page
       .getByRole("combobox", { name: "Группа Sam Taylor" })
       .selectOption("review");
@@ -130,6 +168,7 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("heading", { name: "LinkedIn-аккаунты" }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Подключить Recruiter", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Добавить аккаунт" }).click();
     await expect(
       page.getByRole("dialog", { name: "Подключить LinkedIn" }),
@@ -157,7 +196,7 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     if (errors.length) throw Error(errors.join("\n"));
     console.log(
-      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, automation settings, isolated background close/reopen, account UI; no LinkedIn requests or sends.",
+      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup with collapsed advanced settings, isolated background close/reopen, account UI; no LinkedIn requests or sends.",
     );
   } finally {
     await app.close();

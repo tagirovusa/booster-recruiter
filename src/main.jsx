@@ -254,9 +254,32 @@ function App() {
     if (!result) await refresh();
     return result;
   };
-  const showPreview = async () => {
-    const result = await act("outreach.preview", { id: cid });
-    if (result) setPreview(result);
+  const saveAutomation = async (rules, texts, reviewAfterSave = false) => {
+    setError("");
+    setBusy(true);
+    try {
+      if (JSON.stringify(rules) !== JSON.stringify(detail.outreach.rules))
+        await api.command("campaign.automation", { id: cid, rules });
+      if (
+        texts.open !== campaign.template_open ||
+        texts.neutral !== campaign.template_neutral
+      )
+        await api.command("campaign.templates", {
+          id: cid,
+          template_open: texts.open,
+          template_neutral: texts.neutral,
+        });
+      await refresh();
+      if (reviewAfterSave)
+        setPreview(await api.command("outreach.preview", { id: cid }));
+      else setNotice("");
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
   const people = (detail?.candidates || []).filter(
     (p) =>
@@ -416,6 +439,67 @@ function App() {
                           </button>
                         )}
                       </div>
+                      {a.status === "ready" && (
+                        <div className="recruiter-connection">
+                          <strong>LinkedIn Recruiter</strong>
+                          {a.services?.recruiter?.status === "ready" ? (
+                            <p>
+                              {a.services.recruiter.contract}
+                              <br />
+                              Общий баланс:{" "}
+                              {a.services.recruiter.credits.toLocaleString(
+                                "ru-RU",
+                              )}{" "}
+                              кредитов
+                            </p>
+                          ) : (
+                            <p>
+                              Дополнительно, если у вас есть подписка Recruiter.
+                            </p>
+                          )}
+                          {a.services?.recruiter?.error && (
+                            <div className="hint warning">
+                              {a.services.recruiter.error}
+                            </div>
+                          )}
+                          <Button
+                            disabled={
+                              busy ||
+                              a.services?.recruiter?.status === "connecting"
+                            }
+                            onClick={() =>
+                              act("account.recruiter", { id: a.id })
+                            }
+                          >
+                            <RefreshCw size={15} />
+                            {a.services?.recruiter?.status === "connecting"
+                              ? "Проверяем Recruiter…"
+                              : a.services?.recruiter?.status === "ready"
+                                ? "Проверить Recruiter"
+                                : "Подключить Recruiter"}
+                          </Button>
+                          {a.services?.recruiter?.status === "ready" &&
+                            !a.services.recruiter.manual_texts && (
+                              <>
+                                <p>
+                                  LinkedIn автоматически меняет черновики.
+                                  Отключите это, чтобы отправлять ваши точные
+                                  тексты.
+                                </p>
+                                <Button
+                                  onClick={() =>
+                                    act("account.recruiter_prepare", {
+                                      id: a.id,
+                                    })
+                                  }
+                                  disabled={busy}
+                                >
+                                  Использовать мои тексты
+                                </Button>
+                              </>
+                            )}
+                        </div>
+                      )}
                       {a.status === "ready" && (
                         <button
                           className="text-button muted"
@@ -638,7 +722,7 @@ function App() {
                     </Button>
                   ) : (
                     <Button
-                      kind="primary"
+                      kind={tab === "people" ? "primary" : ""}
                       disabled={busy || account?.status !== "ready"}
                       onClick={() => act("campaign.collect", { id: cid })}
                     >
@@ -650,44 +734,48 @@ function App() {
                   )}
                 </div>
               </div>
-              <div className={"progress-card " + (active ? "working" : "")}>
-                <div>
-                  {active ? (
-                    <LoaderCircle size={20} className="spin" />
-                  ) : (
-                    <CheckCircle2 size={20} />
-                  )}
-                  <p>
-                    {campaign.progress ||
-                      "Кампания готова. Нажмите «Найти кандидатов», чтобы начать сбор."}
-                  </p>
+              {(tab === "people" || active || campaign.status === "paused") && (
+                <div className={"progress-card " + (active ? "working" : "")}>
+                  <div>
+                    {active ? (
+                      <LoaderCircle size={20} className="spin" />
+                    ) : (
+                      <CheckCircle2 size={20} />
+                    )}
+                    <p>
+                      {campaign.progress ||
+                        "Кампания готова. Нажмите «Найти кандидатов», чтобы начать сбор."}
+                    </p>
+                  </div>
+                  <Badge value={campaign.status} />
                 </div>
-                <Badge value={campaign.status} />
-              </div>
-              <div className="stats">
-                <Stat
-                  label="Найдено профилей"
-                  value={detail.candidates.length}
-                />
-                <Stat
-                  label="Open to Work"
-                  value={
-                    detail.candidates.filter((p) => p.segment === "open").length
-                  }
-                />
-                <Stat
-                  label="Нужно проверить"
-                  value={
-                    detail.candidates.filter((p) => p.segment === "review")
-                      .length
-                  }
-                />
-                <Stat label="Выбрано для сообщения" value={selected.length} />
-              </div>
+              )}
+              {tab === "people" && (
+                <div className="stats">
+                  <Stat
+                    label="Найдено профилей"
+                    value={detail.candidates.length}
+                  />
+                  <Stat
+                    label="Open to Work"
+                    value={
+                      detail.candidates.filter((p) => p.segment === "open")
+                        .length
+                    }
+                  />
+                  <Stat
+                    label="Нужно проверить"
+                    value={
+                      detail.candidates.filter((p) => p.segment === "review")
+                        .length
+                    }
+                  />
+                  <Stat label="Выбрано для сообщения" value={selected.length} />
+                </div>
+              )}
               <div className="tabs">
                 {[
                   ["people", "Кандидаты", Users],
-                  ["messages", "Шаблоны сообщений", MessageSquare],
                   ["automation", "Автоматизация", Settings],
                   ["history", "История", Inbox],
                 ].map(([id, name, Icon]) => (
@@ -701,35 +789,19 @@ function App() {
                   </button>
                 ))}
               </div>
-              {tab === "messages" ? (
-                <Templates
-                  campaign={campaign}
-                  disabled={active || busy}
-                  onSave={(opened, neutral) =>
-                    act(
-                      "campaign.templates",
-                      {
-                        id: cid,
-                        template_open: opened,
-                        template_neutral: neutral,
-                      },
-                      "Шаблоны сохранены. Подготовьте новый предпросмотр отправки.",
-                    )
-                  }
-                />
-              ) : tab === "automation" ? (
+              {tab === "automation" ? (
                 <Automation
                   data={detail.outreach}
+                  campaign={campaign}
+                  account={account}
+                  selected={selected}
                   disabled={active || busy}
-                  onSave={(rules) =>
-                    act(
-                      "campaign.automation",
-                      { id: cid, rules },
-                      "Правила сохранены. Проверьте план перед запуском.",
-                    )
-                  }
+                  onSave={saveAutomation}
+                  onPeople={() => setTab("people")}
+                  onAccounts={() => setPage("accounts")}
                   onCheck={() => act("campaign.check", { id: cid })}
                   onResume={(id) => act("outreach.resume", { id })}
+                  onCheckNow={(id) => act("outreach.check_now", { id })}
                   onPause={() => act("campaign.pause", { id: cid })}
                 />
               ) : tab === "history" ? (
@@ -880,10 +952,10 @@ function App() {
                     <Button
                       kind="primary"
                       disabled={!selected.length || active || busy}
-                      onClick={showPreview}
+                      onClick={() => setTab("automation")}
                     >
                       <MessageSquare size={17} />
-                      Проверить сообщения{" "}
+                      Настроить отправку{" "}
                       {selected.length > 0 && `(${selected.length})`}
                     </Button>
                   </div>
@@ -1153,6 +1225,13 @@ function App() {
           </div>
           <div className="message-preview">
             <p>Профиль отправителя: {preview.account.url}</p>
+            {preview.context?.contract && (
+              <p>
+                InMail через Recruiter:{" "}
+                <strong>{preview.context.contract}</strong>. Подпись отправителя
+                включена в текст ниже.
+              </p>
+            )}
             <p>
               Проверка каждые {preview.rules.check_hours} ч. · Наблюдение{" "}
               {preview.rules.monitor_days} дней.
@@ -1365,61 +1444,4 @@ function CampaignForm({ accounts, busy, onClose, onSubmit }) {
     </Modal>
   );
 }
-function Templates({ campaign, onSave, disabled }) {
-  const [opened, setOpened] = useState(campaign.template_open);
-  const [neutral, setNeutral] = useState(campaign.template_neutral);
-  useEffect(() => {
-    setOpened(campaign.template_open);
-    setNeutral(campaign.template_neutral);
-  }, [campaign.id, campaign.revision]);
-  return (
-    <section className="panel templates">
-      <div className="panel-title">
-        <div>
-          <h2>Сообщение для каждой группы</h2>
-          <p>
-            Переменные: {"{name}, {first_name}, {headline}, {company}"}.
-            Итоговые тексты появятся перед отправкой.
-          </p>
-        </div>
-        <Button
-          kind="primary"
-          disabled={disabled}
-          onClick={() => onSave(opened, neutral)}
-        >
-          <Check size={17} />
-          Сохранить
-        </Button>
-      </div>
-      <div className="template-grid">
-        <label className="field">
-          <span className="template-label">Подтверждён Open to Work</span>
-          <textarea
-            rows={13}
-            value={opened}
-            onChange={(e) => setOpened(e.target.value)}
-            placeholder="Введите сообщение для людей, открытых к предложениям…"
-            disabled={disabled}
-          />
-        </label>
-        <label className="field">
-          <span className="template-label">Нейтральное сообщение</span>
-          <textarea
-            rows={13}
-            value={neutral}
-            onChange={(e) => setNeutral(e.target.value)}
-            placeholder="Введите сообщение без утверждения, что человек ищет работу…"
-            disabled={disabled}
-          />
-        </label>
-      </div>
-      <div className="hint">
-        Если Open to Work не распознан, используется нейтральное сообщение.
-        Hiring означает, что человек нанимает сотрудников. Группу можно изменить
-        вручную.
-      </div>
-    </section>
-  );
-}
-
 createRoot(document.getElementById("root")).render(<App />);

@@ -22,14 +22,18 @@ PROFILE_CONTACT_JS = r"""({username}) => {
  const path='/in/'+username.toLowerCase();
  if(location.pathname.replace(/\/$/,'').toLowerCase()!==path) return {identity_verified:false};
  const main=document.querySelector('main');
- const card=Array.from(main?.querySelectorAll('section')||[]).find(e=>visible(e)&&!e.closest('aside')&&!e.querySelector('section'));
+ const heading=Array.from(main?.querySelectorAll('h1,h2')||[]).find(e=>visible(e)&&!e.closest('aside'));
+ const card=heading?.closest('section');
  if(!card||Array.from(card.querySelectorAll('h1,h2,h3')).filter(visible).length!==1)return {identity_verified:false};
  const links=Array.from(card.querySelectorAll('a[href]')).filter(visible);
  const invite=links.some(a=>{try{const u=new URL(a.href);return u.origin===location.origin&&u.pathname==='/preload/custom-invite/'&&u.searchParams.get('vanityName')?.toLowerCase()===username.toLowerCase();}catch{return false;}});
  const self=links.some(a=>new URL(a.href).pathname.toLowerCase()===path+'/edit/intro/');
- const pending=links.some(a=>new URL(a.href).pathname.replace(/\/$/,'').toLowerCase()===path&&/pending|withdraw invitation|ожидан|приглашение отправлено|отозвать приглашение/i.test(a.getAttribute('aria-label')||''));
- const connected=Array.from(card.querySelectorAll('.distance-badge,.dist-value,[data-test-distance-badge],span[aria-label]')).filter(visible).some(e=>/^(1st(?: degree connection)?|1-й|контакт 1-го уровня)$/i.test((e.getAttribute('aria-label')||e.innerText||'').replace(/·/g,'').trim()));
- return {identity_verified:true,relationship:self?'self':pending?'pending':connected?'connected':invite?'not_connected':'unknown',can_invite:invite&&!self&&!pending&&!connected};
+ const menuLinks=Array.from(document.querySelectorAll('[role="menu"] a[href]')).filter(visible);
+ const pending=[...links,...menuLinks].some(a=>{const u=new URL(a.href);return u.origin===location.origin&&u.pathname.replace(/\/$/,'').toLowerCase()===path&&/pending|withdraw invitation|ожидан|приглашение отправлено|отозвать приглашение/i.test([a.getAttribute('aria-label'),...Array.from(a.querySelectorAll('[aria-label]')).map(e=>e.getAttribute('aria-label'))].join(' '));});
+ const connected=Array.from(card.querySelectorAll('.distance-badge,.dist-value,[data-test-distance-badge],span,p')).filter(visible).some(e=>/^(1st(?: degree connection)?|1-й|контакт 1-го уровня)$/i.test((e.getAttribute('aria-label')||e.innerText||'').replace(/·/g,'').trim()));
+ const buttons=Array.from(card.querySelectorAll('button[aria-label]')).filter(visible);
+ const incoming=buttons.some(e=>/^(Accept\b.*request to connect|Принять\b.*приглашени)/i.test(e.getAttribute('aria-label')))&&buttons.some(e=>/^(Ignore\b.*request to connect|Отклонить\b.*приглашени)/i.test(e.getAttribute('aria-label')));
+ return {identity_verified:true,relationship:self?'self':incoming?'incoming':pending?'pending':connected?'connected':invite?'not_connected':'unknown',can_invite:invite&&!self&&!incoming&&!pending&&!connected};
 }"""
 
 # Shared inspector: reads pricing chrome without counting the message body.
@@ -173,6 +177,21 @@ class GuardedSender(MessageSender):
 
 
 class InviteOnly(ConnectionActions):
+    async def _read_action_signals(self, username):
+        signals = await super()._read_action_signals(username)
+        # A Message button also appears on non-connections with Recruiter.
+        # The vendor's early "already_connected" branch otherwise prevents
+        # discovery of Connect inside More after its profile re-navigation.
+        if (
+            not signals.has_invite_anchor
+            and not signals.has_edit_intro_anchor
+            and not signals.has_incoming_action_row
+            and not signals.has_labeled_action_anchor
+        ):
+            await self._open_more_menu()
+            signals = await super()._read_action_signals(username)
+        return signals
+
     async def _click_incoming_accept(self):
         # An invitation approval never authorizes accepting an incoming request.
         return False
@@ -196,7 +215,7 @@ class BrowserOutreach:
             )
         return {"opened": True, "url": expected}
 
-    async def observe(self, url, check_history=False):
+    async def observe(self, url, check_history=False, relationship_only=False):
         username = normalize_person_identifier(url)
         await self.navigator._navigate_to_page(canonical(url) + "/")
         await self.session.check_rate_limit()
@@ -206,11 +225,23 @@ class BrowserOutreach:
         result = await self.session.run_on_linkedin(
             PROFILE_CONTACT_JS, {"username": username}
         )
-        result.update(free_message=False, inmail=False, credits=None)
+        result.update(
+            free_message=False, inmail=False, credits=None, history_verified=False
+        )
         if result.get("identity_verified") is not True:
+            return result
+        if result.get("relationship") in ("self", "incoming"):
             return result
         connector = InviteOnly(self.session, self.navigator, self.read_profile)
         signals = await connector._read_action_signals(username)
+        # More may have revealed a portal-mounted Pending control whose label
+        # belongs to a child div instead of its exact-profile anchor.
+        refreshed = await self.session.run_on_linkedin(
+            PROFILE_CONTACT_JS, {"username": username}
+        )
+        if refreshed.get("identity_verified") is not True:
+            return result | {"identity_verified": False}
+        result.update(refreshed)
         if signals.has_incoming_action_row:
             result.update(relationship="incoming", can_invite=False)
         elif result["relationship"] == "unknown" and not result["can_invite"]:
@@ -221,6 +252,8 @@ class BrowserOutreach:
                 signals = await connector._read_action_signals(username)
             if signals.has_invite_anchor:
                 result.update(relationship="not_connected", can_invite=True)
+        if relationship_only:
+            return result
         target = resolution.target
         if (
             not target
@@ -239,18 +272,17 @@ class BrowserOutreach:
             )
             if state.get("verified"):
                 result.update(
+                    history_verified=True,
                     has_reply=state["has_reply"],
                     has_outgoing=state["has_outgoing"],
                     reply_text=state.get("reply_text", ""),
                 )
-            elif check_history:
-                result["identity_verified"] = False
             return result
         if self.page.url != expected_route:
             return {"identity_verified": False}
         state = await self.sender._read_message_composer_state(target)
         if state.get("status") != "valid" or state.get("empty") is not True:
-            return result | {"identity_verified": False}
+            return result
         pricing = await self.session.run_on_linkedin(COMPOSER_JS)
         result.update(
             free_message=pricing.get("free") is True,
@@ -263,6 +295,7 @@ class BrowserOutreach:
             )
             if history.get("verified"):
                 result.update(
+                    history_verified=True,
                     has_reply=history["has_reply"],
                     has_outgoing=history["has_outgoing"],
                     reply_text=history.get("reply_text", ""),
@@ -279,12 +312,13 @@ class BrowserOutreach:
                   return !!s.valid&&!!scope&&!scope.querySelector('[data-event-urn]')&&location.pathname==='/messaging/compose/';
                 }"""
                 )
-                if not empty:
-                    result["identity_verified"] = False
+                result["history_verified"] = bool(empty)
+            if not result["history_verified"]:
+                result.update(free_message=False, inmail=False, credits=None)
         return result
 
     async def invite(self, url, note):
-        before = await self.observe(url)
+        before = await self.observe(url, relationship_only=True)
         if not before.get("identity_verified") or not before.get("can_invite"):
             return refusal(
                 "Приглашение недоступно, уже отправлено или контакт уже существует."
@@ -296,7 +330,7 @@ class BrowserOutreach:
             normalize_person_identifier(url), note=note or None
         )
         if result.get("status") == "connected":
-            after = await self.observe(url)
+            after = await self.observe(url, relationship_only=True)
             confirmed = (
                 after.get("identity_verified") is True
                 and after.get("relationship") == "pending"
@@ -323,6 +357,7 @@ class BrowserOutreach:
         observation = await self.observe(url, check_history=True)
         if (
             not observation.get("identity_verified")
+            or not observation.get("history_verified")
             or observation.get("has_reply")
             or observation.get("has_outgoing")
         ):

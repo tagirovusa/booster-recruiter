@@ -59,7 +59,10 @@ class Worker:
             try:
                 line = await asyncio.wait_for(
                     self.process.stdout.readline(),
-                    timeout=90
+                    timeout=180
+                    if action in {"observe", "check_reply"}
+                    and (params or {}).get("recruiter")
+                    else 90
                     if action in {"observe", "check_reply", "open_profile"}
                     else 300,
                 )
@@ -188,6 +191,59 @@ class Runtime:
         if canonical(actual["url"]) != account["url"]:
             self.store.set_account(aid, "identity_mismatch")
             raise AppError("Аккаунт в браузере изменился. Обработка остановлена.")
+        return actual
+
+    async def recruiter(self, aid, prepare=False):
+        self.store.set_service(aid, "recruiter", {"status": "connecting"})
+        try:
+            async with self.browser_lock:
+                await self.verify(aid)
+                result = await self.worker(aid).call(
+                    "recruiter_prepare" if prepare else "recruiter_status"
+                )
+            self.store.set_service(aid, "recruiter", result)
+        except Exception as exc:
+            self.store.set_service(
+                aid, "recruiter", {"status": "needs_login", "error": self.friendly(exc)}
+            )
+
+    async def outreach_preview(self, cid):
+        rules = self.store.outreach.rules(cid)
+        if not rules["allow_inmail"] or rules["inmail_channel"] != "recruiter":
+            return self.store.outreach.preview(cid)
+        self.store.ensure_idle(cid)
+        campaign = self.store.campaign(cid)
+        service = self.store.account(campaign["account_id"])["services"].get(
+            "recruiter", {}
+        )
+        if service.get("status") != "ready":
+            raise AppError("Подключите Recruiter на странице аккаунтов отправителя.")
+        eligible = [
+            p
+            for p in self.store.detail(cid)["candidates"]
+            if p["selected"]
+            and not p["excluded"]
+            and p["segment"] != "review"
+            and not p["blocked"]
+        ]
+        if not eligible:
+            raise AppError("Выберите получателей без прежних обращений.")
+        self.store.progress(
+            cid, "checking", "Проверяем Recruiter и подпись для предпросмотра…"
+        )
+        try:
+            async with self.browser_lock:
+                identity = await self.verify(campaign["account_id"])
+                context = await self.worker(campaign["account_id"]).call(
+                    "recruiter_preview",
+                    {"url": eligible[0]["url"], "contract": service["contract"]},
+                )
+                context["sender_name"] = identity["name"]
+            self.store.progress(cid, "ready", "Тексты и подпись Recruiter проверены.")
+            return self.store.outreach.preview(cid, recruiter_context=context)
+        except BaseException:
+            self.store.progress(cid, campaign["status"], campaign["progress"])
+            raise
 
     async def collect(self, cid):
         campaign = self.store.campaign(cid)

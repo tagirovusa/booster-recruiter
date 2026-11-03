@@ -92,18 +92,13 @@ _PROFILE_MESSAGE_TARGET_JS = r"""() => {
     const main = document.querySelector('main');
     if (!main) return {status: 'unresolved'};
 
-    // The top card is the first section that wraps no other section. LinkedIn
-    // nests it inside a wrapper section and has moved the name between h1 and
-    // h2, so neither its depth nor its heading level is pinned. It is chosen
-    // before its heading is checked, so a card whose name has not rendered yet
-    // stays unresolved instead of yielding to the next section. Sidebar
-    // sections are skipped: they carry other people's Message links.
-    const section = Array.from(main.querySelectorAll('section')).find(
-        element =>
-            visible(element) &&
-            !element.closest('aside') &&
-            !element.querySelector('section')
+    // A Hiring widget can add a heading-free section inside the top card.
+    // Anchor on the first visible profile heading; a leaf-section scan would
+    // select that widget and lose the actual person's Message action.
+    const heading = Array.from(main.querySelectorAll('h1,h2')).find(
+        element => visible(element) && !element.closest('aside')
     );
+    const section = heading?.closest('section');
     if (!section) return {status: 'unresolved'};
     const headings = Array.from(section.querySelectorAll('h1, h2, h3')).filter(visible);
     const visibleComposeAnchors = Array.from(

@@ -12,6 +12,7 @@ from .store import AppError, message_for, now, uid
 DEFAULT_RULES = {
     "allow_invites": True,
     "allow_inmail": False,
+    "inmail_channel": "linkedin",
     "strategy": "economy",
     "wait_days": 7,
     "check_hours": 12,
@@ -63,6 +64,8 @@ def validate_rules(value):
             raise AppError(f"Параметр {key}: допустимо от {low} до {high}.")
     if rules["strategy"] not in ("economy", "fast"):
         raise AppError("Выберите экономный или быстрый режим.")
+    if rules["inmail_channel"] not in ("linkedin", "recruiter"):
+        raise AppError("Выберите LinkedIn Premium или Recruiter для InMail.")
     if rules["start_hour"] >= rules["end_hour"]:
         raise AppError("Время окончания должно быть позже начала в пределах суток.")
     try:
@@ -102,14 +105,16 @@ def route(rules, observation, invitation_at=None, at=None):
     if observation.get("free_message") is True:
         return "message", "Доступно обычное бесплатное сообщение."
     relation = observation.get("relationship", "unknown")
-    if relation == "connected":
-        return "unavailable", "Контакт подтверждён, но отправка сообщения недоступна."
     if relation in ("self", "incoming"):
         return (
             "needs_review",
             "Собственный профиль или входящее приглашение: проверьте вручную.",
         )
     can_paid = rules["allow_inmail"] and observation.get("inmail") is True
+    if relation == "connected" and not can_paid:
+        return "unavailable", "Контакт подтверждён, но отправка сообщения недоступна."
+    if can_paid and observation.get("inmail_free") is True:
+        return "inmail", "В Recruiter доступен InMail без расхода кредита."
     if rules["strategy"] == "fast" and can_paid:
         if type(observation.get("credits")) is int and observation["credits"] == 0:
             if relation == "pending" or invitation_at:
@@ -151,6 +156,18 @@ class OutreachStore:
         CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
         with self.db:
+            if "context" not in {
+                r["name"] for r in self.s.rows("PRAGMA table_info(outreach_runs)")
+            }:
+                self.db.execute(
+                    "ALTER TABLE outreach_runs ADD COLUMN context TEXT NOT NULL DEFAULT '{}'"
+                )
+            if "credit_cost" not in {
+                r["name"] for r in self.s.rows("PRAGMA table_info(outreach_actions)")
+            }:
+                self.db.execute(
+                    "ALTER TABLE outreach_actions ADD COLUMN credit_cost INTEGER"
+                )
             if "reply_text" not in {
                 r["name"] for r in self.s.rows("PRAGMA table_info(outreach_members)")
             }:
@@ -228,13 +245,29 @@ class OutreachStore:
                 return True
         return False
 
-    def preview(self, cid):
+    def preview(self, cid, recruiter_context=None):
         self.s.ensure_idle(cid)
         campaign = self.s.campaign(cid)
         account = self.s.account(campaign["account_id"])
         if account["status"] != "ready":
             raise AppError("Подключите аккаунт отправителя.")
         rules = validate_rules(self.rules(cid))
+        context = {}
+        if rules["allow_inmail"] and rules["inmail_channel"] == "recruiter":
+            service = account["services"].get("recruiter", {})
+            if (
+                not recruiter_context
+                or service.get("status") != "ready"
+                or recruiter_context.get("contract") != service.get("contract")
+            ):
+                raise AppError(
+                    "Подключите Recruiter у отправителя и заново проверьте запуск."
+                )
+            if not recruiter_context.get("manual_texts"):
+                raise AppError(
+                    "Отключите автоматические тексты LinkedIn в подключении Recruiter."
+                )
+            context = recruiter_context
         members, skipped = [], []
         for p in self.s.rows(
             "SELECT * FROM candidates WHERE campaign_id=? AND selected=1 AND excluded=0 ORDER BY observed,id",
@@ -269,6 +302,12 @@ class OutreachStore:
                 if rules["allow_inmail"]
                 else ""
             )
+            if inmail and context.get("signature"):
+                inmail += "\n\n" + context["signature"]
+                if len(inmail) > 1900:
+                    raise AppError(
+                        "Текст вместе с подписью Recruiter превышает 1900 символов."
+                    )
             members.append(
                 {
                     "id": uid(),
@@ -288,14 +327,23 @@ class OutreachStore:
         rid = uid()
         digest = hashlib.sha256(
             json.dumps(
-                [account["id"], account["url"], rules, members], sort_keys=True
+                [account["id"], account["url"], rules, context, members], sort_keys=True
             ).encode()
         ).hexdigest()
         with self.db:
             self.s.invalidate(cid)
             self.db.execute(
-                "INSERT INTO outreach_runs(id,campaign_id,account_id,digest,rules,status,created,updated) VALUES(?,?,?,?,?,'preview',?,?)",
-                (rid, cid, account["id"], digest, json.dumps(rules), now(), now()),
+                "INSERT INTO outreach_runs(id,campaign_id,account_id,digest,rules,context,status,created,updated) VALUES(?,?,?,?,?,?,'preview',?,?)",
+                (
+                    rid,
+                    cid,
+                    account["id"],
+                    digest,
+                    json.dumps(rules),
+                    json.dumps(context),
+                    now(),
+                    now(),
+                ),
             )
             for m in members:
                 self.db.execute(
@@ -328,6 +376,7 @@ class OutreachStore:
             "digest": digest,
             "account": account,
             "rules": rules,
+            "context": context,
             "messages": members,
             "skipped": skipped,
             "maximum_credits": min(rules["inmail_budget"], len(members))
@@ -338,6 +387,7 @@ class OutreachStore:
     def run(self, rid):
         row = self.s.one("SELECT * FROM outreach_runs WHERE id=?", (rid,))
         row["rules"] = json.loads(row["rules"])
+        row["context"] = json.loads(row["context"])
         return row
 
     def approve(self, rid, digest):
@@ -379,14 +429,17 @@ class OutreachStore:
         )
         for run in runs:
             run["rules"] = json.loads(run["rules"])
+            run["context"] = json.loads(run["context"])
             run["members"] = self.members(run["id"])
             run["actions"] = self.s.rows(
                 "SELECT a.* FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id WHERE m.run_id=? ORDER BY a.created DESC",
                 (run["id"],),
             )
             run["credits_reserved"] = sum(
-                a["kind"] == "inmail"
+                (1 if a["credit_cost"] is None else a["credit_cost"])
+                if a["kind"] == "inmail"
                 and a["status"] in ("submitting", "sent", "unknown")
+                else 0
                 for a in run["actions"]
             )
         return {"rules": self.rules(cid), "runs": runs}
@@ -405,6 +458,21 @@ class OutreachStore:
                 (status, detail[:1000], now(), rid),
             )
         return self.run(rid)
+
+    def check_now(self, rid):
+        """Advance approved monitoring only; never resume a pause or a draft."""
+        run = self.run(rid)
+        self.s.ensure_idle(run["campaign_id"])
+        if run["status"] != "active":
+            raise AppError("Сначала продолжите утверждённую кампанию.")
+        with self.db:
+            for member in self.members(rid):
+                if member["status"] not in TERMINAL:
+                    self.db.execute(
+                        "UPDATE outreach_members SET next_check=? WHERE id=?",
+                        (now(), member["id"]),
+                    )
+        return run
 
     def update_member(self, mid, **fields):
         allowed = {
@@ -434,10 +502,16 @@ class OutreachStore:
                 (*fields.values(), mid),
             )
 
-    def reserve(self, mid, kind):
+    def reserve(self, mid, kind, credit_cost=None):
         """Reserve a possibly consumed credit BEFORE calling the browser."""
         if kind not in ACTION_KINDS:
             raise AppError("Неизвестный канал.")
+        if credit_cost is not None and (
+            type(credit_cost) is not int
+            or credit_cost not in (0, 1)
+            or kind != "inmail"
+        ):
+            raise AppError("Неверная стоимость InMail.")
         with self.db:
             m = self.s.one("SELECT * FROM outreach_members WHERE id=?", (mid,))
             r = self.run(m["run_id"])
@@ -490,15 +564,27 @@ class OutreachStore:
                 )
             if kind == "inmail":
                 count = self.s.one(
-                    "SELECT COUNT(*) n FROM outreach_actions a JOIN outreach_members m ON a.member_id=m.id WHERE m.run_id=? AND a.kind='inmail' AND a.status IN ('sent','unknown','submitting')",
+                    "SELECT COALESCE(SUM(COALESCE(a.credit_cost,1)),0) n FROM outreach_actions a JOIN outreach_members m ON a.member_id=m.id WHERE m.run_id=? AND a.kind='inmail' AND a.status IN ('sent','unknown','submitting')",
                     (r["id"],),
                 )["n"]
-                if count >= rules["inmail_budget"]:
+                if (
+                    count + (1 if credit_cost is None else credit_cost)
+                    > rules["inmail_budget"]
+                ):
                     raise AppError("Исчерпан утверждённый бюджет InMail этой кампании.")
             action = uid()
             self.db.execute(
-                "INSERT INTO outreach_actions(id,member_id,account_id,url,kind,status,created,updated) VALUES(?,?,?,?,?,'submitting',?,?)",
-                (action, mid, r["account_id"], m["url"], kind, now(), now()),
+                "INSERT INTO outreach_actions(id,member_id,account_id,url,kind,credit_cost,status,created,updated) VALUES(?,?,?,?,?,?,'submitting',?,?)",
+                (
+                    action,
+                    mid,
+                    r["account_id"],
+                    m["url"],
+                    kind,
+                    credit_cost,
+                    now(),
+                    now(),
+                ),
             )
             return action
 
@@ -531,11 +617,13 @@ class OutreachStore:
                     "status": "waiting_acceptance",
                     "invitation_at": row["created"],
                     "next_check": now(),
+                    "detail": "Приглашение подтверждено вручную; ожидаем проверки контакта.",
                 }
             else:
                 fields = {
                     "status": "sent",
                     "sent_at": row["created"],
                     "next_check": now(),
+                    "detail": "Отправка сообщения подтверждена вручную в LinkedIn.",
                 }
         self.update_member(row["member_id"], **fields)

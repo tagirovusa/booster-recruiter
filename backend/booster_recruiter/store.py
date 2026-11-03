@@ -68,6 +68,7 @@ class Store:
         self.db.executescript("""
           PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
           CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,label TEXT NOT NULL,url TEXT,status TEXT NOT NULL DEFAULT 'new',error TEXT,created TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS account_services(account_id TEXT PRIMARY KEY REFERENCES accounts(id),data TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS campaigns(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),name TEXT NOT NULL,keywords TEXT NOT NULL,max_profiles INTEGER NOT NULL,template_open TEXT NOT NULL,template_neutral TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft',progress TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);
           CREATE TABLE IF NOT EXISTS candidates(id TEXT PRIMARY KEY,campaign_id TEXT NOT NULL REFERENCES campaigns(id),url TEXT NOT NULL,data TEXT NOT NULL,segment TEXT NOT NULL DEFAULT 'review',selected INTEGER NOT NULL DEFAULT 0,excluded INTEGER NOT NULL DEFAULT 0,observed TEXT NOT NULL,UNIQUE(campaign_id,url));
           CREATE TABLE IF NOT EXISTS batches(id TEXT PRIMARY KEY,campaign_id TEXT NOT NULL REFERENCES campaigns(id),account_id TEXT NOT NULL REFERENCES accounts(id),digest TEXT NOT NULL,status TEXT NOT NULL,created TEXT NOT NULL);
@@ -131,7 +132,21 @@ class Store:
         return rows[0]
 
     def account(self, aid):
-        return self.one("SELECT * FROM accounts WHERE id=?", (aid,))
+        account = self.one("SELECT * FROM accounts WHERE id=?", (aid,))
+        services = self.rows(
+            "SELECT data FROM account_services WHERE account_id=?", (aid,)
+        )
+        account["services"] = json.loads(services[0]["data"]) if services else {}
+        return account
+
+    def set_service(self, aid, name, value):
+        services = self.account(aid)["services"] | {name: value | {"checked_at": now()}}
+        with self.db:
+            self.db.execute(
+                "INSERT INTO account_services(account_id,data) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET data=excluded.data",
+                (aid, json.dumps(services, ensure_ascii=False)),
+            )
+        return self.account(aid)
 
     def campaign(self, cid):
         return self.one("SELECT * FROM campaigns WHERE id=?", (cid,))
@@ -210,7 +225,10 @@ class Store:
 
     def state(self):
         return {
-            "accounts": self.rows("SELECT * FROM accounts ORDER BY created DESC"),
+            "accounts": [
+                self.account(a["id"])
+                for a in self.rows("SELECT id FROM accounts ORDER BY created DESC")
+            ],
             "campaigns": self.rows(
                 "SELECT c.*,(SELECT COUNT(*) FROM candidates p WHERE p.campaign_id=c.id) AS count FROM campaigns c ORDER BY created DESC"
             ),

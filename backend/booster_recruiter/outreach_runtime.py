@@ -152,25 +152,51 @@ class OutreachRuntime:
                         f"Проверяем: {member['name'] or member['url']}",
                     )
                     if member["sent_at"]:
+                        sent_actions = self.store.rows(
+                            "SELECT kind FROM outreach_actions WHERE member_id=? AND status='sent' AND kind IN ('message','inmail') ORDER BY created DESC LIMIT 1",
+                            (member["id"],),
+                        )
+                        recruiter_context = (
+                            run["context"]
+                            if (
+                                run["context"]
+                                and sent_actions
+                                and sent_actions[0]["kind"] == "inmail"
+                            )
+                            else None
+                        )
                         result = await self.rt.worker(aid).call(
                             "check_reply",
                             {
                                 "url": member["url"],
                                 "thread_id": member["thread_id"],
                                 "since": member["sent_at"],
+                                "recruiter": recruiter_context,
+                                "message": member["inmail_message"]
+                                if recruiter_context
+                                else "",
+                                "subject": member["subject"]
+                                if recruiter_context
+                                else "",
                             },
                         )
                         self.repo.update_member(
                             member["id"],
                             status="replied" if result.get("has_reply") else "sent",
                             reply_text=result.get("reply_text", ""),
+                            thread_id=result.get("thread_id", member["thread_id"]),
                             detail=result.get("detail", "Ответ пока не обнаружен."),
                             checked_at=now(),
                             next_check=later(hours=rules["check_hours"]),
                         )
                         continue
                     observation = await self.rt.worker(aid).call(
-                        "observe", {"url": member["url"], "check_history": True}
+                        "observe",
+                        {
+                            "url": member["url"],
+                            "check_history": True,
+                            "recruiter": run["context"] or None,
+                        },
                     )
                     # Observed pending invitations made outside the app start their wait now.
                     invited = member["invitation_at"]
@@ -193,9 +219,13 @@ class OutreachRuntime:
                             next_check=later(hours=rules["check_hours"]),
                         )
                         continue
-                    if action == "inmail" and (
-                        type(observation.get("credits")) is not int
-                        or observation["credits"] < 1
+                    if (
+                        action == "inmail"
+                        and not observation.get("inmail_free")
+                        and (
+                            type(observation.get("credits")) is not int
+                            or observation["credits"] < 1
+                        )
                     ):
                         self.repo.update_member(
                             member["id"],
@@ -211,7 +241,13 @@ class OutreachRuntime:
                     ):
                         break
                     try:
-                        action_id = self.repo.reserve(member["id"], action)
+                        action_id = self.repo.reserve(
+                            member["id"],
+                            action,
+                            credit_cost=(0 if observation.get("inmail_free") else 1)
+                            if action == "inmail"
+                            else None,
+                        )
                     except AppError as exc:
                         self.repo.update_member(
                             member["id"],
@@ -231,6 +267,11 @@ class OutreachRuntime:
                         )
                     if action == "inmail":
                         params["subject"] = member["subject"]
+                        if run["context"]:
+                            params["recruiter"] = run["context"]
+                            params["credit_cost"] = (
+                                0 if observation.get("inmail_free") else 1
+                            )
                     try:
                         result = await self.rt.worker(aid).call(
                             {

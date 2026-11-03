@@ -46,6 +46,13 @@ def create_app(store, runtime, token):
                 result = {"started": True}
             elif op == "account.open_profile":
                 result = await runtime.open_profile(p["id"], p["url"])
+            elif op in ("account.recruiter", "account.recruiter_prepare"):
+                store.account(p["id"])
+                runtime.spawn(
+                    "recruiter:" + p["id"],
+                    runtime.recruiter(p["id"], prepare=op.endswith("_prepare")),
+                )
+                result = {"started": True}
             elif op == "account.disconnect":
                 aid = p["id"]
                 store.account(aid)
@@ -81,7 +88,7 @@ def create_app(store, runtime, token):
                 )
                 result = {"started": True}
             elif op == "outreach.preview":
-                result = store.outreach.preview(p["id"])
+                result = await runtime.outreach_preview(p["id"])
             elif op == "outreach.approve":
                 run = store.outreach.approve(p["id"], p["digest"])
                 runtime.start_campaign(
@@ -94,6 +101,14 @@ def create_app(store, runtime, token):
                 run = store.outreach.run(p["id"])
                 store.ensure_idle(run["campaign_id"])
                 store.outreach.status(run["id"], "active")
+                runtime.start_campaign(
+                    run["campaign_id"],
+                    runtime.outreach.process(run["id"]),
+                    "automating",
+                )
+                result = {"started": True}
+            elif op == "outreach.check_now":
+                run = store.outreach.check_now(p["id"])
                 runtime.start_campaign(
                     run["campaign_id"],
                     runtime.outreach.process(run["id"]),

@@ -68,6 +68,8 @@ const operations = new Set([
   "account.login",
   "account.open_profile",
   "account.disconnect",
+  "account.recruiter",
+  "account.recruiter_prepare",
   "campaign.create",
   "campaign.detail",
   "campaign.collect",
@@ -85,6 +87,7 @@ const operations = new Set([
   "outreach.preview",
   "outreach.approve",
   "outreach.resume",
+  "outreach.check_now",
   "outreach.resolve",
 ]);
 const base = path.resolve(__dirname, "..");
@@ -119,7 +122,7 @@ async function call(op, params = {}) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ op, params }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(op === "outreach.preview" ? 240000 : 30000),
   });
   const result = await response.json();
   if (result.error) throw Error(result.error);

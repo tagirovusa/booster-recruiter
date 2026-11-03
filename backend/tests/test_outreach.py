@@ -113,6 +113,47 @@ async def test_invite_accept_message_and_reply_are_one_durable_sequence(store):
     assert len(worker.actions) == 2
 
 
+async def test_check_now_retains_pending_invite_then_sends_on_acceptance(store):
+    _, _, _, p, rt, worker = activate(store)
+    rid = p["run_id"]
+    await rt.outreach.process(rid)
+    worker.observation.update(relationship="pending", can_invite=False)
+    store.outreach.check_now(rid)
+    await rt.outreach.process(rid)
+    assert len(worker.actions) == 1
+    assert store.outreach.members(rid)[0]["status"] == "waiting_acceptance"
+    worker.observation.update(relationship="connected", free_message=True)
+    store.outreach.check_now(rid)
+    await rt.outreach.process(rid)
+    assert [a[0] for a in worker.actions] == ["invite", "send_free"]
+    store.outreach.check_now(rid)
+    await rt.outreach.process(rid)
+    assert len(worker.actions) == 2
+
+
+async def test_existing_connection_sends_once_without_an_invitation(store):
+    _, _, _, p, rt, worker = activate(store)
+    worker.observation.update(
+        relationship="connected", can_invite=False, free_message=True
+    )
+    await rt.outreach.process(p["run_id"])
+    assert [a[0] for a in worker.actions] == ["send_free"]
+    store.outreach.check_now(p["run_id"])
+    await rt.outreach.process(p["run_id"])
+    assert [a[0] for a in worker.actions] == ["send_free"]
+
+
+def test_check_now_cannot_approve_draft_or_resume_paused_plan(store):
+    _, _, _, p = plan(store)
+    with pytest.raises(AppError):
+        store.outreach.check_now(p["run_id"])
+    store.outreach.approve(p["run_id"], p["digest"])
+    store.outreach.status(p["run_id"], "paused")
+    with pytest.raises(AppError):
+        store.outreach.check_now(p["run_id"])
+    assert store.outreach.run(p["run_id"])["status"] == "paused"
+
+
 async def test_fast_inmail_consumes_one_budget_and_acceptance_never_sends_dm(store):
     _, _, person, p, rt, worker = activate(store, strategy="fast")
     await rt.outreach.process(p["run_id"])
@@ -274,6 +315,49 @@ def test_wrong_digest_cannot_approve(store):
         store.outreach.approve(p["run_id"], "wrong")
 
 
+def test_recruiter_contract_signature_and_source_are_frozen(store):
+    a, c, _, _ = plan(store)
+    store.outreach.configure(
+        c["id"], store.outreach.rules(c["id"]) | {"inmail_channel": "recruiter"}
+    )
+    context = {
+        "contract": "Approved company",
+        "manual_texts": True,
+        "credits": 42,
+        "signature": "Recruiter\nApproved company",
+    }
+    with pytest.raises(AppError):
+        store.outreach.preview(c["id"], context)
+    store.set_service(a["id"], "recruiter", context | {"status": "ready"})
+    preview = store.outreach.preview(c["id"], context)
+    assert preview["messages"][0]["inmail_message"].endswith(
+        "\n\nRecruiter\nApproved company"
+    )
+    assert preview["messages"][0]["message"] == "Hello Alice, open opportunity."
+    store.outreach.approve(preview["run_id"], preview["digest"])
+    store.set_service(
+        a["id"], "recruiter", context | {"status": "ready", "contract": "Other company"}
+    )
+    assert (
+        store.outreach.run(preview["run_id"])["context"]["contract"]
+        == "Approved company"
+    )
+    with pytest.raises(AppError):
+        store.outreach.preview(c["id"], context)
+
+
+def test_free_recruiter_message_counts_as_attempt_but_not_spent_credit(store):
+    _, c, _, p, _, _ = activate(store, inmail_budget=1)
+    mid = p["messages"][0]["id"]
+    action = store.outreach.reserve(mid, "inmail", credit_cost=0)
+    store.outreach.finish(action, "sent", "Free to InMail")
+    detail = store.outreach.detail(c["id"])["runs"][0]
+    assert detail["credits_reserved"] == 0
+    assert len(detail["actions"]) == 1
+    with pytest.raises(AppError):
+        store.outreach.reserve(mid, "inmail", credit_cost=False)
+
+
 def test_crash_preserves_uncertainty_and_credit_reservation(tmp_path):
     s = Store(tmp_path)
     _, _, _, p, _, _ = activate(s)
@@ -430,3 +514,22 @@ async def test_outside_schedule_no_browser_calls(store):
     await rt.outreach.process(p["run_id"])
     assert not worker.actions
     assert store.campaign(c["id"])["status"] == "waiting"
+
+
+def test_connected_member_can_use_approved_recruiter_fallback():
+    observation = {
+        "identity_verified": True,
+        "relationship": "connected",
+        "free_message": False,
+        "inmail": True,
+        "inmail_free": True,
+    }
+    assert route(DEFAULT_RULES, observation)[0] == "unavailable"
+    assert route(DEFAULT_RULES | {"allow_inmail": True}, observation)[0] == "inmail"
+    assert (
+        route(
+            DEFAULT_RULES | {"allow_inmail": True},
+            observation | {"inmail_free": False, "credits": 1},
+        )[0]
+        == "inmail"
+    )

@@ -26,7 +26,9 @@ def run(root: Path):
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(
+            request, timeout=240 if op == "outreach.preview" else 30
+        ) as response:
             payload = json.load(response)
         if payload.get("error"):
             raise ValueError(payload["error"])

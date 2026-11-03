@@ -108,6 +108,8 @@ async def check_outreach_browser(page):
     for badge, expected in [
         ("", "not_connected"),
         ('<span class="distance-badge">1st</span>', "connected"),
+        ("<span>· 1st</span>", "connected"),
+        ("<p>· 1st</p>", "connected"),
     ]:
         await page.goto("https://www.linkedin.com/in/test-recipient/")
         await page.set_content(
@@ -122,6 +124,36 @@ async def check_outreach_browser(page):
         assert not (
             await page.evaluate(PROFILE_CONTACT_JS, {"username": "different-person"})
         )["identity_verified"]
+
+    for pending_target, expected in [
+        ("test-recipient", "pending"),
+        ("another", "unknown"),
+    ]:
+        await page.goto("https://www.linkedin.com/in/test-recipient/")
+        await page.set_content(
+            "<main><section><h1>Test Recipient</h1><p>· 3rd</p></section></main>"
+            f'<div role="menu"><a href="/in/{pending_target}/"><div aria-label="Pending, click to withdraw invitation sent to Test Recipient">Pending</div></a></div>'
+        )
+        contact = await page.evaluate(
+            PROFILE_CONTACT_JS, {"username": "test-recipient"}
+        )
+        assert contact["relationship"] == expected and not contact["can_invite"], (
+            contact
+        )
+
+    await page.goto("https://www.linkedin.com/in/test-recipient/")
+    await page.set_content(
+        "<main><section><section><h2>Test Recipient</h2><p>· 3rd</p>"
+        '<button aria-label="Accept Test Recipient’s request to connect">Accept</button>'
+        '<button aria-label="Ignore Test Recipient’s request to connect">Ignore</button>'
+        "<section>Hiring card without a heading</section></section>"
+        "<section><h2>Activity</h2><p>· 1st</p></section></section></main>"
+    )
+    contact = await page.evaluate(PROFILE_CONTACT_JS, {"username": "test-recipient"})
+    assert contact["identity_verified"] and contact["relationship"] == "incoming", (
+        contact
+    )
+    assert not contact["can_invite"]
 
     # InMail credit claims in the message draft are not pricing chrome.
     await page.goto(compose)
@@ -144,4 +176,4 @@ async def check_outreach_browser(page):
         )
         assert state["verified"] is verified and state["has_reply"] is replied, state
     page.set_default_timeout(30000)
-    return len(cases) + 6
+    return len(cases) + 11

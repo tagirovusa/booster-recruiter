@@ -35,7 +35,7 @@ async def serve(profile: Path):
     from booster_linkedin.config import set_config
     from booster_linkedin.config.loaders import load_config
     from booster_linkedin.dependencies import get_ready_extractor
-    from booster_linkedin.drivers.browser import get_or_create_browser
+    from booster_linkedin.drivers.browser import get_or_create_browser, set_headless
     from booster_linkedin.linkedin import photo_frame_detection
     from booster_linkedin.linkedin.session import PageSession
     from booster_linkedin.profile_claim import ensure_profile_claim
@@ -70,7 +70,12 @@ async def serve(profile: Path):
                 )
     if browser_path:
         args += ["--chrome-path", browser_path]
-    set_config(load_config(args))
+    config = load_config(args)
+    set_config(config)
+    # Embedded servers bypass the vendor CLI, which normally applies this
+    # process-local mode. Its default otherwise creates a hidden macOS target
+    # even though the app explicitly requested a regular browser window.
+    set_headless(config.browser.headless)
     configure_browser_environment()
     ensure_profile_claim(profile, claim_anyway=False)
 
@@ -184,6 +189,9 @@ async def serve(profile: Path):
                     "send_inmail",
                     "check_reply",
                     "open_profile",
+                    "recruiter_status",
+                    "recruiter_prepare",
+                    "recruiter_preview",
                 ):
                     from .outreach_browser import BrowserOutreach
 
@@ -199,28 +207,114 @@ async def serve(profile: Path):
                         return data
 
                     outreach = BrowserOutreach(browser.page, read_profile)
-                    if action == "open_profile":
+                    if action.startswith("recruiter_"):
+                        from .recruiter_browser import RecruiterBrowser
+
+                        recruiter = RecruiterBrowser(
+                            browser.page, outreach.session, outreach.navigator
+                        )
+                        if action == "recruiter_prepare":
+                            result = await recruiter.prepare_manual_texts()
+                        else:
+                            result = await recruiter.status()
+                            if action == "recruiter_preview":
+                                if (
+                                    result["contract"] != p["contract"]
+                                    or not result["manual_texts"]
+                                ):
+                                    raise RuntimeError(
+                                        "Проверьте контракт и отключите автотексты в подключении Recruiter."
+                                    )
+                                observed = await recruiter.observe(p["url"], result)
+                                if not observed.get("inmail"):
+                                    raise RuntimeError(
+                                        observed.get(
+                                            "detail", "Редактор InMail недоступен."
+                                        )
+                                    )
+                                result["signature"] = observed["signature"]
+                    elif action == "open_profile":
                         result = await outreach.open_profile(p["url"])
                     elif action == "observe":
                         result = await outreach.observe(
                             p["url"], p.get("check_history", False)
                         )
+                        if (
+                            p.get("recruiter")
+                            and result.get("identity_verified")
+                            and not any(
+                                result.get(k)
+                                for k in ("free_message", "has_reply", "has_outgoing")
+                            )
+                        ):
+                            from .recruiter_browser import RecruiterBrowser
+
+                            recruiter = RecruiterBrowser(
+                                browser.page, outreach.session, outreach.navigator
+                            )
+                            status = await recruiter.status()
+                            if (
+                                status["contract"] != p["recruiter"]["contract"]
+                                or not status["manual_texts"]
+                            ):
+                                raise RuntimeError(
+                                    "Изменилось подключение Recruiter. Проверьте контракт и настройки текстов."
+                                )
+                            observed = await recruiter.observe(p["url"], p["recruiter"])
+                            # The composer reflects this recipient's actual channel
+                            # and available balance; the contract pool may differ.
+                            result.update(observed)
+                            if observed.get("recruiter_has_history"):
+                                result["has_outgoing"] = True
                     elif action == "invite":
                         result = await outreach.invite(p["url"], p.get("note", ""))
                     elif action == "check_reply":
+                        if p.get("recruiter") or (p.get("thread_id") or "").startswith(
+                            "recruiter:"
+                        ):
+                            from .recruiter_browser import RecruiterBrowser
 
-                        async def open_conversation(arguments):
-                            return await call("get_conversation", arguments)
+                            if not p.get("recruiter"):
+                                raise RuntimeError(
+                                    "Не сохранён контракт переписки Recruiter."
+                                )
+                            result = await RecruiterBrowser(
+                                browser.page, outreach.session, outreach.navigator
+                            ).check_reply(
+                                p["url"],
+                                p.get("thread_id"),
+                                p["recruiter"],
+                                p.get("message", ""),
+                                p.get("subject", ""),
+                            )
+                        else:
 
-                        result = await outreach.check_reply(
-                            p["url"], p.get("thread_id"), open_conversation
-                        )
+                            async def open_conversation(arguments):
+                                return await call("get_conversation", arguments)
+
+                            result = await outreach.check_reply(
+                                p["url"], p.get("thread_id"), open_conversation
+                            )
                     else:
-                        result = await outreach.send(
-                            p["url"],
-                            p["message"],
-                            p.get("subject") if action == "send_inmail" else None,
-                        )
+                        if action == "send_inmail" and p.get("recruiter"):
+                            from .recruiter_browser import RecruiterBrowser
+
+                            recruiter = RecruiterBrowser(
+                                browser.page, outreach.session, outreach.navigator
+                            )
+                            result = await recruiter.send(
+                                p["url"],
+                                p["message"],
+                                p["subject"],
+                                p["recruiter"],
+                                p["credit_cost"],
+                            )
+                        else:
+                            result = await outreach.send(
+                                p["url"],
+                                p["message"],
+                                p.get("subject") if action == "send_inmail" else None,
+                            )
                 elif action == "send":
                     result, _ = await call(
                         "send_message",
