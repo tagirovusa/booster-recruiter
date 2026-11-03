@@ -114,3 +114,76 @@ async def test_browser_outreach_never_retries_unknown_invitation(monkeypatch):
     result = await outreach.invite("https://www.linkedin.com/in/recipient", "")
     assert result["invited"] is False and result["retry_safe"] is False
     call.assert_awaited_once()
+
+
+@pytest.mark.parametrize("case", ["empty", "reply", "wrong_thread", "reader_error"])
+async def test_compose_history_falls_back_to_exact_conversation(monkeypatch, case):
+    from booster_recruiter.outreach_browser import COMPOSER_JS, THREAD_JS
+
+    compose = "https://www.linkedin.com/messaging/compose/?recipient=ACoATest"
+    page = SimpleNamespace(url=compose, wait_for_selector=AsyncMock())
+    reader = AsyncMock()
+    if case == "reader_error":
+        reader.side_effect = RuntimeError("Conversation could not be verified")
+    outreach = BrowserOutreach(page, read_conversation=reader)
+    outreach.navigator = SimpleNamespace(_navigate_to_page=AsyncMock())
+    outreach.session = SimpleNamespace(check_rate_limit=AsyncMock())
+    target = SimpleNamespace(
+        profile_path="/in/recipient", profile_urn="ACoATest", compose_url=compose
+    )
+    outreach.sender._read_profile_message_target = AsyncMock(
+        return_value=SimpleNamespace(target=target)
+    )
+    outreach.sender._wait_for_message_composer = AsyncMock(return_value=True)
+    outreach.sender._read_message_composer_state = AsyncMock(
+        return_value={"status": "valid", "empty": True}
+    )
+    thread_reads = 0
+
+    async def inspect(script, *args):
+        nonlocal thread_reads
+        if script == PROFILE_CONTACT_JS:
+            return {
+                "identity_verified": True,
+                "relationship": "connected",
+                "can_invite": False,
+            }
+        if script == COMPOSER_JS:
+            return {"free": True, "paid": False, "credits": None}
+        if script == THREAD_JS:
+            thread_reads += 1
+            if thread_reads == 2 and case == "reply":
+                return {
+                    "verified": True,
+                    "has_reply": True,
+                    "has_outgoing": True,
+                    "reply_text": "Approved test reply",
+                }
+            return {"verified": False}
+        return case == "empty"
+
+    outreach.session.run_on_linkedin = inspect
+    monkeypatch.setattr(
+        "booster_recruiter.outreach_browser.InviteOnly._read_action_signals",
+        AsyncMock(return_value=SimpleNamespace(has_incoming_action_row=False)),
+    )
+    if case == "reader_error":
+        with pytest.raises(RuntimeError):
+            await outreach.observe(
+                "https://www.linkedin.com/in/recipient", check_history=True
+            )
+    else:
+        result = await outreach.observe(
+            "https://www.linkedin.com/in/recipient", check_history=True
+        )
+        assert result["history_verified"] is (case in ["empty", "reply"])
+        assert result["free_message"] is (case in ["empty", "reply"])
+        assert bool(result.get("has_reply")) is (case == "reply")
+        if case == "reply":
+            assert result["reply_text"] == "Approved test reply"
+    if case == "empty":
+        reader.assert_not_awaited()
+    else:
+        reader.assert_awaited_once_with(
+            {"linkedin_username": "https://www.linkedin.com/in/recipient"}
+        )
