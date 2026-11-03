@@ -1,0 +1,23 @@
+[project]
+name = "booster-recruiter"
+version = "0.1.1"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "booster-linkedin-runtime", "uvicorn>=0.30", "openpyxl>=3.1.5",
+  "pillow>=11", "numpy>=2", "rapidocr-onnxruntime==1.4.4", "platformdirs>=4", "filelock>=3"
+]
+[tool.uv.sources]
+booster-linkedin-runtime = { path = "vendor/booster-linkedin" }
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["backend"]
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=1", "httpx>=0.28", "pyinstaller>=6.22", "ruff>=0.17"]
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

@@ -1,0 +1,614 @@
+[
+  {
+    "name": "uvicorn",
+    "version": "0.54.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "watchfiles",
+    "version": "1.3.0",
+    "license": "MIT",
+    "homepage": "https://github.com/samuelcolvin/watchfiles"
+  },
+  {
+    "name": "setuptools",
+    "version": "84.2.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "pydantic",
+    "version": "2.14.2",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "pyinstaller-hooks-contrib",
+    "version": "2026.9",
+    "license": "",
+    "homepage": "https://github.com/pyinstaller/pyinstaller-hooks-contrib"
+  },
+  {
+    "name": "uncalled-for",
+    "version": "0.4.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "exceptiongroup",
+    "version": "1.3.1",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "starlette",
+    "version": "1.10.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "greenlet",
+    "version": "3.5.6",
+    "license": "MIT AND PSF-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "click",
+    "version": "8.5.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.1.0",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "packaging",
+    "version": "26.3",
+    "license": "Apache-2.0 OR BSD-2-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "protobuf",
+    "version": "7.36.2",
+    "license": "3-Clause BSD License",
+    "homepage": "https://developers.google.com/protocol-buffers/"
+  },
+  {
+    "name": "platformdirs",
+    "version": "4.14.3",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "altgraph",
+    "version": "0.17.5",
+    "license": "MIT",
+    "homepage": "https://altgraph.readthedocs.io"
+  },
+  {
+    "name": "websockets",
+    "version": "17.4",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "Pygments",
+    "version": "2.21.0",
+    "license": "BSD-2-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "jsonschema-specifications",
+    "version": "2025.9.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "editor",
+    "version": "2.0.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "jinxed",
+    "version": "2.1.0",
+    "license": "MPLv2.0",
+    "homepage": "https://github.com/Rockhopper-Technologies/jinxed"
+  },
+  {
+    "name": "joserfc",
+    "version": "1.8.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "rich",
+    "version": "15.0.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "rich-rst",
+    "version": "2.2.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "openpyxl",
+    "version": "3.1.5",
+    "license": "MIT",
+    "homepage": "https://openpyxl.readthedocs.io"
+  },
+  {
+    "name": "certifi",
+    "version": "2026.10.23",
+    "license": "MPL-2.0",
+    "homepage": "https://github.com/certifi/python-certifi"
+  },
+  {
+    "name": "ruff",
+    "version": "0.17.3",
+    "license": "MIT",
+    "homepage": "https://docs.astral.sh/ruff"
+  },
+  {
+    "name": "jsonschema",
+    "version": "4.26.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "PyJWT",
+    "version": "2.15.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "et_xmlfile",
+    "version": "2.0.0",
+    "license": "MIT",
+    "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile"
+  },
+  {
+    "name": "wcwidth",
+    "version": "0.9.4",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "fastmcp-slim",
+    "version": "4.1.6",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "onnxruntime",
+    "version": "1.31.1",
+    "license": "MIT License",
+    "homepage": "https://onnxruntime.ai"
+  },
+  {
+    "name": "pydantic_core",
+    "version": "2.50.2",
+    "license": "MIT",
+    "homepage": "https://github.com/pydantic/pydantic"
+  },
+  {
+    "name": "docstring_parser",
+    "version": "0.18.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "aiofile",
+    "version": "3.12.3",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "iniconfig",
+    "version": "2.3.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "blessed",
+    "version": "1.52.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "email-validator",
+    "version": "2.3.0",
+    "license": "Unlicense",
+    "homepage": "https://github.com/JoshData/python-email-validator"
+  },
+  {
+    "name": "httpcore",
+    "version": "1.0.9",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "numpy",
+    "version": "2.5.4",
+    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+    "homepage": ""
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.2",
+    "license": "Apache-2.0 OR BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "py-key-value-aio",
+    "version": "0.4.6",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "pycparser",
+    "version": "3.12",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "pillow",
+    "version": "13.0.0",
+    "license": "MIT-CMU",
+    "homepage": ""
+  },
+  {
+    "name": "mcp-types",
+    "version": "2.3.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "pydantic-settings",
+    "version": "2.16.2",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "runs",
+    "version": "1.3.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "pluggy",
+    "version": "1.7.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "opentelemetry-api",
+    "version": "1.45.2",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "tqdm",
+    "version": "4.70.1",
+    "license": "MPL-2.0 AND MIT",
+    "homepage": ""
+  },
+  {
+    "name": "rapidocr-onnxruntime",
+    "version": "1.4.4",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/RapidAI/RapidOCR"
+  },
+  {
+    "name": "h11",
+    "version": "0.16.0",
+    "license": "MIT",
+    "homepage": "https://github.com/python-hyper/h11"
+  },
+  {
+    "name": "pyinstaller",
+    "version": "6.22.3",
+    "license": "GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)",
+    "homepage": ""
+  },
+  {
+    "name": "patchright",
+    "version": "1.64.4",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "mdurl",
+    "version": "0.1.2",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "fastmcp",
+    "version": "4.1.6",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "PyYAML",
+    "version": "6.0.3",
+    "license": "MIT",
+    "homepage": "https://pyyaml.org/"
+  },
+  {
+    "name": "pyee",
+    "version": "14.0.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "macholib",
+    "version": "1.16.4",
+    "license": "MIT",
+    "homepage": "http://github.com/ronaldoussoren/macholib"
+  },
+  {
+    "name": "griffelib",
+    "version": "2.4.1",
+    "license": "ISC",
+    "homepage": ""
+  },
+  {
+    "name": "dnspython",
+    "version": "2.9.1",
+    "license": "ISC",
+    "homepage": ""
+  },
+  {
+    "name": "httpcore2",
+    "version": "2.16.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "jsonref",
+    "version": "1.1.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "jsonschema-path",
+    "version": "0.5.0",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "opencv-python",
+    "version": "5.0.0.93",
+    "license": "Apache 2.0",
+    "homepage": "https://github.com/opencv/opencv-python"
+  },
+  {
+    "name": "cachetools",
+    "version": "7.2.8",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "truststore",
+    "version": "0.10.5",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "sse-starlette",
+    "version": "3.6.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-linkedin-runtime",
+    "version": "4.29.0",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "license": "MIT-0",
+    "homepage": ""
+  },
+  {
+    "name": "httpx2",
+    "version": "2.16.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "cyclopts",
+    "version": "5.3.3",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "shapely",
+    "version": "2.2.0",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "pytest",
+    "version": "9.2.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "annotated-types",
+    "version": "0.8.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "xmod",
+    "version": "1.10.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "referencing",
+    "version": "0.37.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "markdown-it-py",
+    "version": "4.2.0",
+    "license": "",
+    "homepage": ""
+  },
+  {
+    "name": "pyperclip",
+    "version": "1.11.0",
+    "license": "BSD",
+    "homepage": ""
+  },
+  {
+    "name": "pyclipper",
+    "version": "1.4.0",
+    "license": "MIT",
+    "homepage": "https://github.com/fonttools/pyclipper"
+  },
+  {
+    "name": "typing-inspection",
+    "version": "0.4.4",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "rpds-py",
+    "version": "2026.9.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "flatbuffers",
+    "version": "25.12.19",
+    "license": "Apache 2.0",
+    "homepage": "https://google.github.io/flatbuffers/"
+  },
+  {
+    "name": "openapi-pydantic",
+    "version": "0.6.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "anyio",
+    "version": "4.16.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "attrs",
+    "version": "26.1.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "readchar",
+    "version": "4.2.2",
+    "license": "MIT Licence\n\nCopyright (c) 2022 Miguel Angel Garcia\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicence, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+    "homepage": ""
+  },
+  {
+    "name": "filelock",
+    "version": "4.2.7",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "python-multipart",
+    "version": "0.0.33",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "httpx",
+    "version": "0.28.1",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "typing_extensions",
+    "version": "4.16.0",
+    "license": "PSF-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "inquirer",
+    "version": "3.4.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "mcp",
+    "version": "2.3.0",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "caio",
+    "version": "0.12.10",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "pathable",
+    "version": "0.6.0",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "pytest-asyncio",
+    "version": "1.4.1.post1",
+    "license": "Apache-2.0",
+    "homepage": ""
+  },
+  {
+    "name": "six",
+    "version": "1.17.0",
+    "license": "MIT",
+    "homepage": "https://github.com/benjaminp/six"
+  },
+  {
+    "name": "Authlib",
+    "version": "1.9.3",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "beartype",
+    "version": "0.23.1",
+    "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "idna",
+    "version": "3.20",
+    "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.1.0",
+    "license": "",
+    "homepage": ""
+  }
+]

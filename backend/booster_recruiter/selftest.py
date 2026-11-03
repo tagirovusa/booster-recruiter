@@ -1,0 +1,108 @@
+"""Offline installation check. It never connects to LinkedIn."""
+
+import asyncio
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+def bundled_browsers():
+    root = (
+        Path(sys.executable).parent.parent
+        if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parents[2] / "runtime"
+    )
+    folder = root / "browser"
+    if folder.is_dir():
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(folder))
+    return folder
+
+
+async def check():
+    from fastmcp import Client
+    from booster_linkedin.process_tree import (
+        release_browser_guardian,
+        release_nonce,
+        start_browser_guardian,
+        windows_gate_command,
+    )
+    from booster_linkedin.server import create_mcp_server
+    from patchright.async_api import async_playwright
+    from PIL import Image
+
+    from .ocr import detect
+    from .worker import PROFILE_JS, SEARCH_JS
+
+    bundled_browsers()
+    # Exercise the actual helper subprocess commands, not only raw Chromium.
+    # This fails on the 0.1.0 frozen binary before any browser is opened.
+    with tempfile.TemporaryFile() as lease:
+        start_browser_guardian(lease.fileno())
+        release_browser_guardian()
+    nonce = release_nonce()
+    target = [sys.executable, "--help"]
+    gate = subprocess.run(
+        windows_gate_command(target, nonce),
+        input=f"release {nonce}\n".encode(),
+        capture_output=True,
+        timeout=30,
+    )
+    assert gate.returncode == 0 and gate.stdout, gate.stderr.decode(errors="replace")
+    # Also exercises dynamic MCP imports in the frozen application.
+    async with Client(create_mcp_server()) as client:
+        names = {tool.name for tool in await client.list_tools()}
+        assert {"get_my_profile", "get_person_profile", "send_message"} <= names
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(channel="chromium", headless=True)
+        try:
+            page = await browser.new_page()
+            await page.route("**/*", lambda route: route.abort())
+            await page.set_content("""<main><section><h1>Test Recruiter</h1>
+                <p>Recruitment Manager</p><a href="https://www.linkedin.com/company/example">Example</a>
+                <a href="https://www.linkedin.com/in/test-candidate/">Candidate</a></section>
+                <aside><a href="https://www.linkedin.com/in/unrelated/">Unrelated</a></aside></main>""")
+            person = await page.evaluate(PROFILE_JS)
+            links = await page.evaluate(SEARCH_JS)
+            assert (
+                person["name"] == "Test Recruiter"
+                and person["headline"] == "Recruitment Manager"
+            )
+            assert len(links) == 1 and links[0]["url"].endswith("test-candidate")
+        finally:
+            await browser.close()
+    png = io.BytesIO()
+    Image.new("RGB", (128, 128), "green").save(png, format="PNG")
+    assert detect(png.getvalue())["status"] == "unknown"
+    return {
+        "ok": True,
+        "browser": "bundled Chromium",
+        "ocr": "offline",
+        "mcp_tools": len(names),
+        "process_helpers": "verified",
+        "linkedin_accessed": False,
+    }
+
+
+def run():
+    # Avoid writing vendor lifecycle state into a real account's directory.
+    from booster_linkedin.config import set_config
+    from booster_linkedin.config.loaders import load_config
+    from booster_linkedin.profile_claim import ensure_profile_claim
+
+    with tempfile.TemporaryDirectory(prefix="booster-check-") as folder:
+        ensure_profile_claim(Path(folder) / "profile", claim_anyway=False)
+        set_config(
+            load_config(
+                [
+                    "--no-daemon",
+                    "--user-data-dir",
+                    str(Path(folder) / "profile"),
+                    "--no-auto-import",
+                ]
+            )
+        )
+        print(json.dumps(asyncio.run(check())), flush=True)

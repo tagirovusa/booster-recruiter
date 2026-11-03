@@ -1,0 +1,1 @@
+License notices for Booster Recruiter. The Business Booster LinkedIn runtime is authored by Daniil Tagirov and licensed under Apache-2.0; see the included LICENSE and NOTICE. Dependency licenses are retained alongside their components. Business Booster brand assets were supplied by the project owner.

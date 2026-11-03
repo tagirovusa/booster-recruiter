@@ -1,0 +1,75 @@
+{
+  "name": "booster-recruiter",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Business Booster recruiting workspace",
+  "author": "Business Booster",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "desktop": "electron .",
+    "test:ui": "node scripts/ui_smoke.cjs",
+    "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
+    "package:win": "npm run build && electron-builder --win nsis --publish never"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "prettier": "^3.9.10",
+    "vite": "8.3.5"
+  },
+  "build": {
+    "appId": "io.bbooster.recruiter",
+    "productName": "Booster Recruiter",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "desktop/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "icon": "resources/icon.icns",
+      "artifactName": "Booster-Recruiter-${version}-macOS-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.ico",
+      "artifactName": "Booster-Recruiter-${version}-Windows-${arch}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "electronDist": "node_modules/electron/dist",
+    "afterPack": "scripts/after_pack.cjs"
+  }
+}

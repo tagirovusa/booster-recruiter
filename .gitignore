@@ -1,0 +1,16 @@
+node_modules/
+.venv/
+dist/
+release/
+runtime/
+build/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+test-results/
+playwright-report/
+.DS_Store
+.build-tools/
+build-logs/
+.ruff_cache/
