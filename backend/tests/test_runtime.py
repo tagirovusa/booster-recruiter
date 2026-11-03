@@ -78,6 +78,23 @@ async def test_lost_send_reply_is_not_retried(scenario):
     assert len(FakeWorker.sent) == 1
 
 
+async def test_contact_read_timeout_pauses_with_explanation_and_never_sends(scenario):
+    store, _, _, campaign = scenario
+
+    class StalledReader(FakeWorker):
+        async def call(self, action, params=None):
+            if action == "observe":
+                raise TimeoutError()
+            return await super().call(action, params)
+
+    runtime = Runtime(store, StalledReader)
+    await runtime.outreach.check(campaign["id"])
+    state = store.campaign(campaign["id"])
+    assert state["status"] == "paused"
+    assert "не ответил вовремя" in state["progress"]
+    assert not FakeWorker.sent
+
+
 async def test_only_frozen_exact_text_is_sent(scenario, monkeypatch):
     store, runtime, p, c = scenario
 
@@ -197,3 +214,46 @@ def test_accounts_get_distinct_claimed_auth_roots_before_logs(tmp_path):
     )
     assert a.root.parent == b.root.parent
     assert not (a.root / "worker.log").exists()
+
+
+async def test_manual_profile_review_verifies_sender_before_opening(tmp_path):
+    store = Store(tmp_path)
+    a, _, _ = prepared(store)
+    calls = []
+
+    class OpenWorker(FakeWorker):
+        identity = "https://www.linkedin.com/in/recruiter"
+
+        async def call(self, action, p=None):
+            calls.append(action)
+            if action == "open_profile":
+                return {"opened": True, "url": p["url"]}
+            return await super().call(action, p)
+
+    runtime = Runtime(store, OpenWorker)
+    try:
+        result = await runtime.open_profile(a["id"], "alice-example")
+        assert result["opened"] is True
+        assert calls == ["login", "open_profile"]
+        OpenWorker.identity = "https://www.linkedin.com/in/wrong-sender"
+        with pytest.raises(Exception, match="изменился"):
+            await runtime.open_profile(a["id"], "alice-example")
+        assert calls == ["login", "open_profile", "login"]
+    finally:
+        store.db.close()
+
+
+async def test_manual_review_does_not_interrupt_active_browser(tmp_path):
+    from booster_recruiter.store import AppError
+
+    store = Store(tmp_path)
+    a, _, _ = prepared(store)
+    runtime = Runtime(store, FakeWorker)
+    await runtime.browser_lock.acquire()
+    try:
+        with pytest.raises(AppError, match="Браузер занят"):
+            await runtime.open_profile(a["id"], "alice-example")
+        assert not runtime.workers
+    finally:
+        runtime.browser_lock.release()
+        store.db.close()

@@ -37,6 +37,7 @@ async def check():
 
     from .identity import IdentityResolutionError, resolve_own_profile
     from .ocr import detect
+    from .outreach_browser_check import check_outreach_browser
     from .send_confirmation_check import check_send_confirmation
     from .worker import PROFILE_JS, SEARCH_JS
 
@@ -112,6 +113,7 @@ async def check():
             else:
                 raise AssertionError("Unresolved alias accepted as an account identity")
             send_cases = await check_send_confirmation(page)
+            outreach_cases = await check_outreach_browser(page)
         finally:
             await browser.close()
     png = io.BytesIO()
@@ -125,6 +127,7 @@ async def check():
         "process_helpers": "verified",
         "own_profile_identity": "redirect, canonical and unresolved alias verified offline",
         "send_confirmation_dom_cases": send_cases,
+        "outreach_dom_cases": outreach_cases,
         "linkedin_accessed": False,
     }
 

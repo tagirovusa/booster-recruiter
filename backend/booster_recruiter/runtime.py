@@ -58,7 +58,10 @@ class Worker:
             await self.process.stdin.drain()
             try:
                 line = await asyncio.wait_for(
-                    self.process.stdout.readline(), timeout=300
+                    self.process.stdout.readline(),
+                    timeout=90
+                    if action in {"observe", "check_reply", "open_profile"}
+                    else 300,
                 )
             except (TimeoutError, asyncio.CancelledError):
                 await self.stop()
@@ -70,8 +73,10 @@ class Worker:
             data = json.loads(line)
             if data.get("id") != self.serial:
                 raise AppError("Нарушена последовательность операций браузера.")
-            if data.get("error"):
-                raise AppError(data["error"])
+            if "error" in data:
+                raise AppError(
+                    data["error"] or "Браузер LinkedIn не завершил операцию."
+                )
             return data["result"]
 
     async def stop(self):
@@ -118,6 +123,9 @@ class Runtime:
         # A single active browser action across the application also avoids
         # racing a manual account login with a campaign send.
         self.browser_lock = asyncio.Lock()
+        from .outreach_runtime import OutreachRuntime
+
+        self.outreach = OutreachRuntime(self)
 
     def worker(self, aid):
         self.store.account(aid)
@@ -156,6 +164,8 @@ class Runtime:
 
     @staticmethod
     def friendly(exc):
+        if isinstance(exc, TimeoutError):
+            return "LinkedIn не ответил вовремя. Обработка приостановлена. Проверьте страницу в браузере и повторно подключите аккаунт."
         text = str(exc)
         if "alias for the signed-in member" in text:
             from .identity import UNRESOLVED_IDENTITY
@@ -237,6 +247,16 @@ class Runtime:
         except Exception as exc:
             self.store.progress(cid, "paused", self.friendly(exc))
             self.store.event("collection_stopped", f"{cid}: {self.friendly(exc)}")
+
+    async def open_profile(self, aid, url):
+        url = canonical(url)
+        if self.browser_lock.locked():
+            raise AppError(
+                "Браузер занят. Приостановите обработку и дождитесь завершения текущего действия."
+            )
+        async with self.browser_lock:
+            await self.verify(aid)
+            return await self.worker(aid).call("open_profile", {"url": url})
 
     async def send_batch(self, bid):
         batch = self.store.one("SELECT * FROM batches WHERE id=?", (bid,))
@@ -331,6 +351,7 @@ class Runtime:
             self.store.progress(cid, "paused", self.friendly(exc))
 
     async def close(self):
+        await self.outreach.stop()
         self.pause_flags.update(self.jobs)
         for task in self.jobs.values():
             if not task.done():

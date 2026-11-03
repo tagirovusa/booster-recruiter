@@ -177,6 +177,50 @@ async def serve(profile: Path):
                         photo_frame=frame["photo_frame"],
                     )
                     result = person
+                elif action in (
+                    "observe",
+                    "invite",
+                    "send_free",
+                    "send_inmail",
+                    "check_reply",
+                    "open_profile",
+                ):
+                    from .outreach_browser import BrowserOutreach
+
+                    await get_ready_extractor(None, tool_name="get_person_profile")
+                    await asyncio.sleep(max(0, 7 - (time.monotonic() - last)))
+                    last = time.monotonic()
+                    browser = await get_or_create_browser()
+
+                    async def read_profile(username):
+                        data, _ = await call(
+                            "get_person_profile", {"linkedin_username": username}
+                        )
+                        return data
+
+                    outreach = BrowserOutreach(browser.page, read_profile)
+                    if action == "open_profile":
+                        result = await outreach.open_profile(p["url"])
+                    elif action == "observe":
+                        result = await outreach.observe(
+                            p["url"], p.get("check_history", False)
+                        )
+                    elif action == "invite":
+                        result = await outreach.invite(p["url"], p.get("note", ""))
+                    elif action == "check_reply":
+
+                        async def open_conversation(arguments):
+                            return await call("get_conversation", arguments)
+
+                        result = await outreach.check_reply(
+                            p["url"], p.get("thread_id"), open_conversation
+                        )
+                    else:
+                        result = await outreach.send(
+                            p["url"],
+                            p["message"],
+                            p.get("subject") if action == "send_inmail" else None,
+                        )
                 elif action == "send":
                     result, _ = await call(
                         "send_message",
@@ -197,7 +241,12 @@ async def serve(profile: Path):
                     raise ValueError("Unknown worker command")
                 payload = {"id": request["id"], "result": result}
             except Exception as exc:
-                payload = {"id": request["id"], "error": str(exc)[:1800]}
+                payload = {
+                    "id": request["id"],
+                    "error": (str(exc) or "Браузер LinkedIn не завершил операцию.")[
+                        :1800
+                    ],
+                }
             sys.__stdout__.write(json.dumps(payload, ensure_ascii=False) + "\n")
             sys.__stdout__.flush()
             if action == "close":

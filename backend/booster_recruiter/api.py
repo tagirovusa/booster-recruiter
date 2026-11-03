@@ -44,6 +44,8 @@ def create_app(store, runtime, token):
                 store.account(p["id"])
                 runtime.spawn("login:" + p["id"], runtime.login(p["id"]))
                 result = {"started": True}
+            elif op == "account.open_profile":
+                result = await runtime.open_profile(p["id"], p["url"])
             elif op == "account.disconnect":
                 aid = p["id"]
                 store.account(aid)
@@ -65,7 +67,42 @@ def create_app(store, runtime, token):
             elif op == "campaign.pause":
                 store.campaign(p["id"])
                 runtime.pause_flags.add(p["id"])
+                for run in store.outreach.detail(p["id"])["runs"]:
+                    if run["status"] == "active":
+                        store.outreach.status(
+                            run["id"], "paused", "Приостановлено пользователем."
+                        )
                 result = {"pause_requested": True}
+            elif op == "campaign.automation":
+                result = store.outreach.configure(p["id"], p["rules"])
+            elif op == "campaign.check":
+                runtime.start_campaign(
+                    p["id"], runtime.outreach.check(p["id"]), "checking"
+                )
+                result = {"started": True}
+            elif op == "outreach.preview":
+                result = store.outreach.preview(p["id"])
+            elif op == "outreach.approve":
+                run = store.outreach.approve(p["id"], p["digest"])
+                runtime.start_campaign(
+                    run["campaign_id"],
+                    runtime.outreach.process(run["id"]),
+                    "automating",
+                )
+                result = {"started": True}
+            elif op == "outreach.resume":
+                run = store.outreach.run(p["id"])
+                store.ensure_idle(run["campaign_id"])
+                store.outreach.status(run["id"], "active")
+                runtime.start_campaign(
+                    run["campaign_id"],
+                    runtime.outreach.process(run["id"]),
+                    "automating",
+                )
+                result = {"started": True}
+            elif op == "outreach.resolve":
+                store.outreach.resolve(p["id"], p["confirmed"])
+                result = {"saved": True}
             elif op == "campaign.templates":
                 store.templates(p["id"], p["template_open"], p["template_neutral"])
                 result = {"saved": True}
@@ -153,6 +190,7 @@ def create_app(store, runtime, token):
 
     @asynccontextmanager
     async def lifespan(app):
+        runtime.outreach.start()
         yield
         await runtime.close()
         store.db.close()

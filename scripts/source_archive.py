@@ -1,10 +1,14 @@
 """Produce a source-only handoff; never traverse browser sessions or build outputs."""
 import hashlib
+import argparse
 import zipfile
 from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
-target=root.parent/'Booster-Recruiter-Windows-build-kit.zip'
+parser=argparse.ArgumentParser()
+parser.add_argument('--output',type=Path)
+args=parser.parse_args()
+target=args.output or root.parent/'Booster-Recruiter-Windows-build-kit.zip'
 include=['backend','desktop','src','public','resources','licenses','scripts','docs','vendor','.github']
 files=['README.md','BUILD-WINDOWS.cmd','package.json','package-lock.json','pyproject.toml','uv.lock','index.html','.gitignore']
 excluded={'__pycache__','.pytest_cache','.ruff_cache','node_modules','.venv','build','release','runtime'}

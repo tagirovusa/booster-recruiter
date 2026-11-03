@@ -26,6 +26,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 import "./style.css";
+import {
+  Automation,
+  ContactState,
+  OutreachHistory,
+  DesktopPreferences,
+} from "./Outreach";
 
 const api = window.booster;
 const labels = {
@@ -49,6 +55,9 @@ const labels = {
   pending: "В очереди",
   replied: "Ответ получен",
   failed: "Ошибка",
+  waiting: "Ожидаем расписания",
+  automating: "Обрабатываем кампанию",
+  checking: "Проверяем контакты",
 };
 const fmt = (d) =>
   new Date(d).toLocaleString("ru-RU", {
@@ -196,8 +205,24 @@ function App() {
         ),
     ) || [];
   const campaign = detail?.campaign;
-  const active = ["collecting", "sending"].includes(campaign?.status);
+  const active = ["collecting", "sending", "automating", "checking"].includes(
+    campaign?.status,
+  );
+  const liveRun = detail?.outreach?.runs.find((r) => r.status === "active");
+  const contactMembers = new Map();
+  for (const r of (detail?.outreach?.runs || [])
+    .filter((r) => r.status !== "preview")
+    .slice()
+    .reverse()) {
+    for (const m of r.members) contactMembers.set(m.candidate_id, m);
+  }
   const account = state.accounts.find((a) => a.id === campaign?.account_id);
+  const openInSenderAccount = (url) =>
+    act(
+      "account.open_profile",
+      { id: campaign.account_id, url },
+      "Профиль открыт в сессии отправителя.",
+    );
   const openCampaign = (id) => {
     setCid(id);
     setDetail(null);
@@ -230,7 +255,7 @@ function App() {
     return result;
   };
   const showPreview = async () => {
-    const result = await act("campaign.preview", { id: cid });
+    const result = await act("outreach.preview", { id: cid });
     if (result) setPreview(result);
   };
   const people = (detail?.candidates || []).filter(
@@ -425,6 +450,7 @@ function App() {
                   <p>Основные функции работают без подключения ИИ.</p>
                 </div>
               </div>
+              <DesktopPreferences />
               <section className="panel settings">
                 <h2>Как начать работу</h2>
                 <ol>
@@ -597,7 +623,7 @@ function App() {
                     <Download size={17} />
                     Excel
                   </Button>
-                  {active ? (
+                  {active || liveRun ? (
                     <Button
                       onClick={() =>
                         act(
@@ -662,6 +688,7 @@ function App() {
                 {[
                   ["people", "Кандидаты", Users],
                   ["messages", "Шаблоны сообщений", MessageSquare],
+                  ["automation", "Автоматизация", Settings],
                   ["history", "История", Inbox],
                 ].map(([id, name, Icon]) => (
                   <button
@@ -690,8 +717,32 @@ function App() {
                     )
                   }
                 />
+              ) : tab === "automation" ? (
+                <Automation
+                  data={detail.outreach}
+                  disabled={active || busy}
+                  onSave={(rules) =>
+                    act(
+                      "campaign.automation",
+                      { id: cid, rules },
+                      "Правила сохранены. Проверьте план перед запуском.",
+                    )
+                  }
+                  onCheck={() => act("campaign.check", { id: cid })}
+                  onResume={(id) => act("outreach.resume", { id })}
+                  onPause={() => act("campaign.pause", { id: cid })}
+                />
               ) : tab === "history" ? (
                 <div className="panel">
+                  <OutreachHistory
+                    runs={detail.outreach.runs}
+                    disabled={active || busy}
+                    onResolve={(id, confirmed) =>
+                      act("outreach.resolve", { id, confirmed })
+                    }
+                    onResume={(id) => act("outreach.resume", { id })}
+                    onOpen={openInSenderAccount}
+                  />
                   <div className="panel-title">
                     <h2>Результаты сообщений</h2>
                     <Button onClick={() => doExport("csv")}>
@@ -759,7 +810,7 @@ function App() {
                                       это сообщение.
                                     </p>
                                     <Button
-                                      onClick={() => api.openProfile(p.url)}
+                                      onClick={() => openInSenderAccount(p.url)}
                                     >
                                       Открыть LinkedIn
                                     </Button>
@@ -935,6 +986,12 @@ function App() {
                                   <span className="badge blocked">
                                     Не контактировать
                                   </span>
+                                ) : contactMembers.has(p.id) ||
+                                  p.data.contact ? (
+                                  <ContactState
+                                    person={p}
+                                    member={contactMembers.get(p.id)}
+                                  />
                                 ) : p.delivery.length &&
                                   p.delivery[0].status !== "cancelled" ? (
                                   <Badge value={p.delivery[0].status} />
@@ -952,7 +1009,7 @@ function App() {
                                 <button
                                   className="icon"
                                   aria-label="Открыть в LinkedIn"
-                                  onClick={() => api.openProfile(p.url)}
+                                  onClick={() => openInSenderAccount(p.url)}
                                 >
                                   <ExternalLink size={17} />
                                 </button>
@@ -971,8 +1028,8 @@ function App() {
                           : "Профили появятся после поиска"}
                       </h3>
                       <p>
-                        Фотографии с неопределённой рамкой попадут в отдельную
-                        группу проверки.
+                        Профили без подтверждённого Open to Work получат
+                        нейтральное сообщение.
                       </p>
                     </div>
                   )}
@@ -1011,6 +1068,12 @@ function App() {
           onSubmit={async (data) => {
             const c = await act("campaign.create", data);
             if (c) {
+              await act("campaign.automation", {
+                id: c.id,
+                rules: {
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                },
+              });
               setModal(null);
               openCampaign(c.id);
             }
@@ -1040,7 +1103,7 @@ function App() {
                 Отсутствие подтверждения не означает, что человек не ищет
                 работу.
               </p>
-              <Button onClick={() => api.openProfile(person.url)}>
+              <Button onClick={() => openInSenderAccount(person.url)}>
                 <ExternalLink size={16} />
                 Открыть LinkedIn
               </Button>
@@ -1078,16 +1141,46 @@ function App() {
           onClose={() => setPreview(null)}
         >
           <div className="hint">
-            Будут отправлены именно эти тексты от выбранного аккаунта. Если
-            обычное сообщение недоступно, профиль останется в истории с причиной
-            пропуска.
+            Утверждаются эти получатели, тексты и дальнейшие действия по
+            правилам кампании. Приглашения:{" "}
+            {preview.rules.allow_invites ? "разрешены" : "выключены"}. InMail:{" "}
+            {preview.rules.allow_inmail
+              ? `${preview.rules.strategy === "economy" ? "экономный режим" : "быстрый режим"}, не более ${preview.maximum_credits} кредитов`
+              : "выключен"}
+            . Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}:00
+            ({preview.rules.timezone}). После принятия приглашения сообщение
+            отправится автоматически. Любой ответ остановит обращения.
           </div>
           <div className="message-preview">
+            <p>Профиль отправителя: {preview.account.url}</p>
+            <p>
+              Проверка каждые {preview.rules.check_hours} ч. · Наблюдение{" "}
+              {preview.rules.monitor_days} дней.
+              {preview.rules.allow_inmail &&
+                preview.rules.strategy === "economy" &&
+                ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}{" "}
+              Бюджеты попыток на отправителя за сутки UTC:{" "}
+              {preview.rules.daily_invites} приглашений,{" "}
+              {preview.rules.daily_messages} сообщений,{" "}
+              {preview.rules.daily_inmails} InMail.
+            </p>
             {preview.messages.map((m) => (
               <article key={m.id}>
                 <h3>{m.name || m.url}</h3>
                 <p>{m.url}</p>
                 <pre>{m.message}</pre>
+                {preview.rules.allow_invites && (
+                  <>
+                    <b>Если потребуется приглашение</b>
+                    <pre>{m.invitation || "Без заметки"}</pre>
+                  </>
+                )}
+                {preview.rules.allow_inmail && (
+                  <>
+                    <b>InMail · {m.subject}</b>
+                    <pre>{m.inmail_message}</pre>
+                  </>
+                )}
               </article>
             ))}
           </div>
@@ -1103,15 +1196,15 @@ function App() {
               kind="primary"
               disabled={busy}
               onClick={async () => {
-                const r = await act("batch.approve", {
-                  id: preview.batch_id,
+                const r = await act("outreach.approve", {
+                  id: preview.run_id,
                   digest: preview.digest,
                 });
                 if (r) setPreview(null);
               }}
             >
               <Play size={16} />
-              Отправить {preview.messages.length} сообщений
+              Утвердить и запустить кампанию
             </Button>
           </div>
         </Modal>

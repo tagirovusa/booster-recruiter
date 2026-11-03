@@ -6,6 +6,9 @@ const {
   shell,
   protocol,
   net,
+  Tray,
+  Menu,
+  nativeImage,
 } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -21,11 +24,49 @@ protocol.registerSchemesAsPrivileged([
 let win,
   child,
   connection,
+  tray,
   exiting = false;
+let desktopPreferences = { background: false, autoStart: false };
+function preferencesPath() {
+  return path.join(app.getPath("userData"), "desktop-preferences.json");
+}
+function showWindow() {
+  if (win && !win.isDestroyed()) {
+    win.show();
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+}
+function createTray() {
+  const icon = nativeImage
+    .createFromPath(path.join(__dirname, "tray.png"))
+    .resize({ width: 22, height: 22 });
+  tray = new Tray(icon);
+  tray.setToolTip("Booster Recruiter");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Открыть Booster Recruiter", click: showWindow },
+      {
+        label: "Приостановить все кампании",
+        click: async () => {
+          try {
+            const state = await call("state");
+            for (const c of state.campaigns)
+              await call("campaign.pause", { id: c.id });
+          } catch {}
+        },
+      },
+      { type: "separator" },
+      { label: "Завершить работу", click: () => app.quit() },
+    ]),
+  );
+  tray.on("click", showWindow);
+}
 const operations = new Set([
   "state",
   "account.create",
   "account.login",
+  "account.open_profile",
   "account.disconnect",
   "campaign.create",
   "campaign.detail",
@@ -39,6 +80,12 @@ const operations = new Set([
   "batch.resume",
   "delivery.resolve",
   "diagnostics",
+  "campaign.automation",
+  "campaign.check",
+  "outreach.preview",
+  "outreach.approve",
+  "outreach.resume",
+  "outreach.resolve",
 ]);
 const base = path.resolve(__dirname, "..");
 function backend() {
@@ -88,6 +135,13 @@ function trusted(event) {
     throw Error("Недопустимый источник команды.");
 }
 async function start() {
+  try {
+    const p = JSON.parse(fs.readFileSync(preferencesPath(), "utf8"));
+    desktopPreferences = {
+      background: p.background === true,
+      autoStart: p.autoStart === true,
+    };
+  } catch {}
   const { exe, args } = backend();
   const root = process.env.BOOSTER_DATA_DIR || app.getPath("userData");
   const env = { ...process.env };
@@ -175,6 +229,13 @@ async function start() {
     if (!url.startsWith("booster://app/")) event.preventDefault();
   });
   win.once("ready-to-show", () => win.show());
+  win.on("close", (event) => {
+    if (!exiting && desktopPreferences.background) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  createTray();
   await win.loadURL("booster://app/");
   child.on("exit", () => {
     connection = null;
@@ -189,6 +250,33 @@ ipcMain.handle("command", async (event, op, params) => {
   trusted(event);
   if (!operations.has(op)) throw Error("Команда недоступна.");
   return call(op, params);
+});
+ipcMain.handle("desktop-settings", async (event, patch) => {
+  trusted(event);
+  if (patch !== undefined) {
+    if (
+      !patch ||
+      typeof patch !== "object" ||
+      Object.keys(patch).some(
+        (k) =>
+          !["background", "autoStart"].includes(k) ||
+          typeof patch[k] !== "boolean",
+      )
+    )
+      throw Error("Неизвестная настройка приложения.");
+    if ("autoStart" in patch) {
+      if (!app.isPackaged)
+        throw Error("Автозапуск доступен в установленной версии.");
+      app.setLoginItemSettings({ openAtLogin: patch.autoStart });
+    }
+    desktopPreferences = { ...desktopPreferences, ...patch };
+    await fs.promises.writeFile(
+      preferencesPath(),
+      JSON.stringify(desktopPreferences),
+      { mode: 0o600 },
+    );
+  }
+  return { ...desktopPreferences, packaged: app.isPackaged };
 });
 ipcMain.handle("export", async (event, cid, format) => {
   trusted(event);
@@ -242,11 +330,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+    showWindow();
   });
+  app.on("activate", showWindow);
   app
     .whenReady()
     .then(start)

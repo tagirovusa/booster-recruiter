@@ -46,6 +46,7 @@ for package in [
     "rapidocr_onnxruntime",
     "onnxruntime",
     "uvicorn",
+    "tzdata",
 ]:
     command += ["--collect-all", package]
 for distribution in ["booster-linkedin-runtime", "fastmcp", "mcp", "booster-recruiter"]:

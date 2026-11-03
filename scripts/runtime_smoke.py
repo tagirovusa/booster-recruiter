@@ -65,10 +65,63 @@ async def check():
                         "list_workspace" in tools and "resume_approved_batch" in tools
                     )
                     assert not any("approve" == t or "send_message" in t for t in tools)
+                    assert len(tools) == 12
+                    assert {
+                        "configure_outreach",
+                        "check_connections",
+                        "preview_outreach",
+                        "resume_approved_outreach",
+                    } <= tools
                     state = await client.call_tool("list_workspace", {})
                     assert state.structured_content["accounts"] == []
+                    # Exercise real draft mutations over MCP without connecting
+                    # an account or authorizing any LinkedIn action.
+                    seed = urllib.request.Request(
+                        f"http://127.0.0.1:{connection['port']}/command",
+                        data=json.dumps(
+                            {
+                                "op": "account.create",
+                                "params": {"label": "Offline MCP test"},
+                            }
+                        ).encode(),
+                        headers={
+                            "Authorization": "Bearer " + connection["token"],
+                            "Content-Type": "application/json",
+                        },
+                    )
+                    account = json.load(urllib.request.urlopen(seed, timeout=15))[
+                        "result"
+                    ]
+                    draft = await client.call_tool(
+                        "create_campaign",
+                        {
+                            "account_id": account["id"],
+                            "name": "Offline plan",
+                            "keywords": "test",
+                        },
+                    )
+                    cid = draft.structured_content["id"]
+                    settings = await client.call_tool(
+                        "configure_outreach",
+                        {
+                            "campaign_id": cid,
+                            "rules": {
+                                "allow_inmail": False,
+                                "timezone": "Asia/Tbilisi",
+                            },
+                        },
+                    )
+                    assert settings.structured_content["strategy"] == "economy"
+                    detail = await client.call_tool(
+                        "get_campaign", {"campaign_id": cid}
+                    )
+                    assert (
+                        detail.structured_content["outreach"]["rules"]["timezone"]
+                        == "Asia/Tbilisi"
+                    )
+                    assert detail.structured_content["outreach"]["runs"] == []
                 print(
-                    "PASS: frozen executable, local authenticated API, MCP stdio tools and shared workspace; no LinkedIn requests."
+                    "PASS: frozen executable, local authenticated API, 12 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
                 )
             finally:
                 process.terminate()

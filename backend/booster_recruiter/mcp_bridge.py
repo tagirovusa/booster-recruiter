@@ -52,7 +52,17 @@ def run(root: Path):
         max_profiles: int = 20,
     ) -> dict:
         """Create a draft; does not send messages."""
-        return call("campaign.create", locals())
+        return call(
+            "campaign.create",
+            {
+                "account_id": account_id,
+                "name": name,
+                "keywords": keywords,
+                "template_open": template_open,
+                "template_neutral": template_neutral,
+                "max_profiles": max_profiles,
+            },
+        )
 
     @mcp.tool()
     def collect_profiles(campaign_id: str) -> dict:
@@ -87,5 +97,25 @@ def run(root: Path):
     def resume_approved_batch(batch_id: str) -> dict:
         """Resume only an already approved, unchanged queue. Unknown sends stop it."""
         return call("batch.resume", {"id": batch_id})
+
+    @mcp.tool()
+    def configure_outreach(campaign_id: str, rules: dict) -> dict:
+        """Set draft connection/InMail rules. Cancels any old approval; never sends."""
+        return call("campaign.automation", {"id": campaign_id, "rules": rules})
+
+    @mcp.tool()
+    def check_connections(campaign_id: str) -> dict:
+        """Read relationship and message availability. Never invites or sends."""
+        return call("campaign.check", {"id": campaign_id})
+
+    @mcp.tool()
+    def preview_outreach(campaign_id: str) -> dict:
+        """Prepare exact invitation, DM and InMail texts/budget for desktop approval."""
+        return call("outreach.preview", {"id": campaign_id})
+
+    @mcp.tool()
+    def resume_approved_outreach(run_id: str) -> dict:
+        """Resume an unchanged plan already approved in the desktop app."""
+        return call("outreach.resume", {"id": run_id})
 
     mcp.run(transport="stdio")

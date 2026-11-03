@@ -90,6 +90,9 @@ class Store:
                 "UPDATE accounts SET status='needs_login' WHERE status='connecting'"
             )
         self._migrate_neutral_default()
+        from .outreach import OutreachStore
+
+        self.outreach = OutreachStore(self)
 
     def _migrate_neutral_default(self):
         """Move only old automatic review assignments; keep manual decisions."""
@@ -230,6 +233,7 @@ class Store:
             )
         return {
             "campaign": campaign,
+            "outreach": self.outreach.detail(cid),
             "candidates": people,
             "batches": self.rows(
                 "SELECT b.*,(SELECT COUNT(*) FROM deliveries d WHERE d.batch_id=b.id AND d.status='pending') AS pending,(SELECT COUNT(*) FROM deliveries d WHERE d.batch_id=b.id AND d.status='unknown') AS unknown FROM batches b WHERE campaign_id=? ORDER BY created DESC",
@@ -262,10 +266,17 @@ class Store:
             )
 
     def ensure_idle(self, cid):
-        if self.campaign(cid)["status"] in ("collecting", "sending"):
+        if self.campaign(cid)["status"] in (
+            "collecting",
+            "sending",
+            "automating",
+            "checking",
+        ):
             raise AppError("Сначала приостановите обработку кампании.")
 
     def invalidate(self, cid):
+        if hasattr(self, "outreach"):
+            self.outreach.invalidate(cid)
         self.db.execute(
             "UPDATE batches SET status='cancelled' WHERE campaign_id=? AND status IN ('preview','approved')",
             (cid,),
@@ -411,11 +422,13 @@ class Store:
             if not rows:
                 return None
             row = rows[0]
-            if self.rows(
-                "SELECT url FROM suppression WHERE url=?", (row["url"],)
-            ) or self.rows(
-                "SELECT id FROM deliveries WHERE url=? AND id!=? AND status IN ('sending','sent','unknown','replied')",
-                (row["url"], row["id"]),
+            if (
+                self.outreach.blocked(row["url"])
+                or self.rows("SELECT url FROM suppression WHERE url=?", (row["url"],))
+                or self.rows(
+                    "SELECT id FROM deliveries WHERE url=? AND id!=? AND status IN ('sending','sent','unknown','replied')",
+                    (row["url"], row["id"]),
+                )
             ):
                 self.db.execute(
                     "UPDATE deliveries SET status='cancelled',detail='Повторный контакт исключён',updated=? WHERE id=?",
@@ -451,11 +464,21 @@ class Store:
             "Статус сообщения",
             "Текст сообщения",
             "Комментарий",
+            "Состояние контакта",
+            "Приглашение отправлено",
+            "Последняя проверка",
+            "Следующая проверка",
+            "Отправитель",
         ]
+        outreach = {}
+        for run in reversed(data["outreach"]["runs"]):
+            if run["status"] != "preview":
+                outreach.update({m["candidate_id"]: m for m in run["members"]})
         rows = []
         for p in data["candidates"]:
             d = p["data"]
             sent = (p["delivery"] or [{}])[0]
+            contact = outreach.get(p["id"], {})
             rows.append(
                 [
                     d.get("name", ""),
@@ -466,9 +489,15 @@ class Store:
                     p["segment"],
                     d.get("photo_frame", {}).get("status", "unknown"),
                     p["observed"],
-                    sent.get("status", ""),
-                    sent.get("message", ""),
-                    sent.get("detail", ""),
+                    contact.get("status") or sent.get("status", ""),
+                    contact.get("message") or sent.get("message", ""),
+                    contact.get("detail") or sent.get("detail", ""),
+                    contact.get("relationship")
+                    or d.get("contact", {}).get("relationship", "unknown"),
+                    contact.get("invitation_at", ""),
+                    contact.get("checked_at", ""),
+                    contact.get("next_check", ""),
+                    self.account(data["campaign"]["account_id"])["label"],
                 ]
             )
         if fmt == "csv":
@@ -503,8 +532,43 @@ class Store:
         for cell in ws[1]:
             cell.fill = PatternFill("solid", fgColor="FED700")
             cell.font = Font(bold=True)
-        for letter in "ABCDEFGHIJK":
+        for letter in "ABCDEFGHIJKLMNOP":
             ws.column_dimensions[letter].width = 28 if letter != "J" else 70
+        history = wb.create_sheet("История обращений")
+        history.append(
+            ["Профиль", "Канал", "Результат", "Время", "Тема", "Текст", "Причина"]
+        )
+        for run in data["outreach"]["runs"]:
+            members = {m["id"]: m for m in run["members"]}
+            for action in run["actions"]:
+                member = members[action["member_id"]]
+                text = (
+                    member["invitation"]
+                    if action["kind"] == "invite"
+                    else member["inmail_message"]
+                    if action["kind"] == "inmail"
+                    else member["message"]
+                )
+                history.append(
+                    [
+                        action["url"],
+                        action["kind"],
+                        action["status"],
+                        action["created"],
+                        member["subject"] if action["kind"] == "inmail" else "",
+                        text,
+                        action["detail"],
+                    ]
+                )
+                for cell in history[history.max_row]:
+                    cell.data_type = "s"
+        history.freeze_panes = "B2"
+        history.auto_filter.ref = history.dimensions
+        for cell in history[1]:
+            cell.fill = PatternFill("solid", fgColor="FED700")
+            cell.font = Font(bold=True)
+        for letter in "ABCDEFG":
+            history.column_dimensions[letter].width = 60 if letter in "FG" else 30
         out = io.BytesIO()
         wb.save(out)
         return out.getvalue()

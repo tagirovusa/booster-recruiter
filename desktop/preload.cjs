@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld("booster", {
     ipcRenderer.invoke("export", campaignId, format),
   openProfile: (url) => ipcRenderer.invoke("open-profile", url),
   mcpConfig: () => ipcRenderer.invoke("mcp-config"),
+  desktopSettings: (patch) => ipcRenderer.invoke("desktop-settings", patch),
 });

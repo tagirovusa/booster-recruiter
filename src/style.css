@@ -930,3 +930,101 @@ input[type="checkbox"] {
     padding: 18px 16px;
   }
 }
+/* Outreach keeps the supplied Business Booster light dashboard surfaces. */
+.automation-fields {
+  border: 0;
+  padding: 24px;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+}
+.automation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.check-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  cursor: pointer;
+  padding: 12px 0;
+}
+.check-option input {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  accent-color: #151515;
+}
+.check-option small,
+.contact-state small {
+  display: block;
+  color: #424242;
+  margin-top: 5px;
+}
+.contact-state {
+  max-width: 300px;
+}
+.automation-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  background: #fff4b5;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.inmail-settings {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #f8f7f5;
+}
+.outreach-history {
+  margin-bottom: 24px;
+}
+.outreach-run {
+  margin-bottom: 24px;
+}
+.action-record {
+  padding: 16px 0;
+  border-top: 1px solid #e5e5e5;
+}
+.action-record summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.action-record pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.text-link {
+  background: none;
+  border: 0;
+  color: #151515;
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+}
+.badge.waiting_acceptance,
+.badge.waiting_budget,
+.badge.waiting_credits,
+.badge.waiting {
+  background: #fff4b5;
+  color: #765b17;
+}
+.badge.needs_review,
+.badge.unknown {
+  background: #f7e4e4;
+  color: #c63838;
+}
+.badge.replied,
+.badge.sent,
+.badge.connected {
+  background: #e7efe4;
+  color: #2f7d4c;
+}

@@ -1,11 +1,5 @@
 [
   {
-    "name": "booster-recruiter",
-    "version": "0.1.0",
-    "license": "",
-    "homepage": ""
-  },
-  {
     "name": "uvicorn",
     "version": "0.54.0",
     "license": "BSD-3-Clause",
@@ -201,6 +195,12 @@
     "name": "docstring_parser",
     "version": "0.18.0",
     "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.2.0",
+    "license": "",
     "homepage": ""
   },
   {
@@ -474,6 +474,12 @@
     "homepage": ""
   },
   {
+    "name": "tzdata",
+    "version": "2026.6",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/python/tzdata"
+  },
+  {
     "name": "pyperclip",
     "version": "1.11.0",
     "license": "BSD",
@@ -537,12 +543,6 @@
     "name": "python-multipart",
     "version": "0.0.33",
     "license": "Apache-2.0",
-    "homepage": ""
-  },
-  {
-    "name": "booster-recruiter",
-    "version": "0.1.3",
-    "license": "",
     "homepage": ""
   },
   {
