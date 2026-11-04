@@ -1,4 +1,4 @@
-const { _electron: electron, expect } = require("@playwright/test");
+const { _electron: electron, expect } = require("./patchright_test_driver.cjs").loadPatchright();
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

@@ -129,7 +129,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.2.0,<3" },
     { name = "opentelemetry-api", specifier = ">=1.45.1" },
     { name = "packaging", specifier = ">=26.2" },
-    { name = "patchright", specifier = ">=1.55.0" },
+    { name = "patchright", specifier = "==1.64.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=312" },
@@ -139,7 +139,7 @@ requires-dist = [
 
 [[package]]
 name = "booster-recruiter"
-version = "0.2.10"
+version = "0.2.11"
 source = { editable = "." }
 dependencies = [
     { name = "booster-linkedin-runtime" },

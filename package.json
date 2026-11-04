@@ -1,6 +1,6 @@
 {
   "name": "booster-recruiter",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "private": true,
   "description": "Business Booster recruiting workspace",
   "author": "Business Booster",
@@ -9,7 +9,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "desktop": "electron .",
-    "test:ui": "node --test scripts/desktop_preferences_test.cjs scripts/tray_pause_test.cjs && node scripts/ui_validation.cjs && node scripts/ui_smoke.cjs && node scripts/ui_workflow_regression.cjs",
+    "test:ui": "node --test scripts/desktop_preferences_test.cjs scripts/tray_pause_test.cjs scripts/patchright_test_driver_test.cjs && node scripts/ui_validation.cjs && node scripts/ui_smoke.cjs && node scripts/ui_workflow_regression.cjs",
     "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "package:win": "npm run build && electron-builder --win nsis --publish never",
     "test:ui:workflow": "node scripts/ui_workflow_regression.cjs",
@@ -21,11 +21,11 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.0",
     "electron": "45.2.1",
     "electron-builder": "26.18.0",
     "prettier": "^3.9.10",
-    "vite": "8.3.5"
+    "vite": "8.3.5",
+    "patchright": "1.64.3"
   },
   "build": {
     "appId": "io.bbooster.recruiter",

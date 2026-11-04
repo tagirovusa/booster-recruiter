@@ -7,6 +7,56 @@ class LinkedInLimitError(AppError):
     """The platform explicitly refused more actions; no automatic retry."""
 
 
+class LinkedInChallengeError(AppError):
+    """Login or a security challenge requires the account owner's intervention."""
+
+
+class LinkedInAccountRestrictedError(AppError):
+    """LinkedIn explicitly restricted the account, beyond a temporary quota."""
+
+
+async def before_submit_guard(session, pacer=None):
+    if pacer:
+        await pacer.before_submit()
+    # Only explicit platform evidence is a proven pre-click refusal. Transport
+    # failures continue to propagate conservatively, without assuming delivery.
+    return await check_after_browser_action(session, {}, outgoing=True)
+
+
+async def check_after_browser_action(session, result, *, outgoing=False):
+    """Keep confirmed delivery even if a challenge appears immediately after it."""
+    from booster_linkedin.core.exceptions import (
+        AccountRestrictedError,
+        AuthenticationError,
+        RateLimitError,
+    )
+
+    flag, error_type, message = None, None, None
+    try:
+        await session.check_rate_limit()
+    except AccountRestrictedError:
+        flag, error_type = "account_restricted", LinkedInAccountRestrictedError
+        message = "LinkedIn ограничил действия аккаунта. Кампании приостановлены."
+    except AuthenticationError:
+        flag, error_type = "auth_required", LinkedInChallengeError
+        message = "Завершите вход или проверку в окне LinkedIn, затем нажмите «Проверить вход»."
+    except RateLimitError:
+        flag, error_type = "platform_limited", LinkedInLimitError
+        message = (
+            "LinkedIn сообщил о лимите отправки. Кампании аккаунта приостановлены."
+        )
+    if flag:
+        if outgoing:
+            return result | {flag: True, "message": message}
+        raise error_type(message)
+    notice = await read_platform_limit(session)
+    if notice:
+        if outgoing:
+            return result | {"platform_limited": True, "message": notice}
+        raise LinkedInLimitError(notice)
+    return result
+
+
 LIMIT_NOTICE_JS = r"""() => {
  const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
  const patterns=[
