@@ -17,6 +17,8 @@ from booster_linkedin.linkedin.identifiers import (
     person_profile_url,
 )
 
+from .user_errors import is_user_text, shown
+
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -164,6 +166,7 @@ class Store:
             "SELECT data FROM account_services WHERE account_id=?", (aid,)
         )
         account["services"] = json.loads(services[0]["data"]) if services else {}
+        account["error"] = shown(account.get("error"))
         return account
 
     def set_service(self, aid, name, value):
@@ -258,6 +261,17 @@ class Store:
         campaigns = self.rows(
             "SELECT c.*,(SELECT COUNT(*) FROM candidates p WHERE p.campaign_id=c.id) AS count FROM campaigns c ORDER BY created DESC"
         )
+        for c in campaigns:
+            c["progress"] = shown(c.get("progress"))
+        events = self.rows("SELECT * FROM events ORDER BY id DESC LIMIT 30")
+        for e in events:
+            prefix, sep, rest = (e["detail"] or "").partition(": ")
+            if sep and len(prefix) == 32 and not is_user_text(rest):
+                e["detail"] = f"{prefix}: {shown(rest)}"
+            elif not sep or len(prefix) != 32:
+                e["detail"] = shown(
+                    e["detail"], "Служебная запись; подробности сохранены в журнале."
+                )
         deleted = {a["id"] for a in accounts if a["status"] == "deleted"}
         return {
             "accounts": [a for a in accounts if a["id"] not in deleted],
@@ -272,11 +286,12 @@ class Store:
                 for c in campaigns
                 if c["account_id"] in deleted or c["status"] == "archived"
             ],
-            "events": self.rows("SELECT * FROM events ORDER BY id DESC LIMIT 30"),
+            "events": events,
         }
 
     def detail(self, cid):
-        campaign = self.campaign(cid)
+        campaign = dict(self.campaign(cid))
+        campaign["progress"] = shown(campaign.get("progress"))
         people = self.rows(
             "SELECT * FROM candidates WHERE campaign_id=? ORDER BY observed,id", (cid,)
         )

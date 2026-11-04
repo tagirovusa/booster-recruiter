@@ -1,6 +1,7 @@
 """Optional agent access to the running desktop service; no second database."""
 
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -26,10 +27,21 @@ def create_server(root: Path):
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(
-            request, timeout=240 if op == "outreach.preview" else 30
-        ) as response:
-            payload = json.load(response)
+        try:
+            with urllib.request.urlopen(
+                request, timeout=240 if op == "outreach.preview" else 30
+            ) as response:
+                payload = json.load(response)
+        except urllib.error.HTTPError as error:
+            # The service explains refusals in the JSON body of 400/500.
+            try:
+                payload = json.load(error)
+            except ValueError:
+                raise ValueError("Booster Recruiter не выполнил операцию.") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise ValueError(
+                "Booster Recruiter не отвечает. Проверьте, что приложение открыто."
+            ) from None
         if payload.get("error"):
             raise ValueError(payload["error"])
         return payload["result"]

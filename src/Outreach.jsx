@@ -17,6 +17,7 @@ import {
   Monitor,
   Pause,
   Play,
+  LoaderCircle,
 } from "lucide-react";
 
 const states = {
@@ -490,6 +491,7 @@ export function Automation({
   account,
   selected,
   disabled,
+  previewing = false,
   onSave,
   onCheck,
   onResume,
@@ -1340,30 +1342,48 @@ export function Automation({
                     step ? onSave(rules, texts, true) : setStep(1)
                   }
                 >
-                  {step ? "Проверить запуск" : "Далее: сообщения"}
-                  <ArrowRight size={16} />
+                  {previewing ? (
+                    <>
+                      <LoaderCircle className="spin" size={16} />
+                      Готовим тексты…
+                    </>
+                  ) : (
+                    <>
+                      {step ? "Проверить запуск" : "Далее: сообщения"}
+                      <ArrowRight size={16} />
+                    </>
+                  )}
                 </button>
               </footer>
-              {(!validRules || stepTextError || (step === 1 && !canReview)) && (
+              {previewing && (
                 <p className="setup-validation" role="status">
-                  {invalidHours
-                    ? "Время окончания должно быть позже начала в пределах суток."
-                    : invalidNumber
-                      ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
-                      : unsavableTemplate
-                        ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
-                        : stepTextError
-                          ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
-                          : account?.status !== "ready"
-                            ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
-                            : !selected.length
-                              ? "Сначала выберите кандидатов для этой кампании."
-                              : rules.inmail_channel === "recruiter" &&
-                                  !recruiterReady
-                                ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
-                                : "Проверьте настройки способа связи."}
+                  Готовим тексты для каждого получателя. Обычно это занимает
+                  несколько секунд, с Recruiter — до пары минут.
                 </p>
               )}
+              {!previewing &&
+                (!validRules ||
+                  stepTextError ||
+                  (step === 1 && !canReview)) && (
+                  <p className="setup-validation" role="status">
+                    {invalidHours
+                      ? "Время окончания должно быть позже начала в пределах суток."
+                      : invalidNumber
+                        ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
+                        : unsavableTemplate
+                          ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
+                          : stepTextError
+                            ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
+                            : account?.status !== "ready"
+                              ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
+                              : !selected.length
+                                ? "Сначала выберите кандидатов для этой кампании."
+                                : rules.inmail_channel === "recruiter" &&
+                                    !recruiterReady
+                                  ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
+                                  : "Проверьте настройки способа связи."}
+                  </p>
+                )}
             </fieldset>
           </section>
           <aside className="automation-plan">

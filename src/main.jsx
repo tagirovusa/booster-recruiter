@@ -249,6 +249,13 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  // Background refresh: newer requests win, polls never overlap, and one
+  // failed poll does not flash a warning.
+  const refreshSeq = useRef(0);
+  const polling = useRef(false);
+  const refreshFailures = useRef(0);
+  const loadedOnce = useRef(false);
   const [detailError, setDetailError] = useState("");
   const [retrying, setRetrying] = useState(false);
   const [tab, setTab] = useState("people");
@@ -370,13 +377,25 @@ function App() {
       setWorkspaceError("Откройте Booster Recruiter как приложение.");
       return;
     }
+    const seq = ++refreshSeq.current;
+    // A slower, older request must not overwrite data loaded after an action.
+    const stale = () => seq !== refreshSeq.current;
     try {
-      setState(await api.command("state"));
+      const nextState = await api.command("state");
+      if (stale()) return;
+      setState(nextState);
       await refreshWorkspace();
       setWorkspaceLoaded(true);
+      loadedOnce.current = true;
       setWorkspaceError("");
+      refreshFailures.current = 0;
     } catch (e) {
-      setWorkspaceError(e.message);
+      if (stale()) return;
+      refreshFailures.current += 1;
+      // Show the warning only after repeated failures, or when nothing has
+      // been loaded yet; a single slow poll is not worth alarming anyone.
+      if (refreshFailures.current >= 3 || !loadedOnce.current)
+        setWorkspaceError(e.message);
       setLoading(false);
       return;
     }
@@ -384,12 +403,13 @@ function App() {
     if (cid) {
       try {
         const result = await api.command("campaign.detail", { id: cid });
-        if (currentCampaign.current === cid) {
+        if (currentCampaign.current === cid && !stale()) {
           setDetail(result);
           setDetailError("");
         }
       } catch (e) {
-        if (currentCampaign.current === cid) setDetailError(e.message);
+        if (currentCampaign.current === cid && !stale())
+          setDetailError(e.message);
       }
     }
   }, [cid, refreshWorkspace]);
@@ -403,7 +423,13 @@ function App() {
   };
   useEffect(() => {
     refresh();
-    const timer = setInterval(refresh, 2500);
+    const timer = setInterval(() => {
+      if (polling.current || document.hidden) return;
+      polling.current = true;
+      refresh().finally(() => {
+        polling.current = false;
+      });
+    }, 2500);
     return () => clearInterval(timer);
   }, [refresh]);
   const act = async (op, p = {}, success = "") => {
@@ -548,7 +574,10 @@ function App() {
         });
       persistDraft(cid, null);
       if (reviewAfterSave) {
-        const nextPreview = await api.command("outreach.preview", { id: cid });
+        setPreviewing(true);
+        const nextPreview = await api
+          .command("outreach.preview", { id: cid })
+          .finally(() => setPreviewing(false));
         if (
           notificationRevision === noticeScope.current.revision &&
           currentCampaign.current === cid
@@ -1399,6 +1428,7 @@ function App() {
                   account={account}
                   selected={selected}
                   disabled={archived || active || busy}
+                  previewing={previewing}
                   onSave={saveAutomation}
                   onPeople={() => setTab("people")}
                   onHistory={() => setTab("history")}

@@ -5,7 +5,8 @@ import json
 import os
 import signal
 import sys
-from contextlib import asynccontextmanager
+import traceback
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from .platform_limits import (
@@ -14,6 +15,9 @@ from .platform_limits import (
     LinkedInLimitError,
 )
 from .store import AppError, canonical
+from .user_errors import record, user_text
+
+ACTIVE_STATUSES = {"collecting", "checking", "sending", "automating"}
 
 
 def executable_args():
@@ -102,9 +106,10 @@ class Worker:
                     "linkedin_auth_required": LinkedInChallengeError,
                     "linkedin_account_restricted": LinkedInAccountRestrictedError,
                 }.get(data.get("error_code"), AppError)
-                raise error_type(
-                    data["error"] or "Браузер LinkedIn не завершил операцию."
-                )
+                message = data["error"] or "Браузер LinkedIn не завершил операцию."
+                if error_type is AppError:
+                    message = user_text(message)
+                raise error_type(message)
             return data["result"]
 
     async def stop(self, *, graceful=None):
@@ -181,10 +186,27 @@ class Runtime:
             coro.close()
             raise
         self.spawn(cid, coro)
+        self.jobs[cid].add_done_callback(
+            lambda task: self._settle_on_failure(cid, task)
+        )
         self.pause_flags.discard(cid)
         self.store.progress(
             cid, status, "Ожидаем завершения текущей операции браузера…"
         )
+
+    def _settle_on_failure(self, cid, task):
+        """Never leave a campaign marked as running after its task failed.
+
+        Without this, an error raised before the task's own handling left the
+        status at "sending"/"automating" and every edit asked for a pause.
+        """
+        if task.cancelled() or task.exception() is None:
+            return
+        exc = task.exception()
+        record("".join(traceback.format_exception(exc)))
+        with suppress(AppError):
+            if self.store.campaign(cid)["status"] in ACTIVE_STATUSES:
+                self.store.progress(cid, "paused", self.friendly(exc))
 
     @asynccontextmanager
     async def campaign_browser(self, cid, status, progress):
@@ -276,7 +298,7 @@ class Runtime:
             for t in ["authentication", "login", "captcha", "checkpoint"]
         ):
             return "Завершите вход или проверку в окне LinkedIn, затем нажмите «Проверить вход»."
-        return text[:600]
+        return user_text(text)
 
     async def verify(self, aid, *, interactive=False):
         account = self.store.account(aid)
@@ -368,6 +390,7 @@ class Runtime:
         ]
         if not eligible:
             raise AppError("Выберите получателей без прежних обращений.")
+        self.ensure_browser_free()
         self.pause_flags.discard(cid)
         try:
             async with self.campaign_browser(
@@ -454,12 +477,28 @@ class Runtime:
             self.store.progress(cid, "paused", self.friendly(exc))
             self.store.event("collection_stopped", f"{cid}: {self.friendly(exc)}")
 
+    def busy_message(self):
+        """Name the campaign that holds the browser so the user knows what to pause."""
+        for cid, task in self.campaign_operations.items():
+            if task in self.active_campaign_tasks:
+                try:
+                    name = self.store.campaign(cid)["name"]
+                except AppError:
+                    break
+                return (
+                    f"Браузер занят кампанией «{name}». "
+                    "Поставьте её на паузу или дождитесь завершения и повторите."
+                )
+        return "Браузер занят другим действием. Подождите минуту и повторите."
+
+    def ensure_browser_free(self):
+        """Refuse at once instead of leaving the user waiting behind a long run."""
+        if self.browser_lock.locked():
+            raise AppError(self.busy_message())
+
     async def open_profile(self, aid, url):
         url = canonical(url)
-        if self.browser_lock.locked():
-            raise AppError(
-                "Браузер занят. Приостановите обработку и дождитесь завершения текущего действия."
-            )
+        self.ensure_browser_free()
         try:
             async with self.browser_lock:
                 await self.verify(aid, interactive=True)

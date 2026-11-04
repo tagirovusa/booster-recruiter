@@ -193,6 +193,12 @@ class OutreachStore:
                     "Исчерпан утверждённый бюджет InMail этой кампании.",
                 ),
             )
+            # A read-only contact check or a Recruiter preview has no queue to
+            # restore; only campaigns with an active plan wait for the schedule.
+            self.db.execute(
+                "UPDATE campaigns SET status='ready',progress='Проверка прервана перезапуском приложения. Запустите её ещё раз, если она нужна.' "
+                "WHERE status='checking' AND NOT EXISTS (SELECT 1 FROM outreach_runs r WHERE r.campaign_id=campaigns.id AND r.status='active')"
+            )
             self.db.execute(
                 "UPDATE campaigns SET status='waiting',progress='Утверждённая очередь восстановлена. Ожидаем расписания.' WHERE status IN ('automating','checking')"
             )

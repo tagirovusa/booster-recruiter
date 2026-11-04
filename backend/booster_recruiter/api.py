@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import socket
+import traceback
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from starlette.routing import Route
 from .browser_engine import browser_engine_info
 from .runtime import Runtime
 from .store import AppError, Store
+from .user_errors import configure as configure_error_log
+from .user_errors import record, user_text
 
 
 def create_app(store, runtime, token):
@@ -108,12 +111,14 @@ def create_app(store, runtime, token):
                 result = store.create_account(p["label"])
             elif op == "account.login":
                 store.account(p["id"])
+                runtime.ensure_browser_free()
                 runtime.spawn("login:" + p["id"], runtime.login(p["id"]))
                 result = {"started": True}
             elif op == "account.open_profile":
                 result = await runtime.open_profile(p["id"], p["url"])
             elif op in ("account.recruiter", "account.recruiter_prepare"):
                 store.account(p["id"])
+                runtime.ensure_browser_free()
                 runtime.spawn(
                     "recruiter:" + p["id"],
                     runtime.recruiter(p["id"], prepare=op.endswith("_prepare")),
@@ -257,9 +262,24 @@ def create_app(store, runtime, token):
             else:
                 raise AppError("Неизвестная операция.")
             return JSONResponse({"result": result})
-        except (AppError, ValueError, KeyError, TypeError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+        except AppError as exc:
+            return JSONResponse({"error": user_text(exc)}, status_code=400)
+        except (ValueError, KeyError, TypeError) as exc:
+            # Validation messages are Russian; KeyError('id') or a TypeError
+            # from a bad payload must not reach the recruiter verbatim.
+            record(traceback.format_exc())
+            text = str(exc) if isinstance(exc, ValueError) else ""
+            return JSONResponse(
+                {
+                    "error": user_text(
+                        text,
+                        "Не удалось выполнить действие. Обновите окно и попробуйте ещё раз.",
+                    )
+                },
+                status_code=400,
+            )
         except Exception:
+            record(traceback.format_exc())
             return JSONResponse(
                 {
                     "error": "Операция не выполнена. Перезапустите приложение; сохранённые данные останутся."
@@ -303,6 +323,7 @@ def serve(root: Path):
     except Timeout:
         raise SystemExit("Приложение уже использует эту базу данных.")
     token = secrets.token_urlsafe(32)
+    configure_error_log(root)
     store = Store(root)
     runtime = Runtime(store)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
