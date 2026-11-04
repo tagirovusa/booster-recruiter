@@ -1,3 +1,4 @@
+import os
 import sqlite3
 
 import httpx
@@ -225,7 +226,9 @@ def test_backup_failure_is_visible_and_does_not_prevent_workspace_access(
 
 
 def test_restore_handles_directory_uri_special_characters(tmp_path):
-    s, _, c = seed(tmp_path / "test#question?and space")
+    s, _, c = seed(
+        tmp_path / ("test#and space" if os.name == "nt" else "test#question?and space")
+    )
     backup = s.workspace.create_backup()
     s.workspace.restore(backup["id"])
     assert s.campaign(c["id"])["status"] == "paused"
