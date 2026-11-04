@@ -16,6 +16,7 @@ from booster_linkedin.linkedin.message_sender import (
 from booster_linkedin.linkedin.navigation import PageNavigator
 from booster_linkedin.linkedin.session import PageSession
 
+from .platform_limits import LinkedInLimitError, check_platform_limit
 from .store import canonical
 
 PROFILE_CONTACT_JS = r"""({username}) => {
@@ -166,6 +167,7 @@ class GuardedSender(MessageSender):
 
     async def _submit_verified_message(self, message, *, target, owner):
         # Same owner, exact subject and pricing immediately before the click.
+        await check_platform_limit(self._session)
         result = await owner.evaluate(
             """(node,arg)=>{
           if(location.protocol!=='https:'||!/(^|\\.)linkedin\\.com$/.test(location.hostname))return false;
@@ -207,6 +209,8 @@ class InviteOnly(ConnectionActions):
         self._booster_invite_attempted = False
         try:
             return await super().connect_with_person(username, note=note)
+        except LinkedInLimitError:
+            raise
         except Exception:
             if self._booster_invite_attempted:
                 return {
@@ -253,6 +257,7 @@ class InviteOnly(ConnectionActions):
         return False
 
     async def _submit_invite_dialog(self, note):
+        await check_platform_limit(self._session)
         target = getattr(self, "_booster_invite_target", None)
         if not target or not target["name"]:
             return False, False, None
@@ -262,6 +267,7 @@ class InviteOnly(ConnectionActions):
                 selector, state="visible", timeout=5000
             )
         except Exception:
+            await check_platform_limit(self._session)
             return False, False, None
         arg = target | {"route": self._session.page.url, "note": note or ""}
         # Pin one known invitation dialog and keep personal drafts untouched.
@@ -325,7 +331,10 @@ class InviteOnly(ConnectionActions):
             return False, False, None
         # Allow the native request to settle before the vendor reopens the
         # profile. A persistent dialog after a click is an uncertain outcome.
-        await owner.wait_for_element_state("hidden", timeout=5000)
+        try:
+            await owner.wait_for_element_state("hidden", timeout=5000)
+        finally:
+            await check_platform_limit(self._session)
         return True, bool(note), None
 
 

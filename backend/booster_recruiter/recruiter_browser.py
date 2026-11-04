@@ -6,6 +6,7 @@ No private APIs. Drafts, automatic follow-ups and changed contracts fail closed.
 import re
 from urllib.parse import parse_qs, urlparse
 
+from .platform_limits import check_platform_limit
 from .store import AppError, canonical
 
 ORIGIN = "https://www.linkedin.com"
@@ -456,6 +457,7 @@ class RecruiterBrowser:
                 }
             submitted = True
             await self.page.wait_for_timeout(2000)
+            await check_platform_limit(self.session)
             confirmed = await self.confirm(target, context, message, subject)
             return {
                 "sent": confirmed,

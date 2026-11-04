@@ -8,6 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from .platform_limits import LinkedInLimitError
 from .store import AppError, canonical
 
 
@@ -92,7 +93,12 @@ class Worker:
             if data.get("id") != self.serial:
                 raise AppError("Нарушена последовательность операций браузера.")
             if "error" in data:
-                raise AppError(
+                error_type = (
+                    LinkedInLimitError
+                    if data.get("error_code") == "linkedin_limit"
+                    else AppError
+                )
+                raise error_type(
                     data["error"] or "Браузер LinkedIn не завершил операцию."
                 )
             return data["result"]
@@ -257,6 +263,30 @@ class Runtime:
             self.store.set_account(aid, "identity_mismatch")
             raise AppError("Аккаунт в браузере изменился. Обработка остановлена.")
         return actual
+
+    def pause_sender(self, aid, detail):
+        """Pause every queued campaign for this identity after a platform limit."""
+        sender_ids = self.store.outreach.sender_ids(aid)
+        placeholders = ",".join("?" for _ in sender_ids)
+        for campaign in self.store.rows(
+            f"SELECT id FROM campaigns WHERE account_id IN ({placeholders})",
+            sender_ids,
+        ):
+            cid = campaign["id"]
+            # Includes a legacy batch or a task already queued for browser access.
+            self.pause_flags.add(cid)
+            if cid in self.jobs or self.store.rows(
+                "SELECT 1 FROM outreach_runs WHERE campaign_id=? AND status='active' "
+                "UNION SELECT 1 FROM batches WHERE campaign_id=? AND status='approved'",
+                (cid, cid),
+            ):
+                self.store.progress(cid, "paused", detail)
+        for run in self.store.rows(
+            f"SELECT id FROM outreach_runs WHERE account_id IN ({placeholders}) AND status='active'",
+            sender_ids,
+        ):
+            self.store.outreach.status(run["id"], "paused", detail)
+        return detail
 
     def restrict_account(self, aid):
         detail = "LinkedIn ограничил действия аккаунта. Кампания приостановлена."
@@ -423,13 +453,6 @@ class Runtime:
                 await self.verify(aid)
                 sent = 0
                 while cid not in self.pause_flags:
-                    # A budget is an application stop condition, not a promise
-                    # about LinkedIn's permitted sending volume.
-                    used, limit = self.store.outreach.message_budget(aid, 20)
-                    if used >= limit:
-                        raise AppError(
-                            f"Достигнут дневной бюджет приложения: {limit} попыток (UTC). Оставшаяся очередь сохранена."
-                        )
                     row = self.store.claim(bid)
                     if not row:
                         break
@@ -478,8 +501,18 @@ class Runtime:
                             result.get("message")
                             or "Результат отправки не подтверждён.",
                         )
+                        if result.get("platform_limited"):
+                            raise LinkedInLimitError(
+                                result.get("message")
+                                or "LinkedIn сообщил о лимите отправки."
+                            )
                         raise AppError(
                             "Результат последней отправки неизвестен. Очередь остановлена для проверки."
+                        )
+                    if result.get("platform_limited"):
+                        raise LinkedInLimitError(
+                            result.get("message")
+                            or "LinkedIn сообщил о лимите отправки."
                         )
                     if restriction:
                         raise AppError(restriction)
@@ -490,6 +523,8 @@ class Runtime:
                     f"Обработка завершена. Подтверждено сообщений в этой сессии: {sent}.",
                 )
         except Exception as exc:
+            if isinstance(exc, LinkedInLimitError):
+                self.pause_sender(aid, self.friendly(exc))
             self.store.progress(cid, "paused", self.friendly(exc))
 
     async def close(self):

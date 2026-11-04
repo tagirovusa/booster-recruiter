@@ -22,7 +22,6 @@ def plan(store, **changes):
             "start_hour": 0,
             "end_hour": 24,
             "allow_inmail": True,
-            "inmail_budget": 2,
             "subject_open": "Hello {first_name}",
             "subject_neutral": "Opportunity",
             "invitation": "Let's connect, {first_name}.",
@@ -219,7 +218,7 @@ def test_check_now_cannot_approve_draft_or_resume_paused_plan(store):
     assert store.outreach.run(p["run_id"])["status"] == "paused"
 
 
-async def test_fast_inmail_consumes_one_budget_and_acceptance_never_sends_dm(store):
+async def test_fast_inmail_records_one_credit_and_acceptance_never_sends_dm(store):
     _, _, person, p, rt, worker = activate(store, strategy="fast")
     await rt.outreach.process(p["run_id"])
     assert worker.actions == [
@@ -328,7 +327,6 @@ def test_fast_mode_falls_back_to_invite_only_for_a_confirmed_zero_balance():
     rules = DEFAULT_RULES | {
         "strategy": "fast",
         "allow_inmail": True,
-        "inmail_budget": 5,
     }
     obs = {
         "identity_verified": True,
@@ -368,10 +366,12 @@ def test_rules_and_exact_subject_are_frozen_and_edits_revoke_approval(store):
     _, c, _, p = plan(store)
     assert p["messages"][0]["subject"] == "Hello Alice"
     store.outreach.approve(p["run_id"], p["digest"])
-    store.outreach.configure(c["id"], p["rules"] | {"inmail_budget": 3})
+    store.outreach.configure(c["id"], p["rules"] | {"subject_open": "Changed subject"})
     with pytest.raises(AppError):
         store.outreach.reserve(p["messages"][0]["id"], "inmail")
-    assert store.outreach.run(p["run_id"])["rules"]["inmail_budget"] == 2
+    assert (
+        store.outreach.run(p["run_id"])["rules"]["subject_open"] == "Hello {first_name}"
+    )
 
 
 def test_wrong_digest_cannot_approve(store):
@@ -412,7 +412,7 @@ def test_recruiter_contract_signature_and_source_are_frozen(store):
 
 
 def test_free_recruiter_message_counts_as_attempt_but_not_spent_credit(store):
-    _, c, _, p, _, _ = activate(store, inmail_budget=1)
+    _, c, _, p, _, _ = activate(store)
     mid = p["messages"][0]["id"]
     action = store.outreach.reserve(mid, "inmail", credit_cost=0)
     store.outreach.finish(action, "sent", "Free to InMail")
@@ -446,8 +446,8 @@ def test_one_recipient_cannot_be_approved_from_two_accounts(store):
         store.outreach.approve(other["run_id"], other["digest"])
 
 
-def test_credit_budget_is_shared_across_retries_and_not_a_monthly_balance(store):
-    _, c, _, p, _, _ = activate(store, inmail_budget=1)
+def test_credit_history_counts_unknown_results_until_manually_resolved(store):
+    _, c, _, p, _, _ = activate(store)
     mid = p["messages"][0]["id"]
     action = store.outreach.reserve(mid, "inmail")
     store.outreach.finish(action, "unknown", "Unknown")
@@ -486,9 +486,10 @@ async def test_readonly_connection_check_never_invites_or_sends(store):
     )
 
 
-async def test_daily_sender_budget_shared_between_campaigns(store):
+async def test_old_daily_cap_from_paused_campaign_does_not_block_next_campaign(store):
     a, c, person, p, rt, worker = activate(store, daily_invites=1)
     await rt.outreach.process(p["run_id"])
+    store.outreach.status(p["run_id"], "paused")
     other = store.create_campaign(
         {
             "name": "Second",
@@ -505,8 +506,8 @@ async def test_daily_sender_budget_shared_between_campaigns(store):
     p2 = store.outreach.preview(other["id"])
     store.outreach.approve(p2["run_id"], p2["digest"])
     await rt.outreach.process(p2["run_id"])
-    assert len(worker.actions) == 1
-    assert store.outreach.members(p2["run_id"])[0]["status"] == "waiting_budget"
+    assert len(worker.actions) == 2
+    assert store.outreach.members(p2["run_id"])[0]["status"] == "waiting_acceptance"
 
 
 async def test_scheduler_does_not_start_during_login_or_after_pause(store):
@@ -545,8 +546,8 @@ async def test_export_contains_outreach_history_and_formula_is_text(store):
     "patch",
     [
         {"timezone": "not/a-zone"},
-        {"allow_inmail": True, "inmail_budget": 0},
-        {"daily_invites": True},
+        {"allow_inmail": "yes"},
+        {"monitor_days": True},
         {"start_hour": 20, "end_hour": 8},
         {"wait_days": 0},
     ],

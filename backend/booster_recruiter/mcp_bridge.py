@@ -112,7 +112,7 @@ def run(root: Path):
 
     @mcp.tool()
     def preview_outreach(campaign_id: str) -> dict:
-        """Prepare exact invitation, DM and InMail texts/budget for desktop approval."""
+        """Prepare recipients, exact texts and possible InMail cost for desktop approval."""
         return call("outreach.preview", {"id": campaign_id})
 
     @mcp.tool()
