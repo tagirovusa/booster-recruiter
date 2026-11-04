@@ -48,7 +48,10 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("combobox", { name: "Группа Jamie Reed" }),
     ).toHaveValue("neutral");
-    await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).check();
+    await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).click();
+    await expect(
+      page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }),
+    ).toBeChecked();
     await page.getByRole("button", { name: "Настроить отправку (1)" }).click();
     await expect(
       page.getByRole("heading", { name: "От знакомства — к разговору" }),
@@ -282,28 +285,133 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     await page.getByRole("button", { name: "Отмена", exact: true }).click();
     await page.getByRole("button", { name: "Настройки", exact: true }).click();
-    await page
-      .getByRole("checkbox", { name: "Продолжать работу после закрытия окна" })
-      .check();
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].close(),
-    );
-    await expect
-      .poll(() =>
-        app.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows()[0].isVisible(),
-        ),
-      )
-      .toBe(false);
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].show(),
-    );
-    await expect(
-      page.getByRole("heading", { name: "Настройки и помощь" }),
-    ).toBeVisible();
+    const background = page.getByRole("checkbox", {
+      name: "Продолжать работу после закрытия окна",
+    });
+    for (const failSave of [false, true]) {
+      await app.evaluate(({ app, dialog }, failSave) => {
+        const fs = process.getBuiltinModule("fs");
+        const path = process.getBuiltinModule("path");
+        const directory = app.getPath("userData");
+        if (!path.basename(directory).startsWith("booster-ui-"))
+          throw Error("Preference fault injection requires isolated test data");
+        const filename = path.join(directory, "desktop-preferences.json");
+        const rename = fs.promises.rename;
+        const showMessageBox = dialog.showMessageBox;
+        const gate = { entered: false, reports: [] };
+        const pending = new Promise((resolve) => {
+          gate.release = resolve;
+        });
+        fs.promises.rename = async (...args) => {
+          if (path.resolve(args[1]) === filename) {
+            gate.entered = true;
+            await pending;
+            if (failSave) throw Error("Synthetic preferences rename failure");
+          }
+          return rename(...args);
+        };
+        dialog.showMessageBox = async (...args) => {
+          const options = args.at(-1);
+          if (options.title === "Настройки не сохранены") {
+            gate.reports.push(options);
+            return { response: 0, checkboxChecked: false };
+          }
+          return showMessageBox(...args);
+        };
+        gate.restore = () => {
+          gate.release();
+          fs.promises.rename = rename;
+          dialog.showMessageBox = showMessageBox;
+          delete globalThis.__boosterPreferenceGate;
+        };
+        globalThis.__boosterPreferenceGate = gate;
+      }, failSave);
+      try {
+        await background.check();
+        await expect(page.getByRole("status")).toHaveText(
+          "Сохраняем настройку…",
+        );
+        await expect
+          .poll(() =>
+            app.evaluate(() => globalThis.__boosterPreferenceGate.entered),
+          )
+          .toBe(true);
+        if (failSave)
+          await page
+            .getByRole("button", { name: "Аккаунты", exact: true })
+            .click();
+        await app.evaluate(({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0];
+          window.close();
+          window.close();
+        });
+        expect(
+          await app.evaluate(({ BrowserWindow }) => ({
+            count: BrowserWindow.getAllWindows().length,
+            visible: BrowserWindow.getAllWindows()[0]?.isVisible(),
+          })),
+        ).toEqual({ count: 1, visible: true });
+        await app.evaluate(() => globalThis.__boosterPreferenceGate.release());
+        if (failSave) {
+          await expect
+            .poll(() =>
+              app.evaluate(
+                () => globalThis.__boosterPreferenceGate.reports.length,
+              ),
+            )
+            .toBe(1);
+          const result = await app.evaluate(({ app, BrowserWindow }) => ({
+            count: BrowserWindow.getAllWindows().length,
+            visible: BrowserWindow.getAllWindows()[0]?.isVisible(),
+            background: JSON.parse(
+              process
+                .getBuiltinModule("fs")
+                .readFileSync(
+                  process
+                    .getBuiltinModule("path")
+                    .join(app.getPath("userData"), "desktop-preferences.json"),
+                  "utf8",
+                ),
+            ).background,
+            message: globalThis.__boosterPreferenceGate.reports[0].message,
+          }));
+          expect(result.count).toBe(1);
+          expect(result.visible).toBe(true);
+          expect(result.background).toBe(false);
+          expect(result.message).toContain("Окно оставлено открытым");
+        } else {
+          await expect
+            .poll(() =>
+              app.evaluate(({ BrowserWindow }) =>
+                BrowserWindow.getAllWindows()[0].isVisible(),
+              ),
+            )
+            .toBe(false);
+          await app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0].show(),
+          );
+          await expect(
+            page.getByRole("heading", { name: "Настройки и помощь" }),
+          ).toBeVisible();
+        }
+      } finally {
+        await app.evaluate(() => globalThis.__boosterPreferenceGate?.restore());
+      }
+      if (failSave) {
+        await page
+          .getByRole("button", { name: "Настройки", exact: true })
+          .click();
+        await expect(background).not.toBeChecked();
+      } else {
+        await background.uncheck();
+        await expect(page.getByRole("status")).toHaveText(
+          "Настройки сохранены.",
+        );
+      }
+    }
     if (errors.length) throw Error(errors.join("\n"));
     console.log(
-      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup, empty/automation/message/mixed history with wait/reply/unknown states, isolated background close/reopen, account UI; no LinkedIn requests or sends.",
+      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup, empty/automation/message/mixed history with wait/reply/unknown states, isolated close during preferences save/failure and background reopen, account UI; no LinkedIn requests or sends.",
     );
   } finally {
     await app.close();

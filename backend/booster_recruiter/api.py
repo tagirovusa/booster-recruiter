@@ -75,6 +75,10 @@ def create_app(store, runtime, token):
                 result = await runtime.pause_campaign(p["id"])
             elif op == "campaign.automation":
                 result = store.outreach.configure(p["id"], p["rules"])
+            elif op == "campaign.save_automation":
+                result = store.save_automation(
+                    p["id"], p["rules"], p["template_open"], p["template_neutral"]
+                )
             elif op == "campaign.check":
                 runtime.start_campaign(
                     p["id"], runtime.outreach.check(p["id"]), "checking"
@@ -119,6 +123,8 @@ def create_app(store, runtime, token):
                     p["id"], p["segment"], p["selected"], p.get("excluded", False)
                 )
                 result = {"saved": True}
+            elif op == "candidate.select_many":
+                result = store.select_many(p["campaign_id"], p["ids"], p["selected"])
             elif op == "candidate.suppress":
                 store.suppress(p["url"], p.get("reason", "Отказ от контакта"))
                 result = {"saved": True}

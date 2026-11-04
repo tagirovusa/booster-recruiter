@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from string import Formatter
@@ -60,6 +61,27 @@ def message_for(template, person):
 
 
 class Store:
+    @contextmanager
+    def atomic(self):
+        """Lock before reading a decision that will reserve or replace work."""
+        nested = self.db.in_transaction
+        savepoint = "operation_" + uid()
+        self.db.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            if nested:
+                self.db.execute(f"ROLLBACK TO {savepoint}")
+                self.db.execute(f"RELEASE {savepoint}")
+            else:
+                self.db.rollback()
+            raise
+        else:
+            if nested:
+                self.db.execute(f"RELEASE {savepoint}")
+            else:
+                self.db.commit()
+
     def __init__(self, root: Path):
         self.root = root
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -249,6 +271,11 @@ class Store:
             person["blocked"] = bool(
                 self.rows("SELECT url FROM suppression WHERE url=?", (person["url"],))
             )
+            person["outreach_exclusion"] = self.outreach.exclusion(person, campaign)
+            person["outreach_eligible"] = not person["outreach_exclusion"]
+            person["outreach_member"] = self.outreach.latest_member(
+                person["id"], cid, campaign["account_id"]
+            )
         return {
             "campaign": campaign,
             "outreach": self.outreach.detail(cid),
@@ -292,29 +319,61 @@ class Store:
         ):
             raise AppError("Сначала приостановите обработку кампании.")
 
-    def invalidate(self, cid):
+    def invalidate(self, cid, *, previews_only=False):
+        approved = not previews_only and (
+            (
+                hasattr(self, "outreach")
+                and self.rows(
+                    "SELECT 1 FROM outreach_runs WHERE campaign_id=? AND status IN ('active','paused')",
+                    (cid,),
+                )
+            )
+            or self.rows(
+                "SELECT 1 FROM batches WHERE campaign_id=? AND status='approved'",
+                (cid,),
+            )
+        )
         if hasattr(self, "outreach"):
-            self.outreach.invalidate(cid)
+            self.outreach.invalidate(cid, previews_only=previews_only)
         self.db.execute(
-            "UPDATE batches SET status='cancelled' WHERE campaign_id=? AND status IN ('preview','approved')",
+            "UPDATE batches SET status='cancelled' WHERE campaign_id=? AND "
+            + (
+                "status='preview'"
+                if previews_only
+                else "status IN ('preview','approved')"
+            ),
             (cid,),
         )
         self.db.execute(
             "UPDATE deliveries SET status='cancelled' WHERE status='pending' AND batch_id IN (SELECT id FROM batches WHERE campaign_id=? AND status='cancelled')",
             (cid,),
         )
+        if approved:
+            self.db.execute(
+                "UPDATE campaigns SET status='paused',progress='План остановлен после изменений. Проверьте и подтвердите новый запуск.' WHERE id=?",
+                (cid,),
+            )
 
     def review(self, pid, segment, selected, excluded=False):
         person = self.one("SELECT * FROM candidates WHERE id=?", (pid,))
-        self.ensure_idle(person["campaign_id"])
+        if type(selected) is not bool or type(excluded) is not bool:
+            raise AppError("Выбор профиля должен быть переключателем.")
         if segment not in ("open", "neutral", "review"):
             raise AppError("Неизвестная группа.")
         if segment == "review" and selected:
             raise AppError("Сначала проверьте профиль и выберите группу сообщения.")
-        data = json.loads(person["data"])
-        if segment != person["segment"]:
-            data["manual_review"] = {"segment": segment, "at": now()}
-        with self.db:
+        with self.atomic():
+            person = self.one("SELECT * FROM candidates WHERE id=?", (pid,))
+            if (segment, int(selected and not excluded), int(excluded)) == (
+                person["segment"],
+                person["selected"],
+                person["excluded"],
+            ):
+                return
+            self.ensure_idle(person["campaign_id"])
+            data = json.loads(person["data"])
+            if segment != person["segment"]:
+                data["manual_review"] = {"segment": segment, "at": now()}
             self.invalidate(person["campaign_id"])
             self.db.execute(
                 "UPDATE candidates SET segment=?,selected=?,excluded=?,data=? WHERE id=?",
@@ -328,15 +387,87 @@ class Store:
             )
 
     def templates(self, cid, opened, neutral):
-        self.ensure_idle(cid)
-        if len(opened) > 4000 or len(neutral) > 4000:
-            raise AppError("Шаблон слишком длинный.")
-        with self.db:
+        self.validate_templates(opened, neutral)
+        with self.atomic():
+            campaign = self.campaign(cid)
+            if (opened, neutral) == (
+                campaign["template_open"],
+                campaign["template_neutral"],
+            ):
+                return
+            self.ensure_idle(cid)
             self.invalidate(cid)
             self.db.execute(
                 "UPDATE campaigns SET template_open=?,template_neutral=?,revision=revision+1 WHERE id=?",
                 (opened, neutral, cid),
             )
+
+    @staticmethod
+    def validate_templates(opened, neutral):
+        if any(
+            not isinstance(value, str) or len(value) > 4000
+            for value in (opened, neutral)
+        ):
+            raise AppError("Шаблон должен быть текстом до 4000 символов.")
+
+    def save_automation(self, cid, value, opened, neutral):
+        from .outreach import validate_rules
+
+        rules = validate_rules(value)
+        self.validate_templates(opened, neutral)
+        with self.atomic():
+            campaign = self.campaign(cid)
+            if rules == self.outreach.rules(cid) and (opened, neutral) == (
+                campaign["template_open"],
+                campaign["template_neutral"],
+            ):
+                return {"saved": True, "changed": False}
+            self.ensure_idle(cid)
+            self.invalidate(cid)
+            self.db.execute(
+                "INSERT OR REPLACE INTO outreach_settings VALUES(?,?)",
+                (cid, json.dumps(rules)),
+            )
+            self.db.execute(
+                "UPDATE campaigns SET template_open=?,template_neutral=?,revision=revision+1 WHERE id=?",
+                (opened, neutral, cid),
+            )
+        return {"saved": True, "changed": True}
+
+    def select_many(self, cid, ids, selected):
+        if (
+            not isinstance(ids, list)
+            or type(selected) is not bool
+            or any(not isinstance(pid, str) or not pid for pid in ids)
+        ):
+            raise AppError("Передайте список профилей и переключатель выбора.")
+        ids = list(dict.fromkeys(ids))
+        with self.atomic():
+            campaign = self.campaign(cid)
+            people = {
+                p["id"]: p
+                for p in self.rows(
+                    "SELECT * FROM candidates WHERE campaign_id=?", (cid,)
+                )
+            }
+            if any(pid not in people for pid in ids):
+                raise AppError("Все профили должны принадлежать выбранной кампании.")
+            if selected and any(
+                self.outreach.exclusion(people[pid], campaign) for pid in ids
+            ):
+                raise AppError(
+                    "В выборе есть недоступные профили. Обновите список получателей."
+                )
+            changed = [pid for pid in ids if people[pid]["selected"] != int(selected)]
+            if not changed:
+                return {"saved": True, "changed": 0}
+            self.ensure_idle(cid)
+            self.invalidate(cid)
+            self.db.executemany(
+                "UPDATE candidates SET selected=? WHERE id=?",
+                [(int(selected), pid) for pid in changed],
+            )
+        return {"saved": True, "changed": len(changed)}
 
     def suppress(self, url, reason):
         url = canonical(url)
@@ -351,6 +482,10 @@ class Store:
             )
 
     def preview(self, cid):
+        with self.atomic():
+            return self._preview(cid)
+
+    def _preview(self, cid):
         self.ensure_idle(cid)
         campaign = self.campaign(cid)
         account = self.account(campaign["account_id"])
@@ -364,11 +499,8 @@ class Store:
         for p in chosen:
             if p["segment"] == "review":
                 continue
-            if self.rows(
-                "SELECT url FROM suppression WHERE url=?", (p["url"],)
-            ) or self.rows(
-                "SELECT id FROM deliveries WHERE url=? AND status IN ('sending','sent','unknown','replied','invited')",
-                (p["url"],),
+            if self.outreach.blocked(
+                p["url"], campaign_id=cid, account_id=account["id"]
             ):
                 skipped.append(p["url"])
                 continue
@@ -394,8 +526,9 @@ class Store:
             json.dumps([campaign["account_id"], messages], sort_keys=True).encode()
         ).hexdigest()
         bid = uid()
-        with self.db:
-            self.invalidate(cid)
+        with self.atomic():
+            self.ensure_idle(cid)
+            self.invalidate(cid, previews_only=True)
             self.db.execute(
                 "INSERT INTO batches VALUES(?,?,?,?,?,?)",
                 (bid, cid, campaign["account_id"], digest, "preview", now()),
@@ -422,17 +555,36 @@ class Store:
         }
 
     def approve(self, bid, digest):
-        batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
-        self.ensure_idle(batch["campaign_id"])
-        if batch["status"] != "preview" or batch["digest"] != digest:
-            raise AppError("Предпросмотр устарел. Подготовьте сообщения снова.")
-        with self.db:
+        with self.atomic():
+            batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
+            self.ensure_idle(batch["campaign_id"])
+            if batch["status"] != "preview" or batch["digest"] != digest:
+                raise AppError("Предпросмотр устарел. Подготовьте сообщения снова.")
+            if self.account(batch["account_id"])["status"] != "ready":
+                raise AppError("Сначала подтвердите вход отправителя.")
+            for row in self.rows("SELECT * FROM deliveries WHERE batch_id=?", (bid,)):
+                if row["status"] != "pending" or self.outreach.blocked(
+                    row["url"],
+                    campaign_id=batch["campaign_id"],
+                    account_id=batch["account_id"],
+                ):
+                    raise AppError(
+                        "Один из получателей уже обрабатывается. Обновите предпросмотр."
+                    )
+            self.invalidate(batch["campaign_id"])
             self.db.execute("UPDATE batches SET status='approved' WHERE id=?", (bid,))
+            self.db.execute(
+                "UPDATE deliveries SET status='pending' WHERE batch_id=?", (bid,)
+            )
+            self.db.execute(
+                "UPDATE campaigns SET status='ready',progress='Очередь сообщений подтверждена.' WHERE id=?",
+                (batch["campaign_id"],),
+            )
         self.event("approval", f"Подтверждена очередь {bid}")
         return batch
 
     def claim(self, bid):
-        with self.db:
+        with self.atomic():
             rows = self.rows(
                 "SELECT d.* FROM deliveries d JOIN batches b ON b.id=d.batch_id WHERE d.batch_id=? AND d.status='pending' AND b.status='approved' ORDER BY d.created,d.id LIMIT 1",
                 (bid,),
@@ -440,8 +592,13 @@ class Store:
             if not rows:
                 return None
             row = rows[0]
+            batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
             if (
-                self.outreach.blocked(row["url"])
+                self.outreach.blocked(
+                    row["url"],
+                    campaign_id=batch["campaign_id"],
+                    account_id=batch["account_id"],
+                )
                 or self.rows("SELECT url FROM suppression WHERE url=?", (row["url"],))
                 or self.rows(
                     "SELECT id FROM deliveries WHERE url=? AND id!=? AND status IN ('sending','sent','unknown','replied')",

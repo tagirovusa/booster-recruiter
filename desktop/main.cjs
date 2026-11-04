@@ -15,6 +15,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const readline = require("node:readline");
+const { createPreferencesStore } = require("./preferences.cjs");
+const { createPauseAllHandler } = require("./tray_pause.cjs");
+const { createCloseHandler } = require("./window_lifecycle.cjs");
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "booster",
@@ -26,7 +29,66 @@ let win,
   connection,
   tray,
   exiting = false;
-let desktopPreferences = { background: false, autoStart: false };
+let desktopPreferences;
+function createApplicationMenu() {
+  const items = [];
+  if (process.platform === "darwin")
+    items.push({
+      label: "Booster Recruiter",
+      submenu: [
+        { role: "about", label: "О Booster Recruiter" },
+        { type: "separator" },
+        { role: "services", label: "Службы" },
+        { type: "separator" },
+        { role: "hide", label: "Скрыть Booster Recruiter" },
+        { role: "hideOthers", label: "Скрыть остальные" },
+        { role: "unhide", label: "Показать все" },
+        { type: "separator" },
+        { role: "quit", label: "Завершить Booster Recruiter" },
+      ],
+    });
+  else
+    items.push({
+      label: "Booster Recruiter",
+      submenu: [
+        { role: "about", label: "О Booster Recruiter" },
+        { type: "separator" },
+        { role: "quit", label: "Выход" },
+      ],
+    });
+  items.push(
+    {
+      label: "Правка",
+      submenu: [
+        { role: "undo", label: "Отменить" },
+        { role: "redo", label: "Повторить" },
+        { type: "separator" },
+        { role: "cut", label: "Вырезать" },
+        { role: "copy", label: "Копировать" },
+        { role: "paste", label: "Вставить" },
+        { role: "selectAll", label: "Выделить всё" },
+      ],
+    },
+    {
+      label: "Окно",
+      submenu: [
+        { role: "minimize", label: "Свернуть" },
+        { role: "zoom", label: "Изменить размер" },
+        { role: "togglefullscreen", label: "Полный экран" },
+        { role: "close", label: "Закрыть окно" },
+      ],
+    },
+  );
+  if (!app.isPackaged)
+    items.push({
+      label: "Разработка",
+      submenu: [
+        { role: "reload", label: "Перезагрузить" },
+        { role: "toggleDevTools", label: "Инструменты разработчика" },
+      ],
+    });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(items));
+}
 function preferencesPath() {
   return path.join(app.getPath("userData"), "desktop-preferences.json");
 }
@@ -43,18 +105,27 @@ function createTray() {
     .resize({ width: 22, height: 22 });
   tray = new Tray(icon);
   tray.setToolTip("Booster Recruiter");
+  const pauseAll = createPauseAllHandler({
+    call,
+    report: async (result) => {
+      if (exiting) return;
+      showWindow();
+      const options = {
+        ...result,
+        buttons: ["Понятно"],
+        defaultId: 0,
+        noLink: true,
+      };
+      if (win && !win.isDestroyed()) await dialog.showMessageBox(win, options);
+      else await dialog.showMessageBox(options);
+    },
+  });
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Открыть Booster Recruiter", click: showWindow },
       {
         label: "Приостановить все кампании",
-        click: async () => {
-          try {
-            const state = await call("state");
-            for (const c of state.campaigns)
-              await call("campaign.pause", { id: c.id });
-          } catch {}
-        },
+        click: pauseAll,
       },
       { type: "separator" },
       { label: "Завершить работу", click: () => app.quit() },
@@ -75,7 +146,9 @@ const operations = new Set([
   "campaign.collect",
   "campaign.pause",
   "campaign.templates",
+  "campaign.save_automation",
   "candidate.review",
+  "candidate.select_many",
   "candidate.suppress",
   "campaign.preview",
   "batch.approve",
@@ -138,13 +211,12 @@ function trusted(event) {
     throw Error("Недопустимый источник команды.");
 }
 async function start() {
-  try {
-    const p = JSON.parse(fs.readFileSync(preferencesPath(), "utf8"));
-    desktopPreferences = {
-      background: p.background === true,
-      autoStart: p.autoStart === true,
-    };
-  } catch {}
+  app.setName("Booster Recruiter");
+  createApplicationMenu();
+  desktopPreferences = createPreferencesStore({
+    app,
+    filename: preferencesPath(),
+  });
   const { exe, args } = backend();
   const root = process.env.BOOSTER_DATA_DIR || app.getPath("userData");
   const env = { ...process.env };
@@ -232,12 +304,26 @@ async function start() {
     if (!url.startsWith("booster://app/")) event.preventDefault();
   });
   win.once("ready-to-show", () => win.show());
-  win.on("close", (event) => {
-    if (!exiting && desktopPreferences.background) {
-      event.preventDefault();
-      win.hide();
-    }
-  });
+  win.on(
+    "close",
+    createCloseHandler({
+      preferences: desktopPreferences,
+      window: win,
+      isQuitting: () => exiting,
+      reportFailure: async (error) => {
+        await dialog.showMessageBox(win, {
+          type: "error",
+          title: "Настройки не сохранены",
+          message:
+            "Не удалось подтвердить сохранение настроек. Окно оставлено открытым.",
+          detail: `Закрытие отменено, чтобы работа кампаний не прервалась. Проверьте настройки и попробуйте ещё раз.\n\nТехнические подробности: ${error.message}`,
+          buttons: ["Понятно"],
+          defaultId: 0,
+          noLink: true,
+        });
+      },
+    }),
+  );
   createTray();
   await win.loadURL("booster://app/");
   child.on("exit", () => {
@@ -256,30 +342,7 @@ ipcMain.handle("command", async (event, op, params) => {
 });
 ipcMain.handle("desktop-settings", async (event, patch) => {
   trusted(event);
-  if (patch !== undefined) {
-    if (
-      !patch ||
-      typeof patch !== "object" ||
-      Object.keys(patch).some(
-        (k) =>
-          !["background", "autoStart"].includes(k) ||
-          typeof patch[k] !== "boolean",
-      )
-    )
-      throw Error("Неизвестная настройка приложения.");
-    if ("autoStart" in patch) {
-      if (!app.isPackaged)
-        throw Error("Автозапуск доступен в установленной версии.");
-      app.setLoginItemSettings({ openAtLogin: patch.autoStart });
-    }
-    desktopPreferences = { ...desktopPreferences, ...patch };
-    await fs.promises.writeFile(
-      preferencesPath(),
-      JSON.stringify(desktopPreferences),
-      { mode: 0o600 },
-    );
-  }
-  return { ...desktopPreferences, packaged: app.isPackaged };
+  return desktopPreferences.access(patch);
 });
 ipcMain.handle("export", async (event, cid, format) => {
   trusted(event);
