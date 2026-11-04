@@ -4,7 +4,7 @@ import asyncio
 from datetime import timedelta
 
 from .outreach import TERMINAL, later, now, route, utc, within_hours
-from .platform_limits import LinkedInLimitError
+from .platform_limits import LinkedInChallengeError, LinkedInLimitError
 from .store import AppError
 
 
@@ -364,6 +364,11 @@ class OutreachRuntime:
                         )
                     if result.get("account_restricted"):
                         raise AppError(self.rt.restrict_account(aid))
+                    if result.get("auth_required"):
+                        raise LinkedInChallengeError(
+                            result.get("message")
+                            or "Завершите проверку в окне LinkedIn."
+                        )
                     if result.get("platform_limited"):
                         raise LinkedInLimitError(
                             result.get("message")

@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from .browser_engine import browser_engine_info
 from .runtime import Runtime
 from .store import AppError, Store
 
@@ -185,6 +186,7 @@ def create_app(store, runtime, token):
                     "accounts": len(store.state()["accounts"]),
                     "active_jobs": sum(not t.done() for t in runtime.jobs.values()),
                     "cloud_ai_required": False,
+                    "browser_engine": browser_engine_info(),
                 }
             elif op == "shutdown":
                 await runtime.close()

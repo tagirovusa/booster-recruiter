@@ -8,7 +8,11 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from .platform_limits import LinkedInLimitError
+from .platform_limits import (
+    LinkedInAccountRestrictedError,
+    LinkedInChallengeError,
+    LinkedInLimitError,
+)
 from .store import AppError, canonical
 
 
@@ -93,11 +97,11 @@ class Worker:
             if data.get("id") != self.serial:
                 raise AppError("Нарушена последовательность операций браузера.")
             if "error" in data:
-                error_type = (
-                    LinkedInLimitError
-                    if data.get("error_code") == "linkedin_limit"
-                    else AppError
-                )
+                error_type = {
+                    "linkedin_limit": LinkedInLimitError,
+                    "linkedin_auth_required": LinkedInChallengeError,
+                    "linkedin_account_restricted": LinkedInAccountRestrictedError,
+                }.get(data.get("error_code"), AppError)
                 raise error_type(
                     data["error"] or "Браузер LinkedIn не завершил операцию."
                 )
@@ -193,6 +197,14 @@ class Runtime:
                     if cid not in self.pause_flags:
                         self.store.progress(cid, status, progress)
                     yield
+                except LinkedInAccountRestrictedError:
+                    aid = self.store.campaign(cid)["account_id"]
+                    self.restrict_account(aid)
+                    raise
+                except LinkedInChallengeError as exc:
+                    aid = self.store.campaign(cid)["account_id"]
+                    self.pause_for_challenge(aid, self.friendly(exc))
+                    raise
                 finally:
                     self.active_campaign_tasks.discard(task)
         finally:
@@ -234,6 +246,11 @@ class Runtime:
                 aid, "ready", result["url"], name=result.get("name") or None
             )
         except Exception as exc:
+            if isinstance(exc, LinkedInChallengeError):
+                self.pause_for_challenge(aid, self.friendly(exc))
+            elif isinstance(exc, LinkedInAccountRestrictedError):
+                self.restrict_account(aid)
+                return
             self.store.set_account(aid, "needs_login", error=self.friendly(exc))
 
     @staticmethod
@@ -288,6 +305,11 @@ class Runtime:
             self.store.outreach.status(run["id"], "paused", detail)
         return detail
 
+    def pause_for_challenge(self, aid, detail):
+        for sender_id in self.store.outreach.sender_ids(aid):
+            self.store.set_account(sender_id, "needs_login", error=detail)
+        self.pause_sender(aid, detail)
+
     def restrict_account(self, aid):
         detail = "LinkedIn ограничил действия аккаунта. Кампания приостановлена."
         sender_ids = self.store.outreach.sender_ids(aid)
@@ -312,6 +334,10 @@ class Runtime:
                 )
             self.store.set_service(aid, "recruiter", result)
         except Exception as exc:
+            if isinstance(exc, LinkedInChallengeError):
+                self.pause_for_challenge(aid, self.friendly(exc))
+            elif isinstance(exc, LinkedInAccountRestrictedError):
+                self.restrict_account(aid)
             self.store.set_service(
                 aid, "recruiter", {"status": "needs_login", "error": self.friendly(exc)}
             )
@@ -426,9 +452,16 @@ class Runtime:
             raise AppError(
                 "Браузер занят. Приостановите обработку и дождитесь завершения текущего действия."
             )
-        async with self.browser_lock:
-            await self.verify(aid, interactive=True)
-            return await self.worker(aid).call("open_profile", {"url": url})
+        try:
+            async with self.browser_lock:
+                await self.verify(aid, interactive=True)
+                return await self.worker(aid).call("open_profile", {"url": url})
+        except LinkedInChallengeError as exc:
+            self.pause_for_challenge(aid, self.friendly(exc))
+            raise
+        except LinkedInAccountRestrictedError:
+            self.restrict_account(aid)
+            raise
 
     async def send_batch(self, bid):
         batch = self.store.one("SELECT * FROM batches WHERE id=?", (bid,))
@@ -479,6 +512,13 @@ class Runtime:
                         if result.get("account_restricted")
                         else None
                     )
+                    challenge = result.get("auth_required") and not restriction
+                    if challenge:
+                        self.pause_for_challenge(
+                            aid,
+                            result.get("message")
+                            or "Завершите проверку в окне LinkedIn.",
+                        )
                     if result.get("sent") is True:
                         self.store.finish(
                             row["id"],
@@ -514,9 +554,13 @@ class Runtime:
                             result.get("message")
                             or "LinkedIn сообщил о лимите отправки."
                         )
+                    if challenge:
+                        raise LinkedInChallengeError(
+                            result.get("message")
+                            or "Завершите проверку в окне LinkedIn."
+                        )
                     if restriction:
                         raise AppError(restriction)
-                    await asyncio.sleep(7)
                 self.store.progress(
                     cid,
                     "paused" if cid in self.pause_flags else "ready",

@@ -4,10 +4,11 @@ import asyncio
 import json
 import os
 import subprocess
-import sys
 import tempfile
+import tomllib
 import urllib.request
 from pathlib import Path
+
 from fastmcp import Client
 
 root = Path(__file__).resolve().parents[1]
@@ -53,6 +54,17 @@ async def check():
                     response["result"]["version"]
                     == json.loads((root / "package.json").read_text())["version"]
                 ), "Frozen runtime version does not match the desktop release"
+                locked_engine = next(
+                    package["version"]
+                    for package in tomllib.loads((root / "uv.lock").read_text())[
+                        "package"
+                    ]
+                    if package["name"] == "patchright"
+                )
+                engine = response["result"]["browser_engine"]
+                assert engine["name"] == "Patchright"
+                assert engine["version"] == locked_engine
+                assert engine["driver"] == "patchright-core"
                 async with Client(
                     {
                         "mcpServers": {

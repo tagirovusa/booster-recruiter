@@ -8,7 +8,6 @@ import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
@@ -18,10 +17,13 @@ from booster_linkedin.linkedin.identifiers import (
 )
 
 from .identity import PROFILE_JS, resolve_own_profile
+from .pacing import BrowserPacer
 from .platform_limits import (
+    LinkedInAccountRestrictedError,
+    LinkedInChallengeError,
     LinkedInLimitError,
+    check_after_browser_action,
     check_platform_limit,
-    read_platform_limit,
 )
 
 SEARCH_JS = r"""() => {
@@ -78,10 +80,17 @@ def direct_profile_search(keywords, page=1):
 
 
 async def serve(profile: Path, *, visible=False):
+    from .browser_engine import verify_browser_engine
+
+    verify_browser_engine()
     from booster_linkedin.bootstrap import configure_browser_environment
     from booster_linkedin.config import set_config
     from booster_linkedin.config.loaders import load_config
-    from booster_linkedin.core.exceptions import RateLimitError
+    from booster_linkedin.core.exceptions import (
+        AccountRestrictedError,
+        AuthenticationError,
+        RateLimitError,
+    )
     from booster_linkedin.dependencies import get_ready_extractor
     from booster_linkedin.drivers.browser import get_or_create_browser, set_headless
     from booster_linkedin.linkedin import photo_frame_detection
@@ -104,13 +113,15 @@ async def serve(profile: Path, *, visible=False):
     ]
     if visible:
         args.append("--no-headless")
-    browser_path = os.environ.get("BOOSTER_BROWSER")
+    from .selftest import bundled_browsers
+
+    bundled_browsers()
+    browser_path = (
+        None if getattr(sys, "frozen", False) else os.environ.get("BOOSTER_BROWSER")
+    )
     if not browser_path:
         from patchright.async_api import async_playwright
 
-        from .selftest import bundled_browsers
-
-        bundled_browsers()
         if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
             async with async_playwright() as playwright:
                 browser_path = playwright.chromium.executable_path
@@ -148,16 +159,25 @@ async def serve(profile: Path, *, visible=False):
             return [], "local_ocr_failed"
 
     photo_frame_detection._run_local_ocr = portable_ocr
-    last = 0.0
+    pacer = BrowserPacer()
     async with Client(create_mcp_server(), timeout=240) as client:
 
         async def call(name, arguments):
-            nonlocal last
-            await asyncio.sleep(max(0, 7 - (time.monotonic() - last)))
-            last = time.monotonic()
+            await pacer.step()
             result = await client.call_tool(name, arguments, raise_on_error=False)
             if result.is_error:
                 meta = result.meta or {}
+                if (
+                    meta.get("linkedin.dev/error", {}).get("code")
+                    == "account_restricted"
+                ):
+                    raise LinkedInAccountRestrictedError(
+                        "LinkedIn ограничил действия аккаунта. Кампании приостановлены."
+                    )
+                if meta.get("linkedin.dev/error", {}).get("code") == "auth_required":
+                    raise LinkedInChallengeError(
+                        "Завершите вход или проверку в окне LinkedIn, затем нажмите «Проверить вход»."
+                    )
                 if meta.get("linkedin.dev/error", {}).get("code") == "rate_limited":
                     raise LinkedInLimitError(
                         "LinkedIn временно ограничил действия. Очереди аккаунта приостановлены; продолжите после снятия ограничения."
@@ -189,6 +209,7 @@ async def serve(profile: Path, *, visible=False):
             action = request["action"]
             p = request.get("params", {})
             try:
+                await pacer.wait_command()
                 if action == "login":
                     result, _ = await call("get_my_profile", {})
                     browser = await get_or_create_browser()
@@ -218,8 +239,7 @@ async def serve(profile: Path, *, visible=False):
                             {"keywords": p["keywords"], "page": int(p.get("page", 1))}
                         )
                     )
-                    await asyncio.sleep(max(0, 7 - (time.monotonic() - last)))
-                    last = time.monotonic()
+                    await pacer.step()
                     extracted = await extractor.extract_page(
                         url, "search_results", max_scrolls=2
                     )
@@ -265,8 +285,6 @@ async def serve(profile: Path, *, visible=False):
                     from .outreach_browser import BrowserOutreach
 
                     await get_ready_extractor(None, tool_name="get_person_profile")
-                    await asyncio.sleep(max(0, 7 - (time.monotonic() - last)))
-                    last = time.monotonic()
                     browser = await get_or_create_browser()
 
                     async def read_profile(username):
@@ -279,14 +297,17 @@ async def serve(profile: Path, *, visible=False):
                         return await call("get_conversation", arguments)
 
                     outreach = BrowserOutreach(
-                        browser.page, read_profile, read_conversation
+                        browser.page, read_profile, read_conversation, pacer=pacer
                     )
                     await check_platform_limit(outreach.session)
                     if action.startswith("recruiter_"):
                         from .recruiter_browser import RecruiterBrowser
 
                         recruiter = RecruiterBrowser(
-                            browser.page, outreach.session, outreach.navigator
+                            browser.page,
+                            outreach.session,
+                            outreach.navigator,
+                            pacer=pacer,
                         )
                         if action == "recruiter_prepare":
                             result = await recruiter.prepare_manual_texts()
@@ -325,7 +346,10 @@ async def serve(profile: Path, *, visible=False):
                             from .recruiter_browser import RecruiterBrowser
 
                             recruiter = RecruiterBrowser(
-                                browser.page, outreach.session, outreach.navigator
+                                browser.page,
+                                outreach.session,
+                                outreach.navigator,
+                                pacer=pacer,
                             )
                             status = await recruiter.status()
                             if (
@@ -354,7 +378,10 @@ async def serve(profile: Path, *, visible=False):
                                     "Не сохранён контракт переписки Recruiter."
                                 )
                             result = await RecruiterBrowser(
-                                browser.page, outreach.session, outreach.navigator
+                                browser.page,
+                                outreach.session,
+                                outreach.navigator,
+                                pacer=pacer,
                             ).check_reply(
                                 p["url"],
                                 p.get("thread_id"),
@@ -375,7 +402,10 @@ async def serve(profile: Path, *, visible=False):
                             from .recruiter_browser import RecruiterBrowser
 
                             recruiter = RecruiterBrowser(
-                                browser.page, outreach.session, outreach.navigator
+                                browser.page,
+                                outreach.session,
+                                outreach.navigator,
+                                pacer=pacer,
                             )
                             result = await recruiter.send(
                                 p["url"],
@@ -391,16 +421,14 @@ async def serve(profile: Path, *, visible=False):
                                 p.get("subject") if action == "send_inmail" else None,
                             )
                 elif action == "send":
+                    from .outreach_browser import PacedMessageSender, PacedNavigator
+
                     browser = await get_or_create_browser()
-                    await check_platform_limit(PageSession(browser.page))
-                    result, _ = await call(
-                        "send_message",
-                        {
-                            "linkedin_username": p["url"],
-                            "message": p["message"],
-                            "confirm_send": True,
-                        },
-                    )
+                    session = PageSession(browser.page)
+                    await check_platform_limit(session)
+                    result = await PacedMessageSender(
+                        session, PacedNavigator(session, pacer), pacer=pacer
+                    ).send_message(p["url"], p["message"], confirm_send=True)
                 elif action == "conversation":
                     result, _ = await call(
                         "get_conversation", {"linkedin_username": p["url"]}
@@ -410,24 +438,33 @@ async def serve(profile: Path, *, visible=False):
                     result = {"ok": True}
                 else:
                     raise ValueError("Unknown worker command")
-                if action in {"invite", "send_free", "send_inmail", "send"}:
+                if action != "close":
                     browser = await get_or_create_browser()
-                    notice = await read_platform_limit(PageSession(browser.page))
-                    if notice:
-                        # Keep any positively confirmed result, and still stop
-                        # later recipients. A notice is not proof of non-delivery.
-                        result = result | {"platform_limited": True, "message": notice}
+                    result = await check_after_browser_action(
+                        PageSession(browser.page),
+                        result,
+                        outgoing=action
+                        in {"invite", "send_free", "send_inmail", "send"},
+                    )
                 payload = {"id": request["id"], "result": result}
             except Exception as exc:
                 payload = {
                     "id": request["id"],
-                    "error_code": "linkedin_limit"
+                    "error_code": "linkedin_account_restricted"
+                    if isinstance(
+                        exc, (LinkedInAccountRestrictedError, AccountRestrictedError)
+                    )
+                    else "linkedin_limit"
                     if isinstance(exc, (LinkedInLimitError, RateLimitError))
+                    else "linkedin_auth_required"
+                    if isinstance(exc, (LinkedInChallengeError, AuthenticationError))
                     else "browser_error",
                     "error": (str(exc) or "Браузер LinkedIn не завершил операцию.")[
                         :1800
                     ],
                 }
+            finally:
+                pacer.finish_command()
             sys.__stdout__.write(json.dumps(payload, ensure_ascii=False) + "\n")
             sys.__stdout__.flush()
             if action == "close":

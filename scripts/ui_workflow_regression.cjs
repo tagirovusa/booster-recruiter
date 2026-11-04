@@ -1,6 +1,6 @@
 // Real Electron regressions against synthetic local data. Never contacts LinkedIn.
 // BOOSTER_EXECUTABLE exercises the packaged app with the same assertions.
-const { _electron: electron, expect } = require("@playwright/test");
+const { _electron: electron, expect } = require("./patchright_test_driver.cjs").loadPatchright();
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -135,14 +135,21 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
   };
   const detail = (name) =>
-    page.evaluate(async (campaignName) => {
-      const state = await window.booster.command("state");
-      const campaign = state.campaigns.find(
-        (item) => item.name === campaignName,
-      );
-      if (!campaign) throw Error("Synthetic campaign not found.");
-      return window.booster.command("campaign.detail", { id: campaign.id });
-    }, name);
+    // The preload bridge is exposed in the app's main world. Patchright
+    // evaluates in an isolated world by default; ordinary DOM checks keep it.
+    page.evaluate(
+      async (campaignName) => {
+        const state = await window.booster.command("state");
+        const campaign = state.campaigns.find(
+          (item) => item.name === campaignName,
+        );
+        if (!campaign) throw Error("Synthetic campaign not found.");
+        return window.booster.command("campaign.detail", { id: campaign.id });
+      },
+      name,
+      undefined,
+      false,
+    );
   const messages = async () => {
     await page
       .getByRole("button", { name: "Автоматизация", exact: true })

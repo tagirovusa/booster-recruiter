@@ -16,7 +16,11 @@ from booster_linkedin.linkedin.message_sender import (
 from booster_linkedin.linkedin.navigation import PageNavigator
 from booster_linkedin.linkedin.session import PageSession
 
-from .platform_limits import LinkedInLimitError, check_platform_limit
+from .platform_limits import (
+    LinkedInLimitError,
+    before_submit_guard,
+    check_platform_limit,
+)
 from .store import canonical
 
 PROFILE_CONTACT_JS = r"""({username}) => {
@@ -112,9 +116,32 @@ def refusal(message):
     return {"sent": False, "invited": False, "retry_safe": True, "message": message}
 
 
-class GuardedSender(MessageSender):
-    def __init__(self, session, navigator, kind="message", subject=""):
+class PacedMessageSender(MessageSender):
+    def __init__(self, session, navigator, *, pacer=None):
         super().__init__(session, navigator)
+        self.pacer = pacer
+        self.submit_refusal = None
+
+    async def send_message(self, *args, **kwargs):
+        self.submit_refusal = None
+        result = await super().send_message(*args, **kwargs)
+        return result | (self.submit_refusal or {})
+
+    async def _wait_before_submit(self):
+        self.submit_refusal = await before_submit_guard(self._session, self.pacer)
+        return not self.submit_refusal
+
+    async def _submit_verified_message(self, message, *, target, owner):
+        if not await self._wait_before_submit():
+            return "invalid"
+        return await super()._submit_verified_message(
+            message, target=target, owner=owner
+        )
+
+
+class GuardedSender(PacedMessageSender):
+    def __init__(self, session, navigator, kind="message", subject="", *, pacer=None):
+        super().__init__(session, navigator, pacer=pacer)
         self.kind, self.subject = kind, subject
 
     async def _read_message_composer_state(self, target):
@@ -167,7 +194,8 @@ class GuardedSender(MessageSender):
 
     async def _submit_verified_message(self, message, *, target, owner):
         # Same owner, exact subject and pricing immediately before the click.
-        await check_platform_limit(self._session)
+        if not await self._wait_before_submit():
+            return "invalid"
         result = await owner.evaluate(
             """(node,arg)=>{
           if(location.protocol!=='https:'||!/(^|\\.)linkedin\\.com$/.test(location.hostname))return false;
@@ -205,10 +233,19 @@ class GuardedSender(MessageSender):
 
 
 class InviteOnly(ConnectionActions):
+    def __init__(self, session, navigator, read_main_profile, *, pacer=None):
+        super().__init__(session, navigator, read_main_profile)
+        self.pacer = pacer
+        self.submit_refusal = None
+
     async def connect_with_person(self, username, *, note=None):
         self._booster_invite_attempted = False
+        self.submit_refusal = None
         try:
-            return await super().connect_with_person(username, note=note)
+            result = await super().connect_with_person(username, note=note)
+            if self.submit_refusal:
+                return refusal(self.submit_refusal["message"]) | self.submit_refusal
+            return result
         except LinkedInLimitError:
             raise
         except Exception:
@@ -309,6 +346,9 @@ class InviteOnly(ConnectionActions):
             if await textarea.input_value():
                 return False, False, None
             await textarea.fill(note)
+        self.submit_refusal = await before_submit_guard(self._session, self.pacer)
+        if self.submit_refusal:
+            return False, False, self.submit_refusal["message"]
         # A response can disappear after dispatch. Mark uncertainty before the
         # atomic click and never retry via Enter or a second locator click.
         self._booster_invite_attempted = True
@@ -338,10 +378,22 @@ class InviteOnly(ConnectionActions):
         return True, bool(note), None
 
 
+class PacedNavigator(PageNavigator):
+    def __init__(self, session, pacer=None):
+        super().__init__(session)
+        self.pacer = pacer
+
+    async def _navigate_to_page(self, url, *args, **kwargs):
+        if self.pacer:
+            await self.pacer.step()
+        return await super()._navigate_to_page(url, *args, **kwargs)
+
+
 class BrowserOutreach:
-    def __init__(self, page, read_profile=None, read_conversation=None):
+    def __init__(self, page, read_profile=None, read_conversation=None, *, pacer=None):
         self.session = PageSession(page)
-        self.navigator = PageNavigator(self.session)
+        self.pacer = pacer
+        self.navigator = PacedNavigator(self.session, pacer)
         self.sender = MessageSender(self.session, self.navigator)
         self.page = page
         self.read_profile = read_profile
@@ -374,7 +426,9 @@ class BrowserOutreach:
             return result
         if result.get("relationship") in ("self", "incoming"):
             return result
-        connector = InviteOnly(self.session, self.navigator, self.read_profile)
+        connector = InviteOnly(
+            self.session, self.navigator, self.read_profile, pacer=self.pacer
+        )
         signals = await connector._read_action_signals(username)
         # More may have revealed a portal-mounted Pending control whose label
         # belongs to a child div instead of its exact-profile anchor.
@@ -476,10 +530,14 @@ class BrowserOutreach:
             )
         if self.read_profile is None:
             return refusal("Чтение профиля для приглашения не настроено.")
-        connector = InviteOnly(self.session, self.navigator, self.read_profile)
+        connector = InviteOnly(
+            self.session, self.navigator, self.read_profile, pacer=self.pacer
+        )
         result = await connector.connect_with_person(
             normalize_person_identifier(url), note=note or None
         )
+        if connector.submit_refusal:
+            return result
         if result.get("status") == "connected":
             after = await self.observe(url, relationship_only=True)
             confirmed = (
@@ -528,7 +586,9 @@ class BrowserOutreach:
             return refusal(
                 "Нет подтверждённой формы платного InMail с доступными кредитами."
             )
-        sender = GuardedSender(self.session, self.navigator, kind, subject or "")
+        sender = GuardedSender(
+            self.session, self.navigator, kind, subject or "", pacer=self.pacer
+        )
         return await sender.send_message(url, message, confirm_send=True)
 
     async def check_reply(self, url, thread_id, open_conversation):

@@ -28,6 +28,12 @@ async def check_recruiter_browser(page):
         "free_ok",
         "free_channel_changed",
         "paid_channel_changed",
+        "pause_ok",
+        "pause_recipient",
+        "pause_body",
+        "pause_credits",
+        "pause_challenge",
+        "pause_limit",
     ]
     for case in cases:
         await page.goto(
@@ -69,7 +75,32 @@ async def check_recruiter_browser(page):
         }""",
             case,
         )
-        adapter = RecruiterBrowser(page, PageSession(page), None)
+        pause_calls = []
+
+        class SubmitPause:
+            async def before_submit(self):
+                assert (
+                    await page.locator("[contenteditable]").inner_text()
+                    == "Hello, test recipient."
+                )
+                pause_calls.append(case)
+                await page.evaluate(
+                    """mode=>{
+                      if(mode==='pause_recipient')document.querySelector('[data-test-recipient-pill]').setAttribute('data-recipient-pill-id','urn:li:ts_profile:Other');
+                      if(mode==='pause_body')document.querySelector('[contenteditable]').textContent='Changed while waiting';
+                      if(mode==='pause_credits')document.querySelector('[data-test-inmail-credits-text]').textContent='1/0 InMail Credits';
+                      if(mode==='pause_challenge')history.replaceState({},'', '/checkpoint/challenge/');
+                      if(mode==='pause_limit'){const notice=document.createElement('div');notice.setAttribute('role','alert');notice.textContent='You have reached your InMail limit';document.body.append(notice);}
+                    }""",
+                    case,
+                )
+
+        adapter = RecruiterBrowser(
+            page,
+            PageSession(page),
+            None,
+            pacer=SubmitPause() if case.startswith("pause_") else None,
+        )
         adapter.status = AsyncMock(
             return_value={
                 "contract": "Approved contract",
@@ -117,12 +148,21 @@ async def check_recruiter_browser(page):
                 "missing_mapping",
             }, case
         else:
-            assert result["sent"] is (case in {"ok", "free_ok"}), (case, result)
+            assert result["sent"] is (case in {"ok", "free_ok", "pause_ok"}), (
+                case,
+                result,
+            )
         assert await page.evaluate("window.sendCount") == int(
-            case in {"ok", "free_ok"}
+            case in {"ok", "free_ok", "pause_ok"}
         ), case
-        if case in {"ok", "free_ok"}:
-            assert result["credit_cost"] == int(case == "ok")
+        if case.startswith("pause_"):
+            assert pause_calls == [case], (case, pause_calls)
+        if case in {"pause_challenge", "pause_limit"}:
+            flag = "auth_required" if case == "pause_challenge" else "platform_limited"
+            assert result[flag] is True and result["retry_safe"] is True, (case, result)
+            adapter.confirm.assert_not_awaited()
+        if case in {"ok", "free_ok", "pause_ok"}:
+            assert result["credit_cost"] == int(case != "free_ok")
         if case == "draft":
             assert (
                 await page.locator("[contenteditable]").inner_text()

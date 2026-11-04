@@ -12,13 +12,21 @@ from pathlib import Path
 
 
 def bundled_browsers():
+    frozen = getattr(sys, "frozen", False)
     root = (
         Path(sys.executable).parent.parent
-        if getattr(sys, "frozen", False)
+        if frozen
         else Path(__file__).resolve().parents[2] / "runtime"
     )
     folder = root / "browser"
-    if folder.is_dir():
+    if frozen:
+        if not folder.is_dir():
+            raise RuntimeError(
+                "Встроенный браузер не найден. Переустановите приложение."
+            )
+        # An installed app must never inherit another tool's browser cache.
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(folder)
+    elif folder.is_dir():
         os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(folder))
     return folder
 
@@ -37,6 +45,7 @@ async def check():
     from patchright.async_api import async_playwright
     from PIL import Image
 
+    from .browser_engine import verify_browser_engine
     from .identity import IdentityResolutionError, resolve_own_profile
     from .ocr import detect
     from .outreach_browser_check import check_outreach_browser
@@ -45,6 +54,7 @@ async def check():
     from .worker import PROFILE_JS, SEARCH_JS
 
     bundled_browsers()
+    engine = verify_browser_engine()
     # Exercise the actual helper subprocess commands, not only raw Chromium.
     # This fails on the 0.1.0 frozen binary before any browser is opened.
     with tempfile.TemporaryFile() as lease:
@@ -104,6 +114,9 @@ async def check():
                 assert manager.close_confirmed
         browser = await playwright.chromium.launch(channel="chromium", headless=True)
         try:
+            assert browser.version == engine["chromium_version"], (
+                "Running Chromium does not match the shipped Patchright browser."
+            )
             context = await browser.new_context()
             await context.route("**/*", lambda route: route.abort())
             page = await context.new_page()
@@ -171,6 +184,7 @@ async def check():
     return {
         "ok": True,
         "browser": "bundled Chromium",
+        "browser_engine": engine,
         "ocr": "offline",
         "mcp_tools": len(names),
         "process_helpers": "verified",

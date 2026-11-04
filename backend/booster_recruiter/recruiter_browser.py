@@ -6,7 +6,7 @@ No private APIs. Drafts, automatic follow-ups and changed contracts fail closed.
 import re
 from urllib.parse import parse_qs, urlparse
 
-from .platform_limits import check_platform_limit
+from .platform_limits import before_submit_guard, check_platform_limit
 from .store import AppError, canonical
 
 ORIGIN = "https://www.linkedin.com"
@@ -59,8 +59,9 @@ def normalized(text):
 
 
 class RecruiterBrowser:
-    def __init__(self, page, session, navigator):
+    def __init__(self, page, session, navigator, *, pacer=None):
         self.page, self.session, self.navigator = page, session, navigator
+        self.pacer = pacer
         self.confirmed_thread = None
 
     async def go(self, url):
@@ -429,6 +430,9 @@ class RecruiterBrowser:
         await editor_element.fill(body)
         submitted = False
         try:
+            blocked = await before_submit_guard(self.session, self.pacer)
+            if blocked:
+                return {"sent": False, "retry_safe": True} | blocked
             result = await owner.evaluate(
                 """(node,arg)=>{
               const p=node.__boosterRecruiter, norm=s=>(s||'').replace(/\\s+/g,' ').trim();

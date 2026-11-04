@@ -1,8 +1,13 @@
 """Offline Chromium acceptance cases. Every URL is locally fulfilled."""
 
 import json
+from unittest.mock import patch
 
-from booster_linkedin.linkedin.message_sender import _ProfileMessageTarget
+from booster_linkedin.linkedin.connection_actions import ConnectionActions
+from booster_linkedin.linkedin.message_sender import (
+    MessageSender,
+    _ProfileMessageTarget,
+)
 from booster_linkedin.linkedin.navigation import PageNavigator
 from booster_linkedin.linkedin.session import PageSession
 
@@ -12,6 +17,7 @@ from .outreach_browser import (
     THREAD_JS,
     GuardedSender,
     InviteOnly,
+    PacedMessageSender,
 )
 
 
@@ -39,11 +45,19 @@ async def check_outreach_browser(page):
         ("wrong_recipient", "inmail", False),
         ("tampered_subject", "inmail", False),
         ("lost_credits", "inmail", False),
+        ("pause_ok", "inmail", True),
+        ("pause_recipient", "inmail", False),
+        ("pause_body", "message", False),
+        ("pause_credits", "inmail", False),
+        ("pause_challenge", "inmail", False),
+        ("pause_limit", "inmail", False),
+        ("pause_challenge", "legacy", False),
+        ("pause_limit", "legacy", False),
     ]
     message = "Hello, Test Recipient!\nA new opportunity."
     for mode, kind, should_send in cases:
         await page.goto(compose)
-        paid = mode != "free_ok"
+        paid = kind != "legacy" and mode not in {"free_ok", "pause_body"}
         credits = (
             "0 credits remaining"
             if mode == "zero_credits"
@@ -91,17 +105,65 @@ async def check_outreach_browser(page):
             {"mode": mode, "message": message},
         )
         session = PageSession(page)
-        sender = GuardedSender(
-            session, PageNavigator(session), kind, "Approved subject"
+        pause_calls = []
+
+        class SubmitPause:
+            async def before_submit(self):
+                # Mutate after the draft is populated, exactly while production
+                # waits before its final verification/click.
+                assert (
+                    await page.locator("#editor").inner_text()
+                ).split() == message.split()
+                pause_calls.append(mode)
+                await page.evaluate(
+                    """mode=>{
+                      if(mode==='pause_recipient')document.querySelector('form').setAttribute('data-recipient-urn','ACoAOTHER');
+                      if(mode==='pause_body')document.querySelector('#editor').textContent='Changed while waiting';
+                      if(mode==='pause_credits')document.querySelector('#credits').textContent='0 credits remaining';
+                      if(mode==='pause_challenge')history.replaceState({},'', '/checkpoint/challenge/');
+                      if(mode==='pause_limit'){const notice=document.createElement('div');notice.setAttribute('role','alert');notice.textContent='You have reached your messaging limit';document.body.append(notice);}
+                    }""",
+                    mode,
+                )
+
+        sender = (
+            PacedMessageSender(session, PageNavigator(session), pacer=SubmitPause())
+            if kind == "legacy"
+            else GuardedSender(
+                session,
+                PageNavigator(session),
+                kind,
+                "Approved subject",
+                pacer=SubmitPause() if mode.startswith("pause_") else None,
+            )
         )
-        result = await sender._submit_to_verified_composer(
-            message, target=target, expected_route=page.url
-        )
+        if mode in {"pause_challenge", "pause_limit"}:
+
+            async def send_to_fixture(self, *args, **kwargs):
+                return await self._submit_to_verified_composer(
+                    message, target=target, expected_route=page.url
+                )
+
+            with patch.object(MessageSender, "send_message", send_to_fixture):
+                result = await sender.send_message(
+                    "test-recipient", message, confirm_send=True
+                )
+        else:
+            result = await sender._submit_to_verified_composer(
+                message, target=target, expected_route=page.url
+            )
         assert result["sent"] is should_send, json.dumps(
             {"case": mode, "kind": kind, "result": result}
         )
         clicks = await page.evaluate("Number(document.body.dataset.clicks||0)")
         assert clicks == int(should_send), (mode, result, clicks)
+        if mode.startswith("pause_"):
+            assert pause_calls == [mode], (mode, pause_calls)
+        if mode in {"pause_challenge", "pause_limit"}:
+            flag = "auth_required" if mode == "pause_challenge" else "platform_limited"
+            assert sender.submit_refusal[flag] is True, (mode, sender.submit_refusal)
+            assert result[flag] is True, (mode, result)
+            assert result["retry_safe"] is True, (mode, result)
         if should_send and kind == "inmail":
             assert (
                 await page.evaluate("document.body.dataset.sentSubject")
@@ -349,6 +411,11 @@ async def check_invitation_dialogs(page):
         "personal_draft",
         "hidden_personal_draft",
         "changed_recipient",
+        "pause_ok",
+        "pause_recipient",
+        "pause_note",
+        "pause_challenge",
+        "pause_limit",
     ]
     for case in cases:
         await page.goto(
@@ -380,18 +447,68 @@ async def check_invitation_dialogs(page):
         }""",
             case,
         )
-        connector = InviteOnly(PageSession(page), None, None)
+        pause_calls = []
+
+        class InvitePause:
+            async def step(self):
+                pass
+
+            async def before_submit(self):
+                pause_calls.append(case)
+                if case == "pause_note":
+                    assert (
+                        await page.locator("textarea").input_value() == "Approved note"
+                    )
+                await page.evaluate(
+                    """mode=>{
+                      if(mode==='pause_recipient')document.querySelector('strong').textContent='Other person';
+                      if(mode==='pause_note')document.querySelector('textarea').value='Changed while waiting';
+                      if(mode==='pause_challenge')history.replaceState({},'', '/checkpoint/challenge/');
+                      if(mode==='pause_limit'){const notice=document.createElement('div');notice.setAttribute('role','alert');notice.textContent='You have reached your weekly invitation limit';document.body.append(notice);}
+                    }""",
+                    case,
+                )
+
+        connector = InviteOnly(
+            PageSession(page),
+            None,
+            None,
+            pacer=InvitePause() if case.startswith("pause_") else None,
+        )
         connector._booster_invite_target = {
             "username": "recipient",
             "name": "Recipient",
         }
         note = (
             "Approved note"
-            if case in {"note", "changed_note", "changed_recipient"}
+            if case in {"note", "changed_note", "changed_recipient", "pause_note"}
             else None
         )
-        sent, note_sent, _ = await connector._submit_invite_dialog(note)
-        expected = case in {"plain", "note"}
+        if case in {"pause_challenge", "pause_limit"}:
+
+            async def connect_to_fixture(self, username, *, note=None):
+                sent, note_sent, message = await self._submit_invite_dialog(note)
+                return {"invited": sent, "note_sent": note_sent, "message": message}
+
+            with patch.object(
+                ConnectionActions, "connect_with_person", connect_to_fixture
+            ):
+                result = await connector.connect_with_person("recipient", note=note)
+            sent, note_sent = result["invited"], False
+            flag = "auth_required" if case == "pause_challenge" else "platform_limited"
+            assert result[flag] is True and result["retry_safe"] is True, (case, result)
+        else:
+            sent, note_sent, _ = await connector._submit_invite_dialog(note)
+        expected = case in {"plain", "note", "pause_ok"}
+        if case.startswith("pause_"):
+            assert pause_calls == [case], (case, pause_calls)
+        if case in {"pause_challenge", "pause_limit"}:
+            flag = "auth_required" if case == "pause_challenge" else "platform_limited"
+            assert connector.submit_refusal[flag] is True, (
+                case,
+                connector.submit_refusal,
+            )
+            assert not getattr(connector, "_booster_invite_attempted", False)
         assert sent is expected and note_sent is (case == "note"), (
             case,
             sent,
