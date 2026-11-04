@@ -11,9 +11,9 @@ const start = source.indexOf("const TEMPLATE_FIELDS");
 const end = source.indexOf("function TemplateFeedback");
 assert(start >= 0 && end > start, "Template helpers must be present");
 // Only tracked application code is evaluated. User text is supplied as data.
-const { validateTemplate, describeOutreach } = vm.runInNewContext(
+const { validateTemplate, describeOutreach, outreachCounts } = vm.runInNewContext(
   source.slice(start, end).replaceAll("export function", "function") +
-    "\n({ validateTemplate, describeOutreach })",
+    "\n({ validateTemplate, describeOutreach, outreachCounts })",
 );
 
 const candidate = {
@@ -91,7 +91,7 @@ import json, sys, tempfile
 from pathlib import Path
 from booster_recruiter.store import Store, AppError
 
-cases = json.load(sys.stdin)
+cases = json.loads(sys.stdin.buffer.read().decode('utf-8'))
 outcomes = []
 with tempfile.TemporaryDirectory(prefix="booster-ui-validation-") as temporary:
     store = Store(Path(temporary))
@@ -191,6 +191,48 @@ async function main() {
   );
   assert(fast.includes("без списания кредита"));
 
+  // A historical confirmation may exist without the later member timestamp;
+  // receiving a reply must not erase that recipient from the sent total.
+  const historicalReply = outreachCounts({
+    status: "paused",
+    members: [{ id: "replied", status: "replied", sent_at: null }],
+    actions: [{ member_id: "replied", kind: "message", status: "sent" }],
+  });
+  assert.equal(historicalReply.sent, 1);
+  assert.equal(historicalReply.replied, 1);
+  const counts = outreachCounts({
+    members: [
+      { id: "timestamp", status: "sent", sent_at: "2026-11-01T10:00:00Z" },
+      { id: "reply", status: "replied" },
+      { id: "inmail", status: "sent" },
+      { id: "invite", status: "waiting_acceptance" },
+      { id: "unknown", status: "needs_review" },
+      { id: "submitting", status: "needs_review" },
+      { id: "blocked", status: "needs_review" },
+      { id: "prior-reply", status: "replied" },
+    ],
+    actions: [
+      { member_id: "timestamp", kind: "message", status: "sent" },
+      { member_id: "reply", kind: "message", status: "sent" },
+      { member_id: "reply", kind: "inmail", status: "sent" },
+      { member_id: "inmail", kind: "inmail", status: "sent" },
+      { member_id: "invite", kind: "invite", status: "sent" },
+      { member_id: "unknown", kind: "message", status: "unknown" },
+      { member_id: "submitting", kind: "inmail", status: "submitting" },
+      { member_id: "blocked", kind: "message", status: "blocked" },
+      { member_id: "outside-run", kind: "message", status: "sent" },
+    ],
+  });
+  assert.equal(
+    counts.sent,
+    3,
+    "Count confirmed recipients, not actions or replies without send evidence",
+  );
+  assert.equal(counts.waiting, 1);
+  assert.equal(counts.replied, 2);
+  assert.equal(outreachCounts({ members: [], actions: [] }).sent, 0);
+  assert.equal(outreachCounts(null), null);
+
   let api, behavior;
   const electron = {
     contextBridge: {
@@ -259,14 +301,15 @@ async function main() {
     .replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "")
     .replace(/export\s*\{[\s\S]*?\};?/g, "")
     .replace(/\bexport\s+(?=(?:function|const))/g, "");
-  const { ContactState } = vm.runInNewContext(
-    componentCode + "\n({ContactState})",
-    {
-      React,
-      ...React,
-      ...require("lucide-react"),
-    },
-  );
+  const { ContactState, DetailMessage, DesktopPreferences } =
+    vm.runInNewContext(
+      componentCode + "\n({ContactState, DetailMessage, DesktopPreferences})",
+      {
+        React,
+        ...React,
+        ...require("lucide-react"),
+      },
+    );
   const render = (status, run_status) =>
     renderToStaticMarkup(
       React.createElement(ContactState, {
@@ -288,8 +331,78 @@ async function main() {
   assert(render("replied", "cancelled").includes("Ответ получен"));
   assert(!render("replied", "cancelled").includes("План остановлен"));
   assert(render("needs_review", "cancelled").includes("Нужно проверить"));
+  const renderDetail = (props) =>
+    renderToStaticMarkup(React.createElement(DetailMessage, props));
+  const rawUnknown =
+    "The message was submitted but LinkedIn did not confirm the message-list transition in time. Check the conversation before retrying; retrying may deliver the message twice.";
+  for (const [status, kind, detail, expected] of [
+    ["unknown", "message", rawUnknown, "Не повторяйте отправку до проверки"],
+    [
+      "unknown",
+      "invite",
+      "Invitation submission could not be confirmed.",
+      "Проверьте приглашение в профиле LinkedIn.",
+    ],
+    [
+      "sent",
+      "message",
+      "Message submitted and confirmed in the conversation UI.",
+      "Отправка сообщения подтверждена в LinkedIn.",
+    ],
+    [
+      "sent",
+      "invite",
+      "Invitation confirmed.",
+      "Отправка приглашения подтверждена в LinkedIn.",
+    ],
+    [
+      "blocked",
+      "message",
+      "Message composer unavailable <dialog>.",
+      "Действие остановлено.",
+    ],
+    [
+      "needs_review",
+      undefined,
+      '{"message":"Ошибка","meta":{"code":"outcome_unknown"}}',
+      "Результат требует ручной проверки.",
+    ],
+  ]) {
+    const markup = renderDetail({ detail, status, kind });
+    assert(
+      markup.includes(expected),
+      `${status}/${kind} should give a Russian next step`,
+    );
+    assert(markup.includes("Технические подробности"));
+    assert(
+      markup.includes(
+        renderToStaticMarkup(React.createElement("pre", null, detail)),
+      ),
+      "The exact diagnostic must remain accessible and escaped",
+    );
+    assert(
+      !markup.includes("<details open"),
+      "Raw diagnostics should initially be collapsed",
+    );
+    if (status === "blocked") assert(!markup.includes("не отправлено"));
+  }
+  const russianDetail =
+    "LinkedIn просит подтвердить вход. Откройте аккаунт и войдите повторно.";
+  const russianMarkup = renderDetail({
+    detail: russianDetail,
+    status: "blocked",
+  });
+  assert(russianMarkup.includes(russianDetail));
+  assert(!russianMarkup.includes("Технические подробности"));
+  assert.equal(renderDetail({ detail: "  ", status: "unknown" }), "");
+  const settingsLoading = renderToStaticMarkup(
+    React.createElement(DesktopPreferences),
+  );
+  assert(settingsLoading.includes('class="panel preferences-card"'));
+  assert(settingsLoading.includes('role="status">Загружаем настройки…'));
+  assert(settingsLoading.includes("пока компьютер включён и не спит"));
   console.log(
-    `PASS: ${cases.length} frontend/backend preview parity cases; Unicode counters, route copy, IPC errors/forwarding, and stopped-plan rendering. No LinkedIn requests or sends.`,
+    `PASS: ${cases.length} frontend/backend preview parity cases; Unicode counters, recipient totals, route copy, IPC errors/forwarding, stopped-plan rendering, Russian status guidance/raw diagnostics, and settings loading. No LinkedIn requests or sends.`,
   );
 }
 main().catch((error) => {

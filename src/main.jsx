@@ -32,6 +32,7 @@ import {
   OutreachHistory,
   DesktopPreferences,
   describeOutreach,
+  DetailMessage,
 } from "./Outreach";
 
 const api = window.booster;
@@ -94,7 +95,29 @@ function Button({ children, kind = "secondary", ...rest }) {
     </button>
   );
 }
-function Modal({ title, subtitle, children, onClose, wide = false, error }) {
+function Modal({
+  title,
+  subtitle,
+  children,
+  onClose,
+  wide = false,
+  error,
+  initialFocus,
+}) {
+  const parts = React.Children.toArray(children);
+  const form = parts.length === 1 && parts[0].type === "form" ? parts[0] : null;
+  const bodyParts = form ? React.Children.toArray(form.props.children) : parts;
+  const footer = bodyParts.find(
+    (child) => child.props?.className === "modal-footer",
+  );
+  const body = (
+    <>
+      <div className="modal-body">
+        {bodyParts.filter((child) => child !== footer)}
+      </div>
+      {footer}
+    </>
+  );
   const container = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -115,10 +138,12 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
       item.inert = true;
     });
     (
-      controls().find((item) => item.matches("input,textarea,select")) ||
+      (initialFocus && controls().find((item) => item.matches(initialFocus))) ||
+      (form &&
+        controls().find((item) => item.matches("input,textarea,select"))) ||
       controls()[0] ||
       container.current
-    )?.focus();
+    )?.focus({ preventScroll: !initialFocus });
     const listener = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -184,7 +209,9 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
             <span>{error}</span>
           </div>
         )}
-        {children}
+        {form
+          ? React.cloneElement(form, { className: "modal-form" }, body)
+          : body}
       </section>
     </div>
   );
@@ -206,16 +233,22 @@ function App() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [retrying, setRetrying] = useState(false);
   const [tab, setTab] = useState("people");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [personSnapshot, setPersonValue] = useState(null);
+  const restorePersonFocus = useRef(false);
   const setModal = (value) => {
     setError("");
     setModalValue(value);
   };
   const setPerson = (value) => {
     setError("");
+    restorePersonFocus.current = false;
     setPersonValue(value);
   };
   const person =
@@ -282,25 +315,41 @@ function App() {
     }
   }, [error, modal, person?.id, preview?.run_id, confirmation]);
   const refresh = useCallback(async () => {
-    const notificationRevision = noticeScope.current.revision;
     if (!api) {
       setLoading(false);
-      setError("Откройте Booster Recruiter как приложение.");
+      setWorkspaceError("Откройте Booster Recruiter как приложение.");
       return;
     }
     try {
       setState(await api.command("state"));
-      if (cid) {
-        const result = await api.command("campaign.detail", { id: cid });
-        if (currentCampaign.current === cid) setDetail(result);
-      }
-      setLoading(false);
+      setWorkspaceLoaded(true);
+      setWorkspaceError("");
     } catch (e) {
-      if (notificationRevision === noticeScope.current.revision)
-        setError(e.message);
+      setWorkspaceError(e.message);
       setLoading(false);
+      return;
+    }
+    setLoading(false);
+    if (cid) {
+      try {
+        const result = await api.command("campaign.detail", { id: cid });
+        if (currentCampaign.current === cid) {
+          setDetail(result);
+          setDetailError("");
+        }
+      } catch (e) {
+        if (currentCampaign.current === cid) setDetailError(e.message);
+      }
     }
   }, [cid]);
+  const retryLoad = async () => {
+    setRetrying(true);
+    try {
+      await refresh();
+    } finally {
+      setRetrying(false);
+    }
+  };
   useEffect(() => {
     refresh();
     const timer = setInterval(refresh, 2500);
@@ -340,6 +389,7 @@ function App() {
     !approvedPlan
       ? Promise.resolve(true)
       : new Promise((resolve) => {
+          restorePersonFocus.current = Boolean(person);
           setConfirmation({ resolve });
         });
   const hasOutreachHistory = detail?.outreach?.runs.some(
@@ -359,6 +409,7 @@ function App() {
   const openCampaign = (id) => {
     setCid(id);
     setDetail(null);
+    setDetailError("");
     setPage("campaigns");
     setTab("people");
     setFilter("all");
@@ -469,7 +520,9 @@ function App() {
             >
               <Icon size={19} />
               {text}
-              {id === "campaigns" && <span>{state.campaigns.length}</span>}
+              {id === "campaigns" && workspaceLoaded && (
+                <span>{state.campaigns.length}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -493,7 +546,9 @@ function App() {
             {cid && (
               <>
                 <ChevronRight size={14} />
-                {campaign?.name || "Загрузка…"}
+                {campaign?.name ||
+                  state.campaigns.find((c) => c.id === cid)?.name ||
+                  "Кампания"}
               </>
             )}
           </span>
@@ -523,12 +578,33 @@ function App() {
             </button>
           </div>
         )}
+        {workspaceLoaded &&
+          (workspaceError || (cid && detail && detailError)) && (
+            <div className="alert warning refresh-warning" role="status">
+              <AlertCircle size={18} />
+              <span>
+                Не удалось обновить данные. Показана последняя загруженная
+                версия.
+              </span>
+              <Button onClick={retryLoad} disabled={retrying}>
+                {retrying ? "Обновляем…" : "Обновить данные"}
+              </Button>
+            </div>
+          )}
         <div className="content">
           {loading ? (
             <div className="empty">
               <LoaderCircle className="spin" />
               <h2>Открываем рабочее пространство…</h2>
             </div>
+          ) : !workspaceLoaded ? (
+            <LoadFailure
+              title="Не удалось открыть рабочее пространство"
+              text="Не удалось загрузить аккаунты и кампании. Повторите попытку."
+              detail={workspaceError}
+              onRetry={retryLoad}
+              retrying={retrying}
+            />
           ) : page === "accounts" ? (
             <>
               <div className="page-heading">
@@ -710,65 +786,129 @@ function App() {
                   <p>Основные функции работают без подключения ИИ.</p>
                 </div>
               </div>
-              <DesktopPreferences />
-              <section className="panel settings">
-                <h2>Как начать работу</h2>
-                <ol>
-                  <li>Подключите аккаунт на вкладке «Аккаунты».</li>
-                  <li>Создайте кампанию и укажите ключевые слова.</li>
-                  <li>Запустите сбор и проверьте найденные профили.</li>
-                  <li>
-                    Выберите получателей, проверьте тексты и подтвердите
-                    отправку.
-                  </li>
-                  <li>
-                    Сохраните список профилей в Excel, а результаты сообщений —
-                    в CSV из истории.
-                  </li>
-                </ol>
-                <h2>Подключение ИИ-агента</h2>
-                <p>
-                  Необязательный способ управления теми же кампаниями через MCP.
-                  Приложение должно быть открыто. Агент не может самостоятельно
-                  подтвердить новую рассылку.
-                </p>
-                <Button
-                  onClick={async () => {
-                    try {
-                      setConfig(await api.mcpConfig());
-                    } catch (e) {
-                      setError(e.message);
-                    }
-                  }}
-                >
-                  Показать настройки подключения
-                </Button>
-                {config && (
-                  <textarea
-                    className="code"
-                    readOnly
-                    rows={12}
-                    value={config}
-                    aria-label="Настройки MCP"
-                  />
-                )}
-                <h2>Сохранение и остановка</h2>
-                <p>
-                  Данные сохраняются после каждой операции. Кнопка «Пауза»
-                  дожидается текущего действия. При закрытии приложения
-                  незавершённая отправка отмечается для проверки, чтобы избежать
-                  дублей.
-                </p>
-                <h2>Поддерживаемые сообщения</h2>
-                <p>
-                  Сначала программа проверяет возможность бесплатного сообщения.
-                  В настройках кампании можно разрешить приглашения в контакты и
-                  InMail в пределах выбранного бюджета. После принятия
-                  приглашения утверждённое сообщение отправится автоматически.
-                  Ответ остановит дальнейшие обращения. Open to Work и текущая
-                  занятость — разные признаки.
-                </p>
-              </section>
+              <div className="settings-layout">
+                <DesktopPreferences />
+                <div className="settings-help-grid">
+                  <section className="panel settings-card">
+                    <header className="settings-card-heading">
+                      <h2>Как начать работу</h2>
+                      <p>От подключения аккаунта до первого результата.</p>
+                    </header>
+                    <ol className="quickstart-list">
+                      <li>
+                        <div>
+                          <strong>Подключите LinkedIn</strong>
+                          <p>
+                            Добавьте отправителя на вкладке «Аккаунты» и
+                            выполните вход.
+                          </p>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Создайте кампанию</strong>
+                          <p>
+                            Укажите ключевые слова и число профилей для поиска.
+                          </p>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Выберите кандидатов</strong>
+                          <p>
+                            Проверьте группы сообщений и отметьте нужные
+                            профили.
+                          </p>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Проверьте и запустите</strong>
+                          <p>
+                            В «Автоматизации» задайте способ связи и тексты.
+                            Проверьте получателей перед подтверждением.
+                          </p>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Сохраните результат</strong>
+                          <p>
+                            Профили и текущие статусы — в CSV или Excel. Полная
+                            история действий — на отдельном листе Excel.
+                          </p>
+                        </div>
+                      </li>
+                    </ol>
+                  </section>
+                  <section className="panel settings-card">
+                    <header className="settings-card-heading">
+                      <h2>Работа с кампаниями</h2>
+                      <p>Что происходит после подтверждения запуска.</p>
+                    </header>
+                    <div className="settings-help-item">
+                      <h3>Приглашения и сообщения</h3>
+                      <p>
+                        Программа следует выбранному плану связи. После принятия
+                        приглашения отправляет утверждённое сообщение. Ответ
+                        кандидата останавливает дальнейшие обращения.
+                      </p>
+                    </div>
+                    <div className="settings-help-item">
+                      <h3>Пауза и проверка результата</h3>
+                      <p>
+                        «Пауза» дожидается текущего действия и сохраняет план.
+                        Если результат отправки неизвестен, сначала проверьте
+                        переписку в LinkedIn — повтор может создать дубль.
+                      </p>
+                    </div>
+                    <div className="settings-help-item">
+                      <h3>Что означает рамка</h3>
+                      <p>
+                        Open to Work помогает выбрать текст обращения.
+                        Отсутствие рамки не подтверждает занятость человека или
+                        его нежелание менять работу.
+                      </p>
+                    </div>
+                  </section>
+                </div>
+                <details className="panel settings-card settings-disclosure">
+                  <summary>
+                    <div>
+                      <h2>Подключение ИИ-агента</h2>
+                      <p>Дополнительно · управление через MCP</p>
+                    </div>
+                    <ChevronRight size={20} aria-hidden="true" />
+                  </summary>
+                  <div className="settings-integration">
+                    <p>
+                      Агент может работать с теми же кампаниями через MCP, пока
+                      приложение работает, в том числе в фоне. Подтверждение
+                      новой рассылки остаётся за вами.
+                    </p>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          setConfig(await api.mcpConfig());
+                        } catch (e) {
+                          setError(e.message);
+                        }
+                      }}
+                    >
+                      Показать настройки подключения
+                    </Button>
+                    {config && (
+                      <textarea
+                        className="code"
+                        readOnly
+                        rows={8}
+                        value={config}
+                        aria-label="Настройки MCP"
+                      />
+                    )}
+                  </div>
+                </details>
+              </div>
             </>
           ) : !cid ? (
             <>
@@ -882,9 +1022,19 @@ function App() {
                 </div>
               )}
             </>
+          ) : !detail && detailError ? (
+            <LoadFailure
+              title="Не удалось открыть кампанию"
+              text="Данные кампании не загрузились. Повторите попытку или вернитесь к списку."
+              detail={detailError}
+              onRetry={retryLoad}
+              retrying={retrying}
+              onBack={() => setCid(null)}
+            />
           ) : !detail ? (
             <div className="empty">
               <LoaderCircle className="spin" />
+              <h2>Открываем кампанию…</h2>
             </div>
           ) : (
             <>
@@ -1114,7 +1264,11 @@ function App() {
                                     <Badge value={p.delivery[0].status} />
                                   </td>
                                   <td>
-                                    {p.delivery[0].detail}
+                                    <DetailMessage
+                                      detail={p.delivery[0].detail}
+                                      status={p.delivery[0].status}
+                                      kind="message"
+                                    />
                                     <small>{fmt(p.delivery[0].updated)}</small>
                                     <details>
                                       <summary>Текст сообщения</summary>
@@ -1335,9 +1489,7 @@ function App() {
                                     Нужно проверить
                                   </option>
                                   <option value="open">Open to Work</option>
-                                  <option value="neutral">
-                                    Нейтральное сообщение
-                                  </option>
+                                  <option value="neutral">Нейтральное</option>
                                 </select>
                               </td>
                               <td>
@@ -1394,16 +1546,33 @@ function App() {
                           ? "Нет совпадений"
                           : "Профили появятся после поиска"}
                       </h3>
-                      <p>
-                        Профили без подтверждённого Open to Work получат
-                        нейтральное сообщение.
-                      </p>
+                      {detail.candidates.length ? (
+                        <>
+                          <p>
+                            Поиск и фильтр скрыли профили. Измените запрос или
+                            сбросьте фильтры.
+                          </p>
+                          <Button
+                            onClick={() => {
+                              setQuery("");
+                              setFilter("all");
+                            }}
+                          >
+                            Сбросить фильтры
+                          </Button>
+                        </>
+                      ) : (
+                        <p>
+                          Нажмите «Найти кандидатов», чтобы собрать профили по
+                          вашему запросу.
+                        </p>
+                      )}
                     </div>
                   )}
                   <div className="table-footer">
                     <span>
-                      {people.length} {profileWord(people.length)} · Выбрано{" "}
-                      {selected.length}
+                      Показано: {people.length} {profileWord(people.length)} ·
+                      Всего выбрано: {selected.length}
                     </span>
                     <span>Изменение группы сохраняется автоматически</span>
                   </div>
@@ -1455,6 +1624,7 @@ function App() {
           error={error}
           title={person.data.name || "Профиль кандидата"}
           subtitle="Проверка исходных сведений"
+          initialFocus={restorePersonFocus.current ? "select" : undefined}
           onClose={() => setPerson(null)}
           wide
         >
@@ -1706,6 +1876,35 @@ function App() {
     </div>
   );
 }
+function LoadFailure({ title, text, detail, onRetry, retrying, onBack }) {
+  return (
+    <section className="empty load-failure" role="alert">
+      <div className="empty-icon">
+        <AlertCircle size={30} />
+      </div>
+      <h2>{title}</h2>
+      <p>{text}</p>
+      <div className="load-failure-actions">
+        {onBack && (
+          <Button onClick={onBack}>
+            <ArrowLeft size={16} />
+            Все кампании
+          </Button>
+        )}
+        <Button kind="primary" disabled={retrying} onClick={onRetry}>
+          <RefreshCw size={16} className={retrying ? "spin" : ""} />
+          {retrying ? "Загружаем…" : "Попробовать ещё раз"}
+        </Button>
+      </div>
+      {detail && (
+        <details className="technical-details">
+          <summary>Технические подробности</summary>
+          <pre>{detail}</pre>
+        </details>
+      )}
+    </section>
+  );
+}
 function Empty({ icon: Icon, title, text, action }) {
   return (
     <section className="empty">
@@ -1818,7 +2017,9 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
           setAttempted(true);
           const invalid = Object.keys(errors).find((key) => errors[key]);
           if (invalid) {
-            form.current.elements[invalid]?.focus();
+            const field = form.current.elements[invalid];
+            field?.focus({ preventScroll: true });
+            field?.closest("label")?.scrollIntoView({ block: "nearest" });
             return;
           }
           if (!busy)

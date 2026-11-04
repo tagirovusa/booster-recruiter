@@ -288,6 +288,7 @@ const { execFileSync } = require("node:child_process");
     await page
       .getByRole("checkbox", { name: "Продолжать работу после закрытия окна" })
       .check();
+    await expect(page.getByRole("status")).toHaveText("Настройки сохранены.");
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].close(),
     );

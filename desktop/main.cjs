@@ -15,6 +15,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const readline = require("node:readline");
+const { createPreferencesStore } = require("./preferences.cjs");
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "booster",
@@ -26,7 +27,7 @@ let win,
   connection,
   tray,
   exiting = false;
-let desktopPreferences = { background: false, autoStart: false };
+let desktopPreferences;
 function createApplicationMenu() {
   const items = [];
   if (process.platform === "darwin")
@@ -201,13 +202,10 @@ function trusted(event) {
 async function start() {
   app.setName("Booster Recruiter");
   createApplicationMenu();
-  try {
-    const p = JSON.parse(fs.readFileSync(preferencesPath(), "utf8"));
-    desktopPreferences = {
-      background: p.background === true,
-      autoStart: p.autoStart === true,
-    };
-  } catch {}
+  desktopPreferences = createPreferencesStore({
+    app,
+    filename: preferencesPath(),
+  });
   const { exe, args } = backend();
   const root = process.env.BOOSTER_DATA_DIR || app.getPath("userData");
   const env = { ...process.env };
@@ -319,30 +317,7 @@ ipcMain.handle("command", async (event, op, params) => {
 });
 ipcMain.handle("desktop-settings", async (event, patch) => {
   trusted(event);
-  if (patch !== undefined) {
-    if (
-      !patch ||
-      typeof patch !== "object" ||
-      Object.keys(patch).some(
-        (k) =>
-          !["background", "autoStart"].includes(k) ||
-          typeof patch[k] !== "boolean",
-      )
-    )
-      throw Error("Неизвестная настройка приложения.");
-    if ("autoStart" in patch) {
-      if (!app.isPackaged)
-        throw Error("Автозапуск доступен в установленной версии.");
-      app.setLoginItemSettings({ openAtLogin: patch.autoStart });
-    }
-    desktopPreferences = { ...desktopPreferences, ...patch };
-    await fs.promises.writeFile(
-      preferencesPath(),
-      JSON.stringify(desktopPreferences),
-      { mode: 0o600 },
-    );
-  }
-  return { ...desktopPreferences, packaged: app.isPackaged };
+  return desktopPreferences.access(patch);
 });
 ipcMain.handle("export", async (event, cid, format) => {
   trusted(event);

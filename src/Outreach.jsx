@@ -38,7 +38,7 @@ const states = {
   cancelled: "Отменено",
   submitting: "Выполняется",
   unknown: "Нужно проверить результат",
-  blocked: "Не выполнено",
+  blocked: "Действие остановлено",
 };
 const relations = {
   unknown: "Связь ещё не подтверждена",
@@ -192,6 +192,30 @@ export function describeOutreach(rules) {
   return steps.join(" ");
 }
 
+export function outreachCounts(run) {
+  if (!run) return null;
+  const confirmed = new Set(
+    run.actions
+      .filter(
+        (action) =>
+          action.status === "sent" &&
+          ["message", "inmail"].includes(action.kind),
+      )
+      .map((action) => action.member_id),
+  );
+  return {
+    waiting: run.members.filter(
+      (member) => member.status === "waiting_acceptance",
+    ).length,
+    // Confirmation is stored before the member timestamp is updated. Count
+    // each recipient once, including those who have subsequently replied.
+    sent: run.members.filter(
+      (member) => member.sent_at || confirmed.has(member.id),
+    ).length,
+    replied: run.members.filter((member) => member.status === "replied").length,
+  };
+}
+
 function TemplateFeedback({ id, value, limit = 1900, extra = "" }) {
   return (
     <span id={id} className="field-feedback">
@@ -206,6 +230,65 @@ function TemplateFeedback({ id, value, limit = 1900, extra = "" }) {
         </span>
       )}
     </span>
+  );
+}
+
+export function DetailMessage({ detail, status, kind }) {
+  const original = String(detail ?? "");
+  const text = original.trim();
+  if (!text) return null;
+  // Keep readable product guidance intact. Transport envelopes and diagnostics
+  // remain available verbatim, but are not the recruiter's primary next step.
+  const technical =
+    /^[{[]|^(?:Traceback|Error invoking remote method|\w*(?:Error|Exception):)/i.test(
+      text,
+    ) || /\bCall log:|"(?:message|error|meta)"\s*:/.test(text);
+  const russian =
+    /^(?:[«"'“]?[А-Яа-яЁё]|(?:LinkedIn|InMail|Recruiter)\s+[А-Яа-яЁё])/.test(
+      text,
+    );
+  if (russian && !technical)
+    return <p className="detail-message">{original}</p>;
+
+  const check =
+    kind === "invite"
+      ? "Проверьте приглашение в профиле LinkedIn."
+      : kind === "message" || kind === "inmail"
+        ? "Проверьте переписку в LinkedIn."
+        : "Проверьте профиль и переписку в LinkedIn.";
+  const guidance =
+    {
+      sent:
+        kind === "invite"
+          ? "Отправка приглашения подтверждена в LinkedIn."
+          : "Отправка сообщения подтверждена в LinkedIn.",
+      replied: "Получен ответ кандидата. Автоматические обращения прекращены.",
+      unknown: `Результат отправки не подтверждён. ${check} Не повторяйте отправку до проверки, чтобы избежать дубликата.`,
+      needs_review: `Результат требует ручной проверки. ${check} Не повторяйте действие до проверки.`,
+      blocked: `Действие остановлено. ${check} Перед новой попыткой изучите технические подробности ниже.`,
+      unavailable: `Действие сейчас недоступно. ${check} Технические подробности сохранены ниже.`,
+      submitting:
+        "Действие выполняется. Дождитесь результата и не запускайте его повторно.",
+      waiting_acceptance:
+        "Приглашение ожидает принятия. Его состояние можно проверить в LinkedIn.",
+      waiting_credits:
+        "Для продолжения проверьте доступные InMail-кредиты аккаунта.",
+      waiting_budget:
+        "Для продолжения проверьте бюджет InMail в настройках кампании.",
+      excluded: "Кандидат исключён из этого плана. Подробности сохранены ниже.",
+      finished:
+        "Наблюдение за кандидатом завершено. Подробности сохранены ниже.",
+      cancelled: "План остановлен. Подробности сохранены ниже.",
+      paused: "План приостановлен. Проверьте подробности перед возобновлением.",
+    }[status] || `${check} Подробности сохранены ниже.`;
+  return (
+    <div className="detail-message">
+      <p>{guidance}</p>
+      <details className="technical-details">
+        <summary>Технические подробности</summary>
+        <pre>{original}</pre>
+      </details>
+    </div>
   );
 }
 
@@ -245,7 +328,7 @@ export function ContactState({ person, member }) {
       {member && (
         <small>{relations[member.relationship] || relations.unknown}</small>
       )}
-      {detail && <small title={detail}>{detail}</small>}
+      <DetailMessage detail={detail} status={member?.status} />
       {unfinished && member?.run_status === "paused" && (
         <small>
           Автоматические проверки продолжатся после возобновления плана.
@@ -585,14 +668,7 @@ export function Automation({
   const uncertainActions = active?.actions.some((a) =>
     ["unknown", "submitting"].includes(a.status),
   );
-  const counts = active
-    ? {
-        waiting: active.members.filter((m) => m.status === "waiting_acceptance")
-          .length,
-        sent: active.members.filter((m) => m.sent_at).length,
-        replied: active.members.filter((m) => m.status === "replied").length,
-      }
-    : null;
+  const counts = outreachCounts(active);
   return (
     <div className="automation-workspace">
       {active && (
@@ -601,10 +677,15 @@ export function Automation({
             <div>
               <span className="eyebrow">КАМПАНИЯ</span>
               <h2>{states[active.status]}</h2>
-              <p>
-                {active.detail ||
-                  "Программа проверяет контакты и выполняет утверждённый план."}
-              </p>
+              <DetailMessage
+                detail={
+                  active.detail ||
+                  (active.status === "paused"
+                    ? "План приостановлен. Проверьте подробности перед возобновлением."
+                    : "Программа проверяет контакты и выполняет утверждённый план.")
+                }
+                status={active.status}
+              />
             </div>
             <button
               className="button"
@@ -1318,7 +1399,7 @@ export function OutreachHistory({
                         : "—"}
                     </td>
                     <td>
-                      {m.detail}
+                      <DetailMessage detail={m.detail} status={m.status} />
                       {m.reply_text && <blockquote>{m.reply_text}</blockquote>}
                     </td>
                   </tr>
@@ -1334,7 +1415,11 @@ export function OutreachHistory({
                   {kindNames[a.kind]} · {m?.name || a.url} · {states[a.status]}{" "}
                   · {date(a.created)}
                 </summary>
-                <p>{a.detail}</p>
+                <DetailMessage
+                  detail={a.detail}
+                  status={a.status}
+                  kind={a.kind}
+                />
                 {a.kind === "inmail" && <b>Тема: {m?.subject}</b>}
                 <pre>
                   {a.kind === "invite"
@@ -1377,57 +1462,142 @@ export function OutreachHistory({
 
 export function DesktopPreferences() {
   const [prefs, setPrefs] = useState(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [pending, setPending] = useState("load"),
+    [saved, setSaved] = useState(false);
+  const requestPending = useRef(false);
+  const mounted = useRef(true);
+  const load = async () => {
+    if (requestPending.current) return;
+    requestPending.current = true;
+    setPending("load");
+    setError("");
+    setSaved(false);
+    try {
+      const result = await window.booster.desktopSettings();
+      if (mounted.current) setPrefs(result);
+    } catch (e) {
+      if (mounted.current) setError(e.message);
+    } finally {
+      requestPending.current = false;
+      if (mounted.current) setPending("");
+    }
+  };
   useEffect(() => {
-    window.booster
-      .desktopSettings()
-      .then(setPrefs)
-      .catch((e) => setError(e.message));
+    mounted.current = true;
+    load();
+    return () => {
+      mounted.current = false;
+    };
   }, []);
   const save = async (patch) => {
+    if (requestPending.current || !prefs) return;
+    requestPending.current = true;
     const previous = prefs;
+    setPending("save");
+    setError("");
+    setSaved(false);
     setPrefs({ ...prefs, ...patch });
     try {
-      setPrefs(await window.booster.desktopSettings(patch));
-      setError("");
+      const result = await window.booster.desktopSettings(patch);
+      if (mounted.current) {
+        setPrefs(result);
+        setSaved(true);
+      }
     } catch (e) {
-      setPrefs(previous);
-      setError(e.message);
+      if (mounted.current) {
+        setPrefs(previous);
+        setError(e.message);
+      }
+    } finally {
+      requestPending.current = false;
+      if (mounted.current) setPending("");
     }
   };
   return (
-    <section className="panel templates">
-      <h2>Работа в фоне</h2>
-      {error && <p role="alert">{error}</p>}
+    <section
+      className="panel preferences-card"
+      aria-labelledby="background-settings-title"
+    >
+      <header className="settings-card-heading">
+        <h2 id="background-settings-title">Работа в фоне</h2>
+        <p>Выберите, когда приложение должно продолжать работу.</p>
+      </header>
+      {pending === "load" && (
+        <p className="preference-status" role="status">
+          Загружаем настройки…
+        </p>
+      )}
+      {error && (
+        <div className="preference-error">
+          <p role="alert">
+            {prefs
+              ? "Не удалось подтвердить сохранение. Обновите настройки и проверьте переключатель."
+              : "Не удалось загрузить настройки. Попробуйте ещё раз."}
+          </p>
+          <button className="button" disabled={Boolean(pending)} onClick={load}>
+            {prefs ? "Обновить настройки" : "Попробовать ещё раз"}
+          </button>
+          <details className="technical-details">
+            <summary>Технические подробности</summary>
+            <pre>{error}</pre>
+          </details>
+        </div>
+      )}
       {prefs && (
         <>
-          <label className="check-option">
+          <label className="preference-row">
+            <div className="preference-copy">
+              <strong>Продолжать работу после закрытия окна</strong>
+              <small id="background-setting-help">
+                При включении этой настройки кампании продолжатся в фоне.
+                Открыть окно можно через значок приложения.
+              </small>
+            </div>
             <input
+              className="preference-switch"
               type="checkbox"
+              aria-label="Продолжать работу после закрытия окна"
+              aria-describedby="background-setting-help"
               checked={prefs.background}
+              disabled={Boolean(pending)}
               onChange={(e) => save({ background: e.target.checked })}
             />
-            <span>Продолжать работу после закрытия окна</span>
           </label>
-          <label className="check-option">
+          <label className="preference-row">
+            <div className="preference-copy">
+              <strong>Запускать при входе в систему</strong>
+              <small id="autostart-setting-help">
+                {prefs.autoStartNote ||
+                  (prefs.packaged
+                    ? "Приложение откроется автоматически после входа в компьютер."
+                    : "Автозапуск доступен в установленной версии приложения.")}
+              </small>
+            </div>
             <input
+              className="preference-switch"
               type="checkbox"
+              aria-label="Запускать при входе в систему"
+              aria-describedby="autostart-setting-help"
               checked={prefs.autoStart}
-              disabled={!prefs.packaged}
+              disabled={!prefs.packaged || Boolean(pending)}
               onChange={(e) => save({ autoStart: e.target.checked })}
             />
-            <span>Запускать при входе в систему</span>
           </label>
-          {!prefs.packaged && (
-            <p>Автозапуск доступен в установленной версии приложения.</p>
+          {(pending === "save" || saved) && (
+            <p className="preference-status" role="status">
+              {pending === "save"
+                ? "Сохраняем настройку…"
+                : "Настройки сохранены."}
+            </p>
           )}
-          <p>
-            Работа продолжается только для утверждённых кампаний и в выбранные
-            часы. Для полной остановки выберите «Завершить работу» в меню значка
-            приложения.
-          </p>
         </>
       )}
+      <footer className="preference-footnote">
+        Выполняются только утверждённые кампании и только в выбранные часы, пока
+        компьютер включён и не спит. Чтобы полностью остановить приложение,
+        выберите «Завершить работу» в меню его значка.
+      </footer>
     </section>
   );
 }

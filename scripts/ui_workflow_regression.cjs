@@ -78,6 +78,20 @@ const { execFileSync } = require("node:child_process");
           }
         }
         const result = await original(event, operation, params);
+        if (operation === "campaign.detail") {
+          // Read-only response fixture for the real dialog's long-source layout.
+          const sample = result.candidates.find(
+            (person) => person.data.name === "Sam Taylor",
+          );
+          if (sample)
+            sample.data.sections = {
+              ...sample.data.sections,
+              main_profile:
+                "Synthetic long profile text for layout acceptance. ".repeat(
+                  150,
+                ),
+            };
+        }
         if (
           operation === "outreach.preview" &&
           global.__uiWorkflowDelayPreview
@@ -208,8 +222,12 @@ const { execFileSync } = require("node:child_process");
       exact: true,
     });
     await addCampaign.click();
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1000, 700),
+    );
     const nameField = page.getByLabel(/^Название кампании/);
     await expect(nameField).toBeFocused();
+    await nameField.fill("");
     await page
       .getByRole("button", { name: "Создать кампанию", exact: true })
       .click();
@@ -217,6 +235,18 @@ const { execFileSync } = require("node:child_process");
       page.getByText("Введите название кампании.", { exact: true }),
     ).toBeVisible();
     await expect(nameField).toBeFocused();
+    assert.equal(
+      await page.getByRole("dialog").evaluate((dialog) => {
+        const outer = dialog.getBoundingClientRect();
+        return [...dialog.querySelectorAll(".modal-footer button")].every(
+          (button) =>
+            button.getBoundingClientRect().bottom <=
+            Math.min(innerHeight, outer.bottom) + 1,
+        );
+      }),
+      true,
+      "Form validation must retain fully visible actions at the minimum window size.",
+    );
     await nameField.fill("   ");
     await page.getByLabel(/^Ключевые слова или ссылка на профиль/).fill("   ");
     await page.getByLabel(/^Сколько профилей собрать/).fill("1.5");
@@ -284,13 +314,11 @@ const { execFileSync } = require("node:child_process");
       "Текст приглашения",
     );
     await page.getByRole("button", { name: "Назад", exact: true }).click();
-    const invitationDetails = page
-      .locator("details")
-      .filter({
-        has: page
-          .locator("summary")
-          .filter({ hasText: "Приглашения в контакты" }),
-      });
+    const invitationDetails = page.locator("details").filter({
+      has: page
+        .locator("summary")
+        .filter({ hasText: "Приглашения в контакты" }),
+    });
     if (!(await invitationDetails.evaluate((element) => element.open)))
       await invitationDetails.locator("summary").click();
     await invitation.fill("");
@@ -339,8 +367,27 @@ const { execFileSync } = require("node:child_process");
     );
     await page.getByRole("button", { name: /Sam Taylor/ }).click();
     await expect(
-      page.getByRole("dialog").getByLabel("Группа сообщения"),
+      page.getByRole("dialog").locator("header button"),
     ).toBeFocused();
+    assert.equal(
+      await page
+        .locator(".modal-body")
+        .evaluate((element) => element.scrollTop),
+      0,
+      "Read-only profile dialogs must initially show their beginning.",
+    );
+    assert.equal(
+      await page.getByRole("dialog").evaluate((dialog) => {
+        const outer = dialog.getBoundingClientRect();
+        return [...dialog.querySelectorAll(".modal-footer button")].every(
+          (button) =>
+            button.getBoundingClientRect().bottom <=
+            Math.min(innerHeight, outer.bottom) + 1,
+        );
+      }),
+      true,
+      "Long profile actions must fit the minimum window height.",
+    );
     await expect(page.getByRole("dialog").getByRole("alert")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await app.evaluate(({ dialog }) => {
@@ -423,6 +470,31 @@ const { execFileSync } = require("node:child_process");
     await preview.locator("summary").focus();
     await page.keyboard.press("Enter");
     await expect(preview.locator("details")).toHaveAttribute("open", "");
+    for (const width of [1000, 1001, 1380]) {
+      await app.evaluate(
+        ({ BrowserWindow }, w) =>
+          BrowserWindow.getAllWindows()[0].setSize(w, 700),
+        width,
+      );
+      const footerFits = await preview.evaluate((dialog) => {
+        const outer = dialog.getBoundingClientRect();
+        return [...dialog.querySelectorAll(".modal-footer button")].every(
+          (button) => {
+            const box = button.getBoundingClientRect();
+            return (
+              box.top >= outer.top &&
+              box.bottom <= Math.min(outer.bottom, innerHeight) + 1 &&
+              box.right <= outer.right + 1
+            );
+          },
+        );
+      });
+      assert.ok(
+        footerFits,
+        "Preview actions must remain fully visible with the schedule expanded at minimum window height.",
+      );
+    }
+    await preview.locator("summary").focus();
     await page.keyboard.press("Space");
     await expect(preview.locator("details")).not.toHaveAttribute("open", "");
     await page
@@ -624,6 +696,315 @@ const { execFileSync } = require("node:child_process");
     await screenshots("campaign-list-long-content");
     record(
       "long-content campaign list keeps its status and last column reachable",
+    );
+    // Mock only the desktop-preferences IPC. This never touches OS login items
+    // and uses no real user settings. Product renderer and all other APIs remain real.
+    await app.evaluate(({ ipcMain }) => {
+      global.__uiSettings = {
+        mode: "ok",
+        value: {
+          background: false,
+          autoStart: false,
+          packaged: true,
+          autoStartNote:
+            "Автозапуск требует разрешения в macOS. Разрешите его в системных настройках.",
+        },
+        writes: 0,
+      };
+      ipcMain.removeHandler("desktop-settings");
+      ipcMain.handle("desktop-settings", async (_event, patch) => {
+        const fixture = global.__uiSettings;
+        if (patch?.autoStart !== undefined)
+          throw Error("OS login-item changes are forbidden in UI regressions.");
+        if (patch) fixture.writes++;
+        if (fixture.mode === "loading" || fixture.mode === "saving")
+          await new Promise((resolve) => {
+            fixture.release = resolve;
+          });
+        if (
+          fixture.mode === "load-error" ||
+          (patch && fixture.mode === "save-error")
+        )
+          throw Error("Synthetic settings storage failure");
+        fixture.value = { ...fixture.value, ...patch };
+        return fixture.value;
+      });
+    });
+    await page.getByRole("button", { name: "Настройки", exact: true }).click();
+    const background = page.getByRole("checkbox", {
+      name: "Продолжать работу после закрытия окна",
+      exact: true,
+    });
+    await expect(background).toBeVisible();
+    await expect(
+      page.getByText(
+        "Автозапуск требует разрешения в macOS. Разрешите его в системных настройках.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    for (const width of [1000, 1001, 1380, 1600]) {
+      await app.evaluate(
+        ({ BrowserWindow }, w) =>
+          BrowserWindow.getAllWindows()[0].setSize(w, 920),
+        width,
+      );
+      const metrics = await page.evaluate(() => {
+        const children = [
+          ...document.querySelector(".settings-layout").children,
+        ].map((e) => e.getBoundingClientRect().toJSON());
+        const insets = [
+          ...document.querySelectorAll(".preferences-card,.settings-card"),
+        ].map((e) => {
+          const outer = e.getBoundingClientRect(),
+            title = e.querySelector("h2").getBoundingClientRect();
+          return { left: title.left - outer.left, top: title.top - outer.top };
+        });
+        return {
+          width: innerWidth,
+          scroll: document.documentElement.scrollWidth,
+          children,
+          insets,
+        };
+      });
+      assert.ok(
+        metrics.scroll <= metrics.width + 1,
+        "Settings must not overflow horizontally.",
+      );
+      assert.ok(
+        metrics.children.every(
+          (e) => Math.abs(e.width - metrics.children[0].width) < 1,
+        ),
+        "Settings sections must share one aligned width.",
+      );
+      assert.ok(
+        metrics.children
+          .slice(1)
+          .every((e, i) => e.top - metrics.children[i].bottom >= 16),
+        "Settings sections need a visible gap.",
+      );
+      assert.ok(
+        metrics.insets.every((e) => e.left >= 16 && e.top >= 16),
+        "Every settings card needs actual content padding.",
+      );
+    }
+    await background.focus();
+    await page.keyboard.press("Space");
+    await expect(background).toBeChecked();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Настройки сохранены." }),
+    ).toBeVisible();
+    const mcp = page.locator(".settings-disclosure > summary");
+    await mcp.focus();
+    await page.keyboard.press("Enter");
+    await page
+      .getByRole("button", {
+        name: "Показать настройки подключения",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByLabel("Настройки MCP", { exact: true }),
+    ).toBeVisible();
+    await mcp.focus();
+    await page.keyboard.press("Space");
+    await expect(
+      page.getByLabel("Настройки MCP", { exact: true }),
+    ).not.toBeVisible();
+    record(
+      "settings cards align with padding and gaps at four widths; switch and optional MCP disclosure work by keyboard",
+    );
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "saving";
+    });
+    await background.uncheck();
+    await expect(background).toBeDisabled();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Сохраняем настройку…" }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "ok";
+      global.__uiSettings.release();
+    });
+    await expect(background).toBeEnabled();
+    await expect(background).not.toBeChecked();
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "save-error";
+    });
+    await background.check();
+    await expect(page.getByRole("alert")).toContainText(
+      "Не удалось подтвердить сохранение",
+    );
+    await expect(background).not.toBeChecked();
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "ok";
+    });
+    await page
+      .getByRole("button", { name: "Обновить настройки", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("button", { name: /^Кампании/ }).click();
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "load-error";
+    });
+    await page.getByRole("button", { name: "Настройки", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "Не удалось загрузить настройки",
+    );
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "loading";
+    });
+    await page
+      .getByRole("button", { name: "Попробовать ещё раз", exact: true })
+      .click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Загружаем настройки…" }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiSettings.mode = "ok";
+      global.__uiSettings.release();
+    });
+    await expect(background).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    assert.equal(
+      await app.evaluate(() => global.__uiSettings.writes),
+      3,
+      "Only the three intentional background preference changes should reach storage.",
+    );
+    record(
+      "settings display OS approval note, disable pending saves, roll back failed writes, and recover load errors with retry",
+    );
+    await app.evaluate(({ ipcMain }) => {
+      const original = ipcMain._invokeHandlers.get("command");
+      global.__uiLoadFault = { mode: "state-error" };
+      ipcMain.removeHandler("command");
+      ipcMain.handle("command", async (event, operation, params) => {
+        const fixture = global.__uiLoadFault;
+        if (operation === "state" && fixture.mode === "state-loading")
+          await new Promise((resolve) => {
+            fixture.release = resolve;
+          });
+        if (operation === "state" && fixture.mode === "state-error")
+          throw Error("Synthetic initial state read failure");
+        if (operation === "campaign.detail" && fixture.mode === "detail-error")
+          throw Error("Synthetic campaign read failure");
+        return original(event, operation, params);
+      });
+    });
+    await page.reload();
+    await expect(
+      page.getByRole("heading", {
+        name: "Не удалось открыть рабочее пространство",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Ваши кампании", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Подключить LinkedIn", exact: true }),
+    ).toHaveCount(0);
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "state-loading";
+    });
+    await page
+      .getByRole("button", { name: "Попробовать ещё раз", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Загружаем…", exact: true }),
+    ).toBeDisabled();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "ok";
+      global.__uiLoadFault.release();
+    });
+    await expect(
+      page.getByRole("heading", { name: "Ваши кампании", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: demo, exact: true }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "state-error";
+    });
+    await expect(
+      page.getByRole("button", { name: "Обновить данные", exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole("button", { name: demo, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Не удалось обновить данные. Показана последняя загруженная версия.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "ok";
+    });
+    await page
+      .getByRole("button", { name: "Обновить данные", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Обновить данные", exact: true }),
+    ).toHaveCount(0);
+    record(
+      "initial state failure has a dedicated retry screen and never pretends saved campaigns are absent",
+    );
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "detail-error";
+    });
+    await page.getByRole("button", { name: demo, exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Не удалось открыть кампанию",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.locator(".spinner")).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Все кампании", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Ваши кампании", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: demo, exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Не удалось открыть кампанию",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "ok";
+    });
+    await page
+      .getByRole("button", { name: "Попробовать ещё раз", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: demo, exact: true }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "detail-error";
+    });
+    await expect(
+      page.getByRole("button", { name: "Обновить данные", exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole("heading", { name: demo, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Sam Taylor/ }),
+    ).toBeVisible();
+    await app.evaluate(() => {
+      global.__uiLoadFault.mode = "ok";
+    });
+    await page
+      .getByRole("button", { name: "Обновить данные", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Обновить данные", exact: true }),
+    ).toHaveCount(0);
+    record(
+      "campaign read failure stops the spinner and provides working back and retry actions",
     );
     assert.deepEqual(rendererErrors, [], "Unexpected renderer errors.");
     await stop();
