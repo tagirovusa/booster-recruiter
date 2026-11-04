@@ -4,6 +4,7 @@ import asyncio
 from datetime import timedelta
 
 from .outreach import TERMINAL, later, now, route, utc, within_hours
+from .platform_limits import LinkedInLimitError
 from .store import AppError
 
 
@@ -266,7 +267,7 @@ class OutreachRuntime:
                     except AppError as exc:
                         self.repo.update_member(
                             member["id"],
-                            status="waiting_budget",
+                            status="needs_review",
                             detail=str(exc),
                             next_check=later(hours=rules["check_hours"]),
                         )
@@ -363,6 +364,11 @@ class OutreachRuntime:
                         )
                     if result.get("account_restricted"):
                         raise AppError(self.rt.restrict_account(aid))
+                    if result.get("platform_limited"):
+                        raise LinkedInLimitError(
+                            result.get("message")
+                            or "LinkedIn сообщил о лимите отправки."
+                        )
                 active = (
                     self.repo.run(rid)["status"] == "active"
                     and cid not in self.rt.pause_flags
@@ -375,6 +381,8 @@ class OutreachRuntime:
                     else "Кампания приостановлена. Очередь и результаты сохранены.",
                 )
         except Exception as exc:
+            if isinstance(exc, LinkedInLimitError):
+                self.rt.pause_sender(aid, self.rt.friendly(exc))
             for row in self.store.rows(
                 "SELECT id FROM outreach_runs WHERE account_id=? AND status='active'",
                 (aid,),

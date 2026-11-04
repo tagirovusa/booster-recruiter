@@ -5,6 +5,10 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 (async () => {
   const root = path.resolve(__dirname, "..");
+  const artifacts = process.env.BOOSTER_UI_ARTIFACT_DIR
+    ? path.resolve(process.env.BOOSTER_UI_ARTIFACT_DIR)
+    : path.join(root, "..");
+  fs.mkdirSync(artifacts, { recursive: true });
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "booster-ui-"));
   const python = path.join(
     root,
@@ -28,6 +32,26 @@ const { execFileSync } = require("node:child_process");
   });
   try {
     const page = await app.firstWindow();
+    const captureNarrow = async (name) => {
+      if (!process.env.BOOSTER_UI_ARTIFACT_DIR) return;
+      const size = await app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        const old = window.getSize();
+        window.setSize(1000, 700);
+        return old;
+      });
+      await page.screenshot({
+        path: path.join(artifacts, `${name}-1000.png`),
+      });
+      if (!name.includes("confirmation"))
+        await page.screenshot({
+          path: path.join(artifacts, `${name}-1000-full.png`),
+          fullPage: true,
+        });
+      await app.evaluate(({ BrowserWindow }, old) => {
+        BrowserWindow.getAllWindows()[0].setSize(...old);
+      }, size);
+    };
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await expect(
@@ -84,7 +108,26 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("radio", { name: /Экономить кредиты/ }),
     ).toBeChecked();
-    await page.getByLabel("Бюджет InMail · кредитов").fill("2");
+    // Even expanded settings must not expose application quotas. The selected
+    // recipients and the explicit InMail mode define the approved scope.
+    const advanced = page.locator("details.advanced-settings");
+    await advanced.locator("summary").click();
+    await expect(
+      page.getByLabel("Проверять контакты каждые · ч"),
+    ).toBeVisible();
+    await expect(page.getByLabel("Следить за ответами · дней")).toBeVisible();
+    for (const label of [
+      "Приглашений",
+      "Сообщений",
+      "InMail",
+      "Бюджет InMail · кредитов",
+    ])
+      await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText("Дневные ограничения", { exact: true }),
+    ).toHaveCount(0);
+    await captureNarrow("inmail-setup-expanded");
+    await advanced.locator("summary").click();
     await page.getByLabel("Подписка для InMail").selectOption("recruiter");
     await expect(
       page.getByRole("button", { name: "Открыть аккаунты", exact: true }),
@@ -113,7 +156,7 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
-      path: path.join(root, "..", "booster-recruiter-automation-preview.png"),
+      path: path.join(artifacts, "booster-recruiter-automation-preview.png"),
       fullPage: true,
     });
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
@@ -128,7 +171,7 @@ const { execFileSync } = require("node:child_process");
       .fill("Recruitment leadership");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
-      path: path.join(root, "..", "booster-recruiter-messages-preview.png"),
+      path: path.join(artifacts, "booster-recruiter-messages-preview.png"),
       fullPage: true,
     });
     await page
@@ -141,10 +184,11 @@ const { execFileSync } = require("node:child_process");
       page.getByText("InMail · Recruitment opportunity", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Бюджет InMail на всю кампанию: 1 кредит.", {
+      page.getByText("Максимальный расход InMail: 1 кредит.", {
         exact: true,
       }),
     ).toBeVisible();
+    await captureNarrow("inmail-confirmation");
     await page.getByRole("button", { name: "Вернуться к настройкам" }).click();
     await page.getByRole("button", { name: "Кандидаты", exact: true }).click();
     await page
@@ -163,7 +207,7 @@ const { execFileSync } = require("node:child_process");
       page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }),
     ).toBeEnabled();
     await page.screenshot({
-      path: path.join(root, "..", "booster-recruiter-preview.png"),
+      path: path.join(artifacts, "booster-recruiter-preview.png"),
       fullPage: true,
     });
     await page
@@ -267,7 +311,7 @@ const { execFileSync } = require("node:child_process");
           page.getByRole("heading", { name: "Другие сообщения" }),
         ).toBeVisible();
         await page.screenshot({
-          path: path.join(root, "..", "booster-recruiter-history-preview.png"),
+          path: path.join(artifacts, "booster-recruiter-history-preview.png"),
           fullPage: true,
         });
       }
@@ -411,7 +455,7 @@ const { execFileSync } = require("node:child_process");
     }
     if (errors.length) throw Error(errors.join("\n"));
     console.log(
-      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup, empty/automation/message/mixed history with wait/reply/unknown states, isolated close during preferences save/failure and background reopen, account UI; no LinkedIn requests or sends.",
+      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and recipient-based credit estimate, guided setup, empty/automation/message/mixed history with wait/reply/unknown states, isolated close during preferences save/failure and background reopen, account UI; no LinkedIn requests or sends.",
     );
   } finally {
     await app.close();

@@ -1583,7 +1583,7 @@ input.preference-switch:disabled {
   border-color: #24282b;
   color: white;
 }
-.credit-budget {
+.inmail-settings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px;
   gap: 14px;
@@ -1592,18 +1592,18 @@ input.preference-switch:disabled {
   background: #f7f7f5;
   border-radius: 10px;
 }
-.credit-budget h3 {
+.inmail-settings h3 {
   font-size: 13px;
 }
-.credit-budget p {
+.inmail-settings p {
   font-size: 11px;
   margin-top: 5px;
 }
-.credit-budget > .field {
+.inmail-settings > .field {
   margin: 0;
   font-size: 11px;
 }
-.credit-budget > .field:last-child:nth-child(3) {
+.inmail-settings > .field:last-child:nth-child(3) {
   grid-column: 1/-1;
   max-width: 210px;
 }
@@ -1999,7 +1999,7 @@ input.preference-switch:disabled {
   font-size: 13px;
   line-height: 1.5;
 }
-.credit-budget > .hint {
+.inmail-settings > .hint {
   grid-column: 1 / -1;
 }
 

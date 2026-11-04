@@ -18,6 +18,11 @@ from booster_linkedin.linkedin.identifiers import (
 )
 
 from .identity import PROFILE_JS, resolve_own_profile
+from .platform_limits import (
+    LinkedInLimitError,
+    check_platform_limit,
+    read_platform_limit,
+)
 
 SEARCH_JS = r"""() => {
  const main=document.querySelector('main'); if(!main)return [];
@@ -76,6 +81,7 @@ async def serve(profile: Path, *, visible=False):
     from booster_linkedin.bootstrap import configure_browser_environment
     from booster_linkedin.config import set_config
     from booster_linkedin.config.loaders import load_config
+    from booster_linkedin.core.exceptions import RateLimitError
     from booster_linkedin.dependencies import get_ready_extractor
     from booster_linkedin.drivers.browser import get_or_create_browser, set_headless
     from booster_linkedin.linkedin import photo_frame_detection
@@ -152,6 +158,10 @@ async def serve(profile: Path, *, visible=False):
             result = await client.call_tool(name, arguments, raise_on_error=False)
             if result.is_error:
                 meta = result.meta or {}
+                if meta.get("linkedin.dev/error", {}).get("code") == "rate_limited":
+                    raise LinkedInLimitError(
+                        "LinkedIn временно ограничил действия. Очереди аккаунта приостановлены; продолжите после снятия ограничения."
+                    )
                 raise RuntimeError(
                     json.dumps(
                         {
@@ -271,6 +281,7 @@ async def serve(profile: Path, *, visible=False):
                     outreach = BrowserOutreach(
                         browser.page, read_profile, read_conversation
                     )
+                    await check_platform_limit(outreach.session)
                     if action.startswith("recruiter_"):
                         from .recruiter_browser import RecruiterBrowser
 
@@ -380,6 +391,8 @@ async def serve(profile: Path, *, visible=False):
                                 p.get("subject") if action == "send_inmail" else None,
                             )
                 elif action == "send":
+                    browser = await get_or_create_browser()
+                    await check_platform_limit(PageSession(browser.page))
                     result, _ = await call(
                         "send_message",
                         {
@@ -397,10 +410,20 @@ async def serve(profile: Path, *, visible=False):
                     result = {"ok": True}
                 else:
                     raise ValueError("Unknown worker command")
+                if action in {"invite", "send_free", "send_inmail", "send"}:
+                    browser = await get_or_create_browser()
+                    notice = await read_platform_limit(PageSession(browser.page))
+                    if notice:
+                        # Keep any positively confirmed result, and still stop
+                        # later recipients. A notice is not proof of non-delivery.
+                        result = result | {"platform_limited": True, "message": notice}
                 payload = {"id": request["id"], "result": result}
             except Exception as exc:
                 payload = {
                     "id": request["id"],
+                    "error_code": "linkedin_limit"
+                    if isinstance(exc, (LinkedInLimitError, RateLimitError))
+                    else "browser_error",
                     "error": (str(exc) or "Браузер LinkedIn не завершил операцию.")[
                         :1800
                     ],

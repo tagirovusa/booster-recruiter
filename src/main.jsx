@@ -1745,7 +1745,7 @@ function App() {
             {preview.rules.allow_inmail && (
               <p>
                 <strong>
-                  Бюджет InMail на всю кампанию: {preview.maximum_credits}{" "}
+                  Максимальный расход InMail: {preview.maximum_credits}{" "}
                   {
                     {
                       one: "кредит",
@@ -1757,7 +1757,10 @@ function App() {
                     ]
                   }
                   .
-                </strong>
+                </strong>{" "}
+                Только для этих получателей, если бесплатная связь недоступна.
+                Используем доступные кредиты подписки; дополнительные не
+                покупаем.
               </p>
             )}
             {preview.context?.contract && (
@@ -1768,7 +1771,7 @@ function App() {
               </p>
             )}
             <details>
-              <summary>Расписание и лимиты</summary>
+              <summary>Расписание и проверки</summary>
               <p>
                 Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}
                 :00 ({preview.rules.timezone}). Проверка каждые{" "}
@@ -1777,16 +1780,13 @@ function App() {
                 {preview.rules.allow_inmail &&
                   preview.rules.allow_invites &&
                   preview.rules.strategy === "economy" &&
-                  ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}{" "}
-                Общий лимит попыток для этого аккаунта за сутки UTC:{" "}
-                {preview.rules.allow_invites &&
-                  `${preview.rules.daily_invites} приглашений, `}
-                {preview.rules.daily_messages} сообщений
-                {preview.rules.allow_inmail &&
-                  `, ${preview.rules.daily_inmails} InMail`}
-                .
+                  ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}
               </p>
             </details>
+            <p>
+              Обрабатываем только выбранных получателей. При ограничении
+              LinkedIn остановимся и сохраним очередь.
+            </p>
             {preview.messages.map((m) => (
               <article key={m.id}>
                 <h3>{m.name || m.url}</h3>

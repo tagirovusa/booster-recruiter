@@ -77,6 +77,8 @@ const { execFileSync } = require("node:child_process");
             throw Error("Recruiter preview is blocked by the local-only test.");
           }
         }
+        if (operation === "campaign.save_automation")
+          global.__uiWorkflowLastSavedRules = structuredClone(params.rules);
         const result = await original(event, operation, params);
         if (operation === "campaign.detail") {
           // Read-only response fixture for the real dialog's long-source layout.
@@ -597,6 +599,25 @@ const { execFileSync } = require("node:child_process");
         ),
       )
       .toContain(durableText);
+    // Simulate the last-version draft saved before an application update.
+    // Both fingerprints and edited rules used to contain quota fields.
+    const demoId = (await detail(demo)).campaign.id;
+    await page.evaluate((id) => {
+      const key = "booster.automation-drafts.v1";
+      const drafts = JSON.parse(localStorage.getItem(key));
+      const oldQuotas = {
+        daily_invites: 10,
+        daily_messages: 20,
+        daily_inmails: 5,
+        inmail_budget: 0,
+      };
+      drafts[id].baseRules = JSON.stringify({
+        ...JSON.parse(drafts[id].baseRules),
+        ...oldQuotas,
+      });
+      drafts[id].rules = { ...drafts[id].rules, ...oldQuotas };
+      localStorage.setItem(key, JSON.stringify(drafts));
+    }, demoId);
     await page.reload();
     await expect(
       page.getByRole("heading", { name: "Ваши кампании", exact: true }),
@@ -614,8 +635,29 @@ const { execFileSync } = require("node:child_process");
       page.getByLabel("Сообщение · Open to Work", { exact: true }),
     ).toHaveValue(durableText);
     record(
-      "unsaved message draft persists across renderer reload and full process restart",
+      "unsaved legacy draft survives quota removal, renderer reload and full process restart",
     );
+    await page
+      .getByRole("button", { name: "Сохранить без запуска", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await detail(demo)).campaign.template_open)
+      .toBe(durableText);
+    const sentRules = await app.evaluate(
+      () => global.__uiWorkflowLastSavedRules,
+    );
+    assert.ok(
+      sentRules,
+      "The restored draft must be saved through the real UI.",
+    );
+    for (const field of [
+      "daily_invites",
+      "daily_messages",
+      "daily_inmails",
+      "inmail_budget",
+    ])
+      assert.equal(Object.hasOwn(sentRules, field), false);
+    record("saving a restored legacy draft never submits retired quota fields");
 
     await page.getByRole("button", { name: /^Кампании/ }).click();
     await page

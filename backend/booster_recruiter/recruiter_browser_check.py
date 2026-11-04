@@ -3,6 +3,8 @@
 from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
+from booster_linkedin.linkedin.session import PageSession
+
 from .recruiter_browser import RECIPIENT_IDENTITY_JS, RecruiterBrowser
 from .store import AppError
 
@@ -67,7 +69,7 @@ async def check_recruiter_browser(page):
         }""",
             case,
         )
-        adapter = RecruiterBrowser(page, None, None)
+        adapter = RecruiterBrowser(page, PageSession(page), None)
         adapter.status = AsyncMock(
             return_value={
                 "contract": "Approved contract",
@@ -157,7 +159,7 @@ async def check_recruiter_browser(page):
             await reader.page.goto(url)
 
         before = list(page.context.pages)
-        adapter = RecruiterBrowser(page, None, None)
+        adapter = RecruiterBrowser(page, PageSession(page), None)
         state = {
             "valid": True,
             "recipient": "urn:li:ts_profile:NativeRecipientId",
@@ -247,7 +249,7 @@ async def check_recruiter_browser(page):
             <p data-test-message-list-entity-body>Approved body</p>
            </li>{extra}</ol>
           </div>""")
-        adapter = RecruiterBrowser(page, None, None)
+        adapter = RecruiterBrowser(page, PageSession(page), None)
         adapter.go = AsyncMock()
         adapter.profile = AsyncMock(return_value=target)
         try:
@@ -291,7 +293,7 @@ async def check_recruiter_browser(page):
             + rows
             + "</div>"
         )
-        adapter = RecruiterBrowser(page, None, None)
+        adapter = RecruiterBrowser(page, PageSession(page), None)
         adapter.go = AsyncMock()
         empty = await adapter.empty_history(
             target | {"recipient_urn": "urn:li:ts_profile:Test"}, "Approved contract"

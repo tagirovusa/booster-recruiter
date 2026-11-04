@@ -11,10 +11,11 @@ const start = source.indexOf("const TEMPLATE_FIELDS");
 const end = source.indexOf("function TemplateFeedback");
 assert(start >= 0 && end > start, "Template helpers must be present");
 // Only tracked application code is evaluated. User text is supplied as data.
-const { validateTemplate, describeOutreach, outreachCounts } = vm.runInNewContext(
-  source.slice(start, end).replaceAll("export function", "function") +
-    "\n({ validateTemplate, describeOutreach, outreachCounts })",
-);
+const { validateTemplate, describeOutreach, outreachCounts } =
+  vm.runInNewContext(
+    source.slice(start, end).replaceAll("export function", "function") +
+      "\n({ validateTemplate, describeOutreach, outreachCounts })",
+  );
 
 const candidate = {
   name: "Alex Morgan",
@@ -111,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix="booster-ui-validation-") as temporary:
                 if kind == "invitation":
                     rules["invitation"] = text
                 if kind in ("subject", "inmail"):
-                    rules.update(allow_inmail=True, inmail_budget=5,
+                    rules.update(allow_inmail=True,
                                  subject_open="Hello", subject_neutral="Hello")
                     rules["subject_neutral" if kind == "subject" else "inmail_neutral"] = text
                 store.outreach.configure(cid, rules)

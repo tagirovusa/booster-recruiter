@@ -37,8 +37,8 @@ def legacy_batch(store, aid, url="legacy-recipient", count=1):
 
 @pytest.mark.parametrize("status", ["sent", "unknown", "blocked"])
 @pytest.mark.parametrize("duplicate_slot", [False, True])
-async def test_legacy_queue_obeys_shared_sender_message_budget(
-    store, status, duplicate_slot
+async def test_legacy_queue_ignores_retired_message_cap(
+    store, status, duplicate_slot, monkeypatch
 ):
     a, _, _, plan, _, _ = activate(store, daily_messages=1)
     action = store.outreach.reserve(plan["messages"][0]["id"], "message")
@@ -51,14 +51,18 @@ async def test_legacy_queue_obeys_shared_sender_message_budget(
     FakeWorker.sent = []
     FakeWorker.fail_send = False
     FakeWorker.identity = store.account(a["id"])["url"]
+
+    async def no_wait(_):
+        pass
+
+    monkeypatch.setattr("booster_recruiter.runtime.asyncio.sleep", no_wait)
     rt = Runtime(store, FakeWorker)
     await rt.send_batch(batch["batch_id"])
-    assert FakeWorker.sent == []
-    assert store.campaign(c["id"])["status"] == "paused"
-    assert "бюджет" in store.campaign(c["id"])["progress"]
+    assert len(FakeWorker.sent) == 1
+    assert store.campaign(c["id"])["status"] == "ready"
 
 
-async def test_legacy_limit_is_isolated_per_sender(store, monkeypatch):
+async def test_legacy_queue_sends_with_another_sender(store, monkeypatch):
     a, _, _, plan, _, _ = activate(store, daily_messages=1)
     action = store.outreach.reserve(plan["messages"][0]["id"], "message")
     store.outreach.finish(action, "sent", "attempt")
@@ -124,7 +128,7 @@ async def test_legacy_account_restriction_stops_queue_and_sender_plans(
 @pytest.mark.parametrize("kind", ["invite", "message", "inmail"])
 @pytest.mark.parametrize("status", ["sent", "unknown", "blocked", "submitting"])
 @pytest.mark.parametrize("same_identity", [True, False])
-def test_daily_channel_limits_follow_linkedin_identity(
+def test_retired_channel_caps_do_not_block_selected_recipients(
     store, kind, status, same_identity
 ):
     a, _, _, p, _, _ = activate(
@@ -146,11 +150,7 @@ def test_daily_channel_limits_follow_linkedin_identity(
     )
     other = store.outreach.preview(c["id"])
     store.outreach.approve(other["run_id"], other["digest"])
-    if same_identity:
-        with pytest.raises(AppError, match="Достигнут дневной бюджет"):
-            store.outreach.reserve(other["messages"][0]["id"], kind)
-    else:
-        assert store.outreach.reserve(other["messages"][0]["id"], kind)
+    assert store.outreach.reserve(other["messages"][0]["id"], kind)
 
 
 def test_unbound_account_slots_do_not_share_sender_identity(store):
@@ -309,3 +309,237 @@ async def test_recruiter_inmail_and_reply_keep_approved_context_and_charge(store
     assert member["reply_text"] == "Interested"
     assert member["thread_id"] == "reply-thread"
     assert len(worker.actions) == 1
+
+
+def additional_outreach(store, account_id, rules, slug):
+    campaign, _ = legacy_batch(store, account_id, url=slug, count=2)
+    store.outreach.configure(campaign["id"], rules)
+    plan = store.outreach.preview(campaign["id"])
+    store.outreach.approve(plan["run_id"], plan["digest"])
+    return campaign, plan
+
+
+@pytest.mark.parametrize("kind", ["invite", "send_free", "send_inmail"])
+@pytest.mark.parametrize("confirmed", [True, False, None])
+async def test_platform_limit_stops_all_sender_plans_without_losing_result(
+    store, kind, confirmed
+):
+    from booster_recruiter.outreach_runtime import OutreachRuntime
+
+    a, c, _, p, rt, worker = activate(store, strategy="fast")
+    twin = store.create_account("Same sender")
+    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
+    other_campaign, other = additional_outreach(store, twin["id"], p["rules"], "other")
+    independent = store.create_account("Independent sender")
+    store.set_account(independent["id"], "ready", "independent-sender")
+    _, independent_plan = additional_outreach(
+        store, independent["id"], p["rules"], "independent"
+    )
+    if kind == "invite":
+        worker.observation.update(inmail=False)
+    elif kind == "send_free":
+        worker.observation.update(free_message=True)
+    original = worker.call
+
+    async def call(action, params=None):
+        result = await original(action, params)
+        if action == kind:
+            return {
+                "invited": confirmed if kind == "invite" else False,
+                "sent": confirmed if kind != "invite" else False,
+                "retry_safe": confirmed is False,
+                "platform_limited": True,
+                "message": "LinkedIn сообщил о лимите отправки.",
+            }
+        return result
+
+    worker.call = call
+    await rt.outreach.process(p["run_id"])
+    assert store.outreach.run(p["run_id"])["status"] == "paused"
+    assert store.outreach.run(other["run_id"])["status"] == "paused"
+    assert store.outreach.run(independent_plan["run_id"])["status"] == "active"
+    assert store.campaign(other_campaign["id"])["status"] == "paused"
+    assert other_campaign["id"] in rt.pause_flags
+    assert store.account(a["id"])["status"] == "ready"
+    assert store.account(twin["id"])["status"] == "ready"
+    expected = "sent" if confirmed else "blocked" if confirmed is False else "unknown"
+    assert store.rows("SELECT status FROM outreach_actions") == [{"status": expected}]
+    await OutreachRuntime(rt).process(other["run_id"])
+    assert len(worker.actions) == 1
+
+
+@pytest.mark.parametrize("confirmed", [True, False, None])
+async def test_legacy_platform_limit_stops_sender_even_when_result_unknown(
+    store, confirmed
+):
+    a, _, _, p, _, _ = activate(store)
+    twin = store.create_account("Same sender")
+    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
+    campaign, batch = legacy_batch(store, twin["id"], count=2)
+    calls = []
+
+    class LimitedWorker(FakeWorker):
+        identity = store.account(a["id"])["url"]
+
+        async def call(self, action, params=None):
+            if action == "send":
+                calls.append(params)
+                return {
+                    "sent": confirmed,
+                    "retry_safe": confirmed is False,
+                    "platform_limited": True,
+                    "message": "LinkedIn сообщил о лимите.",
+                }
+            return await super().call(action, params)
+
+    await Runtime(store, LimitedWorker).send_batch(batch["batch_id"])
+    assert len(calls) == 1
+    assert store.outreach.run(p["run_id"])["status"] == "paused"
+    assert store.campaign(campaign["id"])["status"] == "paused"
+    expected = "sent" if confirmed else "blocked" if confirmed is False else "unknown"
+    assert sorted(
+        r["status"] for r in store.rows("SELECT status FROM deliveries")
+    ) == sorted(["pending", expected])
+
+
+async def test_platform_limit_exception_keeps_uncertain_action_and_stops_sender(store):
+    from booster_recruiter.platform_limits import LinkedInLimitError
+
+    a, _, _, p, rt, worker = activate(store)
+    _, other = additional_outreach(store, a["id"], p["rules"], "other")
+    original = worker.call
+
+    async def call(action, params=None):
+        result = await original(action, params)
+        if action == "invite":
+            raise LinkedInLimitError("LinkedIn сообщил о недельном лимите приглашений.")
+        return result
+
+    worker.call = call
+    await rt.outreach.process(p["run_id"])
+    assert store.rows("SELECT status FROM outreach_actions") == [{"status": "unknown"}]
+    assert store.outreach.run(other["run_id"])["status"] == "paused"
+    rt.outreach.tick()
+    assert not rt.jobs
+
+
+@pytest.mark.parametrize("channel", ["invite", "message", "inmail"])
+async def test_all_selected_recipients_are_processed_without_retired_caps(
+    store, channel
+):
+    import json
+
+    a, c, _, p, rt, worker = activate(store, strategy="fast")
+    for i in range(12):
+        store.add_candidate(c["id"], {"url": f"selected-{i}", "name": f"Person {i}"})
+    for person in store.detail(c["id"])["candidates"]:
+        store.review(person["id"], "neutral", True)
+    p = store.outreach.preview(c["id"])
+    store.outreach.approve(p["run_id"], p["digest"])
+    # Reproduce a persisted 0.2.9 run, not just a new client request.
+    with store.db:
+        store.db.execute(
+            "UPDATE outreach_runs SET rules=? WHERE id=?",
+            (
+                json.dumps(
+                    p["rules"]
+                    | {
+                        "daily_invites": 10,
+                        "daily_messages": 1,
+                        "daily_inmails": 1,
+                        "inmail_budget": 1,
+                    }
+                ),
+                p["run_id"],
+            ),
+        )
+    if channel == "invite":
+        worker.observation.update(inmail=False)
+    elif channel == "message":
+        worker.observation.update(free_message=True)
+    assert p["maximum_credits"] == 13
+    await rt.outreach.process(p["run_id"])
+    assert len(worker.actions) == 13
+    assert set(a[0] for a in worker.actions) == {
+        "invite"
+        if channel == "invite"
+        else "send_free"
+        if channel == "message"
+        else "send_inmail"
+    }
+    assert store.outreach.run(p["run_id"])["status"] == "active"
+
+
+def test_inmail_opt_in_still_required_without_numeric_budget(store):
+    from booster_recruiter.outreach import validate_rules
+
+    assert validate_rules({"allow_inmail": True})["allow_inmail"]
+    _, _, _, p, _, _ = activate(store, allow_inmail=False)
+    assert p["maximum_credits"] == 0
+    with pytest.raises(AppError, match="не был утверждён"):
+        store.outreach.reserve(p["messages"][0]["id"], "inmail", credit_cost=1)
+
+
+def test_retired_quota_migration_preserves_schedule_pause_and_unknown_guard(tmp_path):
+    import json
+
+    from booster_recruiter.outreach import RETIRED_QUOTAS
+
+    s = Store(tmp_path)
+    _, _, _, p, _, _ = activate(s)
+    mid = p["messages"][0]["id"]
+    s.outreach.status(p["run_id"], "paused")
+    s.outreach.update_member(
+        mid,
+        status="waiting_budget",
+        detail="Достигнут дневной бюджет приложения для этого канала (UTC).",
+        next_check="2099-01-01T00:00:00+00:00",
+    )
+    with s.db:
+        s.db.execute(
+            "UPDATE outreach_runs SET rules=? WHERE id=?",
+            (
+                json.dumps(
+                    p["rules"]
+                    | {
+                        "daily_invites": 10,
+                        "daily_messages": 20,
+                        "daily_inmails": 5,
+                        "inmail_budget": 2,
+                    }
+                ),
+                p["run_id"],
+            ),
+        )
+    s.db.close()
+    s = Store(tmp_path)
+    try:
+        m = s.outreach.members(p["run_id"])[0]
+        assert m["status"] == "planned"
+        assert m["next_check"] == "2099-01-01T00:00:00+00:00"
+        assert s.outreach.run(p["run_id"])["status"] == "paused"
+        assert not (set(s.outreach.run(p["run_id"])["rules"]) & RETIRED_QUOTAS)
+        assert not s.rows("SELECT * FROM outreach_actions")
+    finally:
+        s.db.close()
+
+
+async def test_account_restriction_takes_priority_over_send_limit(store):
+    a, _, _, p, rt, worker = activate(store)
+    twin = store.create_account("Same sender")
+    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
+    _, other = additional_outreach(store, twin["id"], p["rules"], "restricted")
+    original = worker.call
+
+    async def call(action, params=None):
+        result = await original(action, params)
+        if action == "invite":
+            return result | {"account_restricted": True, "platform_limited": True}
+        return result
+
+    worker.call = call
+    await rt.outreach.process(p["run_id"])
+    assert store.account(a["id"])["status"] == "restricted"
+    assert store.account(twin["id"])["status"] == "restricted"
+    assert store.outreach.run(other["run_id"])["status"] == "paused"
+    assert store.rows("SELECT status FROM outreach_actions") == [{"status": "sent"}]

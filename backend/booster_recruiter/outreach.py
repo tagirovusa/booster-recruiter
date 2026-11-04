@@ -16,7 +16,6 @@ DEFAULT_RULES = {
     "strategy": "economy",
     "wait_days": 7,
     "check_hours": 12,
-    "inmail_budget": 0,
     "invitation": "",
     "subject_open": "",
     "subject_neutral": "",
@@ -25,11 +24,16 @@ DEFAULT_RULES = {
     "timezone": "UTC",
     "start_hour": 8,
     "end_hour": 20,
-    "daily_invites": 10,
-    "daily_messages": 20,
-    "daily_inmails": 5,
     "monitor_days": 30,
 }
+# Read old saved plans and older MCP clients without reinstating retired caps.
+RETIRED_QUOTAS = {"daily_invites", "daily_messages", "daily_inmails", "inmail_budget"}
+
+
+def current_rules(value):
+    return DEFAULT_RULES | {k: v for k, v in value.items() if k not in RETIRED_QUOTAS}
+
+
 ACTION_KINDS = {"invite", "message", "inmail"}
 TERMINAL = {"replied", "excluded", "unavailable", "needs_review", "finished"}
 
@@ -43,21 +47,19 @@ def later(hours=0, days=0):
 
 
 def validate_rules(value):
-    if not isinstance(value, dict) or set(value) - set(DEFAULT_RULES):
+    if not isinstance(value, dict) or set(value) - (
+        set(DEFAULT_RULES) | RETIRED_QUOTAS
+    ):
         raise AppError("Неизвестные настройки автоматизации.")
-    rules = DEFAULT_RULES | value
+    rules = current_rules(value)
     for key in ("allow_invites", "allow_inmail"):
         if type(rules[key]) is not bool:
             raise AppError("Параметр разрешения должен быть переключателем.")
     for key, low, high in (
         ("wait_days", 1, 60),
         ("check_hours", 1, 72),
-        ("inmail_budget", 0, 1000),
         ("start_hour", 0, 23),
         ("end_hour", 1, 24),
-        ("daily_invites", 1, 100),
-        ("daily_messages", 1, 200),
-        ("daily_inmails", 1, 100),
         ("monitor_days", 1, 90),
     ):
         if type(rules[key]) is not int or not low <= rules[key] <= high:
@@ -81,8 +83,6 @@ def validate_rules(value):
     ):
         if not isinstance(rules[key], str) or len(rules[key]) > 4000:
             raise AppError("Шаблон должен быть текстом до 4000 символов.")
-    if rules["allow_inmail"] and rules["inmail_budget"] < 1:
-        raise AppError("Для InMail укажите бюджет кредитов на кампанию.")
     return rules
 
 
@@ -181,6 +181,18 @@ class OutreachStore:
                 "UPDATE outreach_actions SET status='unknown',detail='Ответ браузера потерян при завершении приложения.',updated=? WHERE status='submitting'",
                 (now(),),
             )
+            # A retired application cap is no longer a reason to wait. Preserve
+            # schedule, approval, and unknown-result guards during the upgrade.
+            self.db.execute(
+                "UPDATE outreach_members SET status='planned',detail='' "
+                "WHERE status='waiting_budget' AND detail IN (?,?) "
+                "AND NOT EXISTS (SELECT 1 FROM outreach_actions a WHERE a.member_id=outreach_members.id "
+                "AND a.status IN ('unknown','submitting'))",
+                (
+                    "Достигнут дневной бюджет приложения для этого канала (UTC).",
+                    "Исчерпан утверждённый бюджет InMail этой кампании.",
+                ),
+            )
             self.db.execute(
                 "UPDATE campaigns SET status='waiting',progress='Утверждённая очередь восстановлена. Ожидаем расписания.' WHERE status IN ('automating','checking')"
             )
@@ -190,7 +202,7 @@ class OutreachStore:
         rows = self.s.rows(
             "SELECT rules FROM outreach_settings WHERE campaign_id=?", (cid,)
         )
-        return DEFAULT_RULES | (json.loads(rows[0]["rules"]) if rows else {})
+        return current_rules(json.loads(rows[0]["rules"]) if rows else {})
 
     def configure(self, cid, value):
         rules = validate_rules(value)
@@ -447,14 +459,12 @@ class OutreachStore:
             "context": context,
             "messages": members,
             "skipped": skipped,
-            "maximum_credits": min(rules["inmail_budget"], len(members))
-            if rules["allow_inmail"]
-            else 0,
+            "maximum_credits": len(members) if rules["allow_inmail"] else 0,
         }
 
     def run(self, rid):
         row = self.s.one("SELECT * FROM outreach_runs WHERE id=?", (rid,))
-        row["rules"] = json.loads(row["rules"])
+        row["rules"] = current_rules(json.loads(row["rules"]))
         row["context"] = json.loads(row["context"])
         return row
 
@@ -517,7 +527,7 @@ class OutreachStore:
             )
         self.s.event(
             "outreach_approval",
-            f"Утверждён план {rid}: получатели, тексты, расписание и бюджет.",
+            f"Утверждён план {rid}: получатели, тексты, расписание и способы связи.",
         )
         return self.run(rid)
 
@@ -536,7 +546,7 @@ class OutreachStore:
             (cid,),
         )
         for run in runs:
-            run["rules"] = json.loads(run["rules"])
+            run["rules"] = current_rules(json.loads(run["rules"]))
             run["context"] = json.loads(run["context"])
             run["members"] = self.members(run["id"])
             run["actions"] = self.s.rows(
@@ -682,40 +692,6 @@ class OutreachStore:
                 and not rules["allow_inmail"]
             ):
                 raise AppError("Этот канал не был утверждён.")
-            day = now()[:10]
-            sender_ids = self.sender_ids(r["account_id"])
-            placeholders = ",".join("?" for _ in sender_ids)
-            used = self.s.one(
-                f"SELECT COUNT(*) n FROM outreach_actions WHERE account_id IN ({placeholders}) AND kind=? AND substr(created,1,10)=?",
-                (*sender_ids, kind, day),
-            )["n"]
-            if kind == "message":
-                used, _ = self.message_budget(r["account_id"])
-            # Apply the strictest approved policy among this sender's active plans.
-            key = {
-                "invite": "daily_invites",
-                "message": "daily_messages",
-                "inmail": "daily_inmails",
-            }[kind]
-            policies = self.s.rows(
-                f"SELECT rules FROM outreach_runs WHERE account_id IN ({placeholders}) AND status IN ('active','paused')",
-                sender_ids,
-            )
-            limit = min([rules[key]] + [json.loads(p["rules"])[key] for p in policies])
-            if used >= limit:
-                raise AppError(
-                    "Достигнут дневной бюджет приложения для этого канала (UTC)."
-                )
-            if kind == "inmail":
-                count = self.s.one(
-                    "SELECT COALESCE(SUM(COALESCE(a.credit_cost,1)),0) n FROM outreach_actions a JOIN outreach_members m ON a.member_id=m.id WHERE m.run_id=? AND a.kind='inmail' AND a.status IN ('sent','unknown','submitting')",
-                    (r["id"],),
-                )["n"]
-                if (
-                    count + (1 if credit_cost is None else credit_cost)
-                    > rules["inmail_budget"]
-                ):
-                    raise AppError("Исчерпан утверждённый бюджет InMail этой кампании.")
             action = uid()
             self.db.execute(
                 "INSERT INTO outreach_actions(id,member_id,account_id,url,kind,credit_cost,status,created,updated) VALUES(?,?,?,?,?,?,'submitting',?,?)",
@@ -743,30 +719,6 @@ class OutreachStore:
                 "SELECT id FROM accounts WHERE url=?", (account["url"],)
             )
         ]
-
-    def message_budget(self, account_id, default_limit=None):
-        """Share ordinary-message attempt limits across both queue formats."""
-        day = now()[:10]
-        sender_ids = self.sender_ids(account_id)
-        placeholders = ",".join("?" for _ in sender_ids)
-        used = self.s.one(
-            f"SELECT COUNT(*) n FROM outreach_actions WHERE account_id IN ({placeholders}) AND kind='message' AND substr(created,1,10)=?",
-            (*sender_ids, day),
-        )["n"]
-        used += self.s.one(
-            f"SELECT COUNT(*) n FROM deliveries d JOIN batches b ON d.batch_id=b.id WHERE b.account_id IN ({placeholders}) AND d.status IN ('sent','sending','unknown','blocked','failed','replied') AND substr(d.updated,1,10)=?",
-            (*sender_ids, day),
-        )["n"]
-        limits = [
-            json.loads(p["rules"])["daily_messages"]
-            for p in self.s.rows(
-                f"SELECT rules FROM outreach_runs WHERE account_id IN ({placeholders}) AND status IN ('active','paused')",
-                sender_ids,
-            )
-        ]
-        if default_limit is not None:
-            limits.append(default_limit)
-        return used, min(limits) if limits else None
 
     def finish(self, action, status, detail, thread_id=None):
         if status not in ("sent", "unknown", "blocked"):

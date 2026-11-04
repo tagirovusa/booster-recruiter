@@ -24,7 +24,7 @@ const states = {
   check_pending: "Ожидаем проверки",
   waiting_acceptance: "Ждём принятия",
   waiting_credits: "Ожидаем кредиты",
-  waiting_budget: "Ожидаем бюджет",
+  waiting_budget: "Ожидаем проверки",
   needs_review: "Нужно проверить",
   sent: "Отправлено",
   replied: "Ответ получен",
@@ -56,6 +56,29 @@ const kindNames = {
 
 const TEMPLATE_FIELDS = new Set(["name", "first_name", "headline", "company"]);
 const characterCount = (value) => [...value].length;
+const retiredQuotaFields = new Set([
+  "daily_invites",
+  "daily_messages",
+  "daily_inmails",
+  "inmail_budget",
+]);
+const currentRules = (rules) =>
+  Object.fromEntries(
+    Object.entries(rules).filter(([key]) => !retiredQuotaFields.has(key)),
+  );
+function draftMatchesRules(snapshot, rules) {
+  try {
+    const fingerprint = (value) =>
+      JSON.stringify(
+        Object.entries(currentRules(value)).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      );
+    return fingerprint(JSON.parse(snapshot)) === fingerprint(rules);
+  } catch {
+    return false;
+  }
+}
 
 // This catches editing mistakes early. The backend still validates every exact
 // recipient text, including the current Recruiter signature, before approval.
@@ -165,7 +188,7 @@ export function describeOutreach(rules) {
     );
   if (rules.allow_inmail && rules.strategy === "fast") {
     steps.push(
-      "Платный InMail — без ожидания приглашения, в пределах бюджета.",
+      "Платный InMail — без ожидания приглашения, если есть кредиты подписки.",
     );
     if (rules.allow_invites)
       steps.push(
@@ -181,7 +204,7 @@ export function describeOutreach(rules) {
       );
   } else if (rules.allow_inmail) {
     steps.push(
-      "Приглашения выключены: если бесплатная связь недоступна, используем доступный InMail в пределах бюджета.",
+      "Приглашения выключены: если бесплатная связь недоступна, используем доступный InMail.",
     );
   } else {
     steps.push(
@@ -274,7 +297,7 @@ export function DetailMessage({ detail, status, kind }) {
       waiting_credits:
         "Для продолжения проверьте доступные InMail-кредиты аккаунта.",
       waiting_budget:
-        "Для продолжения проверьте бюджет InMail в настройках кампании.",
+        "Проверьте сохранённую причину остановки перед продолжением кампании.",
       excluded: "Кандидат исключён из этого плана. Подробности сохранены ниже.",
       finished:
         "Наблюдение за кандидатом завершено. Подробности сохранены ниже.",
@@ -362,7 +385,7 @@ export function Automation({
   draftPersisted = false,
 }) {
   const draft =
-    initialDraft?.baseRules === JSON.stringify(data.rules) &&
+    draftMatchesRules(initialDraft?.baseRules, data.rules) &&
     initialDraft?.baseTexts ===
       JSON.stringify([campaign.template_open, campaign.template_neutral])
       ? initialDraft
@@ -371,7 +394,7 @@ export function Automation({
   const serverTexts = useRef(
     JSON.stringify([campaign.template_open, campaign.template_neutral]),
   );
-  const [rules, setRules] = useState(draft?.rules || data.rules);
+  const [rules, setRules] = useState(currentRules(draft?.rules || data.rules));
   const [texts, setTexts] = useState({
     open: draft?.texts.open ?? campaign.template_open,
     neutral: draft?.texts.neutral ?? campaign.template_neutral,
@@ -439,7 +462,6 @@ export function Automation({
           ? "recruiter"
           : r.inmail_channel || "linkedin",
       strategy: id === "fast" ? "fast" : "economy",
-      inmail_budget: id !== "free" ? r.inmail_budget || 5 : r.inmail_budget,
     }));
   const active = data.runs.find((r) => ["active", "paused"].includes(r.status));
   const [editing, setEditing] = useState(!active);
@@ -547,19 +569,11 @@ export function Automation({
   const limits = {
     wait_days: [1, 60],
     check_hours: [1, 72],
-    inmail_budget: [0, 1000],
-    daily_invites: [1, 100],
-    daily_messages: [1, 200],
-    daily_inmails: [1, 100],
     monitor_days: [1, 90],
   };
   const numberLabels = {
     wait_days: "Ждать принятия · дней",
     check_hours: "Проверять контакты каждые · ч",
-    inmail_budget: "Бюджет InMail · кредитов",
-    daily_invites: "Приглашений в сутки",
-    daily_messages: "Сообщений в сутки",
-    daily_inmails: "InMail в сутки",
     monitor_days: "Следить за ответами · дней",
   };
   const invalidNumber = Object.entries(limits).find(
@@ -567,18 +581,12 @@ export function Automation({
       !Number.isInteger(rules[key]) || rules[key] < min || rules[key] > max,
   );
   const invalidHours = rules.start_hour >= rules.end_hour;
-  const invalidInmailBudget = rules.allow_inmail && rules.inmail_budget < 1;
-  const validRules =
-    !invalidNumber &&
-    !invalidHours &&
-    !invalidInmailBudget &&
-    !unsavableTemplate;
+  const validRules = !invalidNumber && !invalidHours && !unsavableTemplate;
   const canReview =
     account?.status === "ready" &&
     validRules &&
     selected.length > 0 &&
     !invalidText &&
-    (!rules.allow_inmail || rules.inmail_budget > 0) &&
     (!rules.allow_inmail ||
       rules.inmail_channel !== "recruiter" ||
       recruiterReady);
@@ -628,7 +636,7 @@ export function Automation({
       ? [
           {
             title: "Проверить платный InMail",
-            text: "Без ожидания приглашения, при доступных кредитах и в пределах бюджета.",
+            text: "Без ожидания приглашения, если есть кредиты подписки.",
           },
         ]
       : []),
@@ -651,7 +659,7 @@ export function Automation({
               : "Отправить InMail",
             text: rules.allow_invites
               ? "Если пригласить нельзя — проверим InMail без ожидания."
-              : "Если бесплатная связь недоступна, в пределах бюджета.",
+              : "Если бесплатная связь недоступна и есть кредиты подписки.",
           },
         ]
       : []),
@@ -838,13 +846,14 @@ export function Automation({
                     )}
                   </div>
                   {rules.allow_inmail && (
-                    <div className="credit-budget">
+                    <div className="inmail-settings">
                       <div>
-                        <h3>Сколько кредитов можно использовать?</h3>
+                        <h3>InMail для выбранных кандидатов</h3>
                         <p>
-                          Бесплатный InMail не расходует бюджет. Платные
-                          отправки — в пределах выбранных кредитов;
-                          дополнительных покупок не будет.
+                          Этот режим разрешает расход кредитов подписки. Сначала
+                          используем бесплатную связь. Если кредитов не хватит,
+                          сохраним оставшихся кандидатов в очереди.
+                          Дополнительные кредиты не покупаем.
                         </p>
                       </div>
                       <label className="field">
@@ -869,12 +878,6 @@ export function Automation({
                             </button>
                           </div>
                         )}
-                      {number(
-                        "inmail_budget",
-                        "Бюджет InMail · кредитов",
-                        1,
-                        1000,
-                      )}
                       {mode === "economy" &&
                         rules.allow_invites &&
                         number("wait_days", "Ждать принятия · дней", 1, 60)}
@@ -988,17 +991,7 @@ export function Automation({
                           </label>
                         ))}
                       </div>
-                      <h3>Дневные ограничения</h3>
-                      <div className="settings-row">
-                        {number("daily_invites", "Приглашений", 1, 100)}
-                        {number("daily_messages", "Сообщений", 1, 200)}
-                        {number("daily_inmails", "InMail", 1, 100)}
-                      </div>
-                      <p className="settings-footnote">
-                        Общие для всех кампаний отправителя. Сутки считаются по
-                        UTC. Это настройки приложения, а не официальные лимиты
-                        LinkedIn.
-                      </p>
+                      <h3>Когда проверять контакты и ответы</h3>
                       <div className="settings-row">
                         {number(
                           "check_hours",
@@ -1225,20 +1218,18 @@ export function Automation({
                     ? "Время окончания должно быть позже начала в пределах суток."
                     : invalidNumber
                       ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
-                      : invalidInmailBudget
-                        ? "Укажите бюджет InMail не меньше одного кредита."
-                        : unsavableTemplate
-                          ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
-                          : stepTextError
-                            ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
-                            : account?.status !== "ready"
-                              ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
-                              : !selected.length
-                                ? "Сначала выберите кандидатов для этой кампании."
-                                : rules.inmail_channel === "recruiter" &&
-                                    !recruiterReady
-                                  ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
-                                  : "Укажите бюджет InMail не меньше одного кредита."}
+                      : unsavableTemplate
+                        ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
+                        : stepTextError
+                          ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
+                          : account?.status !== "ready"
+                            ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
+                            : !selected.length
+                              ? "Сначала выберите кандидатов для этой кампании."
+                              : rules.inmail_channel === "recruiter" &&
+                                  !recruiterReady
+                                ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
+                                : "Проверьте настройки способа связи."}
                 </p>
               )}
             </fieldset>
@@ -1299,7 +1290,7 @@ export function Automation({
                   <p>
                     <Wallet size={14} />
                     <span>
-                      До <b>{rules.inmail_budget}</b> InMail-кредитов
+                      Кредиты InMail: до <b>{selected.length}</b>
                     </span>
                   </p>
                 )}
@@ -1314,7 +1305,8 @@ export function Automation({
             <p className="plan-note">
               <CheckCircle2 size={15} />
               <span>
-                Перед запуском вы проверите получателей и точные тексты.
+                Обрабатываем только выбранных кандидатов. При ограничении
+                LinkedIn остановимся и сохраним очередь.
               </span>
             </p>
           </aside>
@@ -1344,11 +1336,7 @@ export function OutreachHistory({
             <span>
               Получателей: {run.members.length}
               {(run.rules.allow_inmail || run.credits_reserved > 0) && (
-                <>
-                  {" "}
-                  · InMail-кредиты: {run.credits_reserved}/
-                  {run.rules.inmail_budget}
-                </>
+                <> · Учтено InMail-кредитов: {run.credits_reserved}</>
               )}
             </span>
             {run.status === "paused" && (

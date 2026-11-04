@@ -183,7 +183,13 @@ async def check_outreach_browser(page):
         assert state["verified"] is verified and state["has_reply"] is replied, state
     connection_cases = await check_connection_layouts(page)
     page.set_default_timeout(30000)
-    return len(cases) + 11 + connection_cases + await check_search_browser(page)
+    return (
+        len(cases)
+        + 11
+        + connection_cases
+        + await check_search_browser(page)
+        + await check_platform_limit_notices(page)
+    )
 
 
 async def check_search_browser(page):
@@ -398,3 +404,59 @@ async def check_invitation_dialogs(page):
         if case in {"personal_draft", "hidden_personal_draft"}:
             assert await page.locator("textarea").input_value() == "My personal draft"
     return len(cases)
+
+
+async def check_platform_limit_notices(page):
+    from .platform_limits import (
+        LinkedInLimitError,
+        check_platform_limit,
+        read_platform_limit,
+    )
+
+    notice = "You've reached the weekly invitation limit"
+    cases = [
+        (f'<main><h1>Recipient</h1></main><div role="dialog">{notice}</div>', True),
+        (
+            '<main></main><div role="alert">You have reached your messaging limit</div>',
+            True,
+        ),
+        (
+            '<main></main><div class="artdeco-toast-item">Invitation limit reached</div>',
+            True,
+        ),
+        (
+            '<main></main><div role="dialog">Вы достигли недельного лимита приглашений</div>',
+            True,
+        ),
+        (f"<main><p>{notice}</p></main>", False),
+        (f'<div role="dialog"><textarea>{notice}</textarea></div>', False),
+        (f'<div role="dialog"><div contenteditable="true">{notice}</div></div>', False),
+        (
+            f'<div role="dialog"><div data-event-urn="message">{notice}</div></div>',
+            False,
+        ),
+        (f'<div role="alert" style="display:none">{notice}</div>', False),
+        ('<div role="dialog">0 InMail credits remaining</div>', False),
+        ('<div role="dialog">An invitation is pending</div>', False),
+    ]
+    await page.goto("https://www.linkedin.com/in/recipient/")
+    for html, expected in cases:
+        await page.set_content(html)
+        result = await read_platform_limit(PageSession(page))
+        assert bool(result) is expected, (html, result)
+    await page.set_content(f'<main></main><div role="dialog">{notice}</div>')
+    connector = InviteOnly(PageSession(page), None, None)
+    connector._booster_invite_target = {"username": "recipient", "name": "Recipient"}
+    try:
+        await connector._submit_invite_dialog(None)
+    except LinkedInLimitError:
+        pass
+    else:
+        raise AssertionError("LinkedIn limit did not prevent invitation submission")
+    try:
+        await check_platform_limit(PageSession(page))
+    except LinkedInLimitError:
+        pass
+    else:
+        raise AssertionError("Platform notice was not surfaced as a limit")
+    return len(cases) + 2

@@ -185,7 +185,7 @@ def test_bulk_selection_is_all_or_nothing(store, bad):
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("rules", {"daily_invites": 0}),
+        ("rules", {"check_hours": 0}),
         ("rules", None),
         ("template_open", None),
         ("template_neutral", "x" * 4001),
@@ -343,7 +343,7 @@ async def test_bulk_and_settings_api_success_then_identical_save_preserves_previ
         assert response.json()["result"] == {"saved": True, "changed": 1}
         params = {
             "id": c["id"],
-            "rules": DEFAULT_RULES | {"daily_invites": 5},
+            "rules": DEFAULT_RULES | {"check_hours": 5},
             "template_open": "New open text",
             "template_neutral": "New neutral text",
         }
