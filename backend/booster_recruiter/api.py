@@ -7,7 +7,7 @@ import json
 import os
 import secrets
 import socket
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -39,6 +39,53 @@ def create_app(store, runtime, token):
             p = data.get("params", {})
             if op == "state":
                 result = store.state()
+            elif op == "workspace.summary":
+                result = store.workspace.summary()
+            elif op == "workspace.acknowledge":
+                result = store.workspace.acknowledge(p["id"])
+            elif op == "template.list":
+                result = {"templates": store.workspace.templates()}
+            elif op == "template.save":
+                result = store.workspace.save_template(p["campaign_id"], p["name"])
+            elif op == "template.create":
+                result = store.workspace.create_from_template(
+                    p["id"], p["account_id"], p.get("name")
+                )
+            elif op == "template.delete":
+                result = store.workspace.delete_template(p["id"])
+            elif op == "backup.list":
+                result = {"backups": store.workspace.backups()}
+            elif op == "backup.create":
+                result = store.workspace.create_backup()
+            elif op == "backup.restore":
+                if p.get("confirm") is not True:
+                    raise AppError("Подтвердите замену данных резервной копией.")
+                if (
+                    any(not task.done() for task in runtime.jobs.values())
+                    or runtime.browser_lock.locked()
+                    or runtime.campaign_operations
+                ):
+                    raise AppError(
+                        "Приостановите кампании и дождитесь завершения текущих действий."
+                    )
+                if store.rows(
+                    "SELECT id FROM campaigns WHERE status IN ('collecting','checking','sending','automating')"
+                ):
+                    raise AppError("Дождитесь завершения текущих действий кампании.")
+                async with runtime.browser_lock:
+                    for worker in runtime.workers.values():
+                        await worker.stop(graceful=True)
+                    # A scheduler may have queued work while workers closed.
+                    if (
+                        any(not task.done() for task in runtime.jobs.values())
+                        or runtime.campaign_operations
+                    ):
+                        raise AppError(
+                            "Началась новая операция. Приостановите кампании перед восстановлением."
+                        )
+                    runtime.workers.clear()
+                    result = store.workspace.restore(p["id"])
+                    runtime.pause_flags.clear()
             elif op == "account.create":
                 result = store.create_account(p["label"])
             elif op == "account.login":
@@ -206,8 +253,21 @@ def create_app(store, runtime, token):
 
     @asynccontextmanager
     async def lifespan(app):
+        store.workspace.try_daily_backup()
+
+        async def backups():
+            while True:
+                await asyncio.sleep(3600)
+                store.workspace.try_daily_backup()
+
+        backup_task = asyncio.create_task(backups())
         runtime.outreach.start()
-        yield
+        try:
+            yield
+        finally:
+            backup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await backup_task
         await runtime.close()
         store.db.close()
 

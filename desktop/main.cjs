@@ -9,6 +9,7 @@ const {
   Tray,
   Menu,
   nativeImage,
+  Notification,
 } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -29,7 +30,10 @@ let win,
   connection,
   tray,
   exiting = false;
-let desktopPreferences;
+let desktopPreferences, attentionNotifications, notificationTimer;
+const {
+  createAttentionNotifications,
+} = require("./attention_notifications.cjs");
 function createApplicationMenu() {
   const items = [];
   if (process.platform === "darwin")
@@ -135,6 +139,15 @@ function createTray() {
 }
 const operations = new Set([
   "state",
+  "workspace.summary",
+  "workspace.acknowledge",
+  "template.list",
+  "template.save",
+  "template.create",
+  "template.delete",
+  "backup.list",
+  "backup.create",
+  "backup.restore",
   "account.create",
   "account.login",
   "account.open_profile",
@@ -325,6 +338,41 @@ async function start() {
     }),
   );
   createTray();
+  attentionNotifications = createAttentionNotifications({
+    filename: path.join(
+      app.getPath("userData"),
+      "attention-notifications.json",
+    ),
+    show: async (items) => {
+      if (!Notification.isSupported() || win?.isFocused()) return;
+      const notification = new Notification({
+        title: "Booster Recruiter",
+        body: items.some((i) => i.kind === "reply")
+          ? "Есть новые ответы. Откройте рабочее пространство."
+          : "Кампаниям нужна ваша помощь. Откройте рабочее пространство.",
+        silent: true,
+      });
+      notification.on("click", () => {
+        showWindow();
+        win?.webContents.send("workspace-attention", items[0].id);
+      });
+      notification.show();
+    },
+  });
+  let polling = false;
+  const pollAttention = async () => {
+    if (polling || exiting || !connection) return;
+    polling = true;
+    try {
+      await attentionNotifications.poll(await call("workspace.summary"));
+    } catch {
+    } finally {
+      polling = false;
+    }
+  };
+  await pollAttention();
+  notificationTimer = setInterval(pollAttention, 30000);
+  notificationTimer.unref();
   await win.loadURL("booster://app/");
   child.on("exit", () => {
     connection = null;
@@ -339,6 +387,12 @@ ipcMain.handle("command", async (event, op, params) => {
   trusted(event);
   if (!operations.has(op)) throw Error("Команда недоступна.");
   return call(op, params);
+});
+ipcMain.handle("notification-settings", (event, patch) => {
+  trusted(event);
+  if (!attentionNotifications)
+    throw Error("Настройки ещё загружаются. Попробуйте снова.");
+  return attentionNotifications.access(patch);
 });
 ipcMain.handle("desktop-settings", async (event, patch) => {
   trusted(event);
@@ -413,6 +467,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", (event) => {
     if (exiting) return;
     exiting = true;
+    clearInterval(notificationTimer);
     event.preventDefault();
     Promise.race([
       call("shutdown").catch(() => {}),

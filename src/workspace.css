@@ -1,0 +1,170 @@
+.workspace-attention {
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.workspace-attention .panel-title p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted, #68717b);
+}
+.attention-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 18px;
+}
+.attention-filters button {
+  border: 1px solid #e2e4e7;
+  background: white;
+  color: inherit;
+  border-radius: 8px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.attention-filters button.chosen {
+  background: #fff8c9;
+  border-color: #d6b600;
+}
+.attention-filters b {
+  font-size: 12px;
+}
+.attention-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 490px;
+  overflow: auto;
+}
+.attention-list li {
+  border-top: 1px solid #eceef0;
+  padding: 18px 24px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+.attention-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.attention-copy p {
+  margin: 0;
+  color: #626b75;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.attention-copy small {
+  color: #7b838d;
+  font-size: 12px;
+}
+.attention-kind {
+  font-size: 11px;
+  font-weight: 700;
+  color: #626b75;
+}
+.attention-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  align-items: flex-end;
+}
+.attention-actions .text-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.workspace-empty {
+  padding: 20px 24px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #626b75;
+}
+.workspace-empty p {
+  margin: 0;
+}
+.workspace-inline-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.search-builder {
+  padding: 16px;
+  background: #f7f8f9;
+  border: 1px solid #e4e6e8;
+  border-radius: 12px;
+}
+.search-builder-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.search-builder .field {
+  margin-bottom: 12px;
+}
+.search-builder small {
+  display: block;
+  color: #68717b;
+  line-height: 1.5;
+}
+.search-query-preview {
+  margin-top: 14px;
+  display: grid;
+  gap: 7px;
+}
+.search-query-preview span {
+  font-size: 12px;
+  color: #68717b;
+}
+.search-query-preview code {
+  display: block;
+  padding: 10px;
+  background: white;
+  border: 1px solid #e4e6e8;
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.template-picker > p {
+  color: #68717b;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+.template-footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.template-delete-confirm {
+  margin-top: 18px;
+  border-top: 1px solid #e4e6e8;
+  padding-top: 12px;
+}
+@media (max-width: 1000px) {
+  .attention-list li {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .attention-actions {
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 600px) {
+  .search-builder-grid {
+    grid-template-columns: 1fr;
+  }
+}

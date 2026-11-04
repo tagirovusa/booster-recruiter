@@ -49,6 +49,8 @@ const { execFileSync } = require("node:child_process");
       // that could open LinkedIn are deliberately absent.
       const local = new Set([
         "state",
+        "workspace.summary",
+        "backup.list",
         "campaign.detail",
         "campaign.create",
         "campaign.automation",
@@ -257,6 +259,7 @@ const { execFileSync } = require("node:child_process");
       "Form validation must retain fully visible actions at the minimum window size.",
     );
     await nameField.fill("   ");
+    await page.getByRole("button", { name: "Запрос или ссылка", exact: true }).click();
     await page.getByLabel(/^Ключевые слова или ссылка на профиль/).fill("   ");
     await page.getByLabel(/^Сколько профилей собрать/).fill("1.5");
     await page
@@ -516,7 +519,7 @@ const { execFileSync } = require("node:child_process");
       "paused",
     );
     await expect(
-      page.getByRole("heading", { name: "На паузе", exact: true }),
+      page.getByRole("heading", { name: "Кампания на паузе", exact: true }),
     ).toBeVisible();
     const savedNeutral = (await detail(paused)).campaign.template_neutral;
     await page
@@ -672,6 +675,7 @@ const { execFileSync } = require("node:child_process");
       .click();
     const longName = "W".repeat(150);
     await page.getByLabel(/^Название кампании/).fill(longName);
+    await page.getByRole("button", { name: "Запрос или ссылка", exact: true }).click();
     await page
       .getByLabel(/^Ключевые слова или ссылка на профиль/)
       .fill("https://www.linkedin.com/in/" + "auditsynthetic".repeat(35));

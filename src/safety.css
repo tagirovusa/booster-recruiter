@@ -1,0 +1,52 @@
+.safety-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-weight: 700;
+}
+.safety-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #fed700;
+}
+.safety-note {
+  color: var(--muted, #64707d);
+  line-height: 1.6;
+  font-size: 14px;
+  margin: 16px 0;
+}
+.backup-list {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.backup-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e4e6e8;
+}
+.backup-list small {
+  display: block;
+  color: #64707d;
+  margin-top: 4px;
+}
+.restore-confirm {
+  padding: 18px;
+  margin-top: 18px;
+  background: #f3f3f3;
+  border: 1px solid #d9dde2;
+  border-radius: 12px;
+}
+.restore-confirm p {
+  line-height: 1.6;
+}
+.restore-confirm .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
