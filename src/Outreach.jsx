@@ -50,7 +50,7 @@ const relations = {
 const kindNames = {
   invite: "Приглашение",
   message: "Обычное сообщение",
-  inmail: "Платный InMail",
+  inmail: "InMail",
 };
 const date = (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—");
 export function ContactState({ person, member }) {
@@ -959,16 +959,7 @@ export function OutreachHistory({
   const visible = runs.filter((r) => r.status !== "preview");
   if (!visible.length) return null;
   return (
-    <section className="panel outreach-history">
-      <div className="panel-title">
-        <div>
-          <h2>Приглашения и сообщения</h2>
-          <p>
-            «Отправлено» означает подтверждение в LinkedIn; это не подтверждение
-            прочтения.
-          </p>
-        </div>
-      </div>
+    <section className="outreach-history" aria-label="Приглашения и сообщения">
       {visible.map((run) => (
         <div key={run.id} className="outreach-run">
           <div className="toolbar">
@@ -976,8 +967,14 @@ export function OutreachHistory({
               {states[run.status]} · {date(run.created)}
             </b>
             <span>
-              Получателей: {run.members.length} · InMail: {run.credits_reserved}
-              /{run.rules.inmail_budget}
+              Получателей: {run.members.length}
+              {(run.rules.allow_inmail || run.credits_reserved > 0) && (
+                <>
+                  {" "}
+                  · InMail-кредиты: {run.credits_reserved}/
+                  {run.rules.inmail_budget}
+                </>
+              )}
             </span>
             {run.status === "paused" && (
               <button
@@ -1019,7 +1016,11 @@ export function OutreachHistory({
                         "waiting_credits",
                         "planned",
                       ].includes(m.status)
-                        ? date(m.next_check)
+                        ? run.status === "paused"
+                          ? "После возобновления"
+                          : run.status === "active"
+                            ? date(m.next_check)
+                            : "—"
                         : "—"}
                     </td>
                     <td>

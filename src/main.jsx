@@ -243,6 +243,10 @@ function App() {
     campaign?.status,
   );
   const liveRun = detail?.outreach?.runs.find((r) => r.status === "active");
+  const hasOutreachHistory = detail?.outreach?.runs.some(
+    (r) => r.status !== "preview",
+  );
+  const hasMessageHistory = detail?.candidates.some((p) => p.delivery.length);
   const contactMembers = new Map();
   for (const r of (detail?.outreach?.runs || [])
     .filter((r) => r.status !== "preview")
@@ -917,6 +921,19 @@ function App() {
                 />
               ) : tab === "history" ? (
                 <div className="panel">
+                  <div className="panel-title">
+                    <div>
+                      <h2>История контактов</h2>
+                      <p>
+                        Приглашения, сообщения и ответы. Статус «Отправлено»
+                        подтверждает отправку в LinkedIn, но не прочтение.
+                      </p>
+                    </div>
+                    <Button onClick={() => doExport("csv")}>
+                      <Download size={16} />
+                      Список в CSV
+                    </Button>
+                  </div>
                   <OutreachHistory
                     runs={detail.outreach.runs}
                     disabled={active || busy}
@@ -926,13 +943,6 @@ function App() {
                     onResume={(id) => act("outreach.resume", { id })}
                     onOpen={openInSenderAccount}
                   />
-                  <div className="panel-title">
-                    <h2>Результаты сообщений</h2>
-                    <Button onClick={() => doExport("csv")}>
-                      <Download size={16} />
-                      CSV
-                    </Button>
-                  </div>
                   {detail.batches
                     .filter((b) => b.status === "approved" && b.pending > 0)
                     .map((b) => (
@@ -952,88 +962,103 @@ function App() {
                         </Button>
                       </div>
                     ))}
-                  {detail.candidates.some((p) => p.delivery.length) ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Получатель</th>
-                          <th>Результат</th>
-                          <th>Подробности</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.candidates
-                          .filter((p) => p.delivery.length)
-                          .map((p) => (
-                            <tr key={p.id}>
-                              <td>
-                                <button
-                                  className="text-button"
-                                  onClick={() => setPerson(p)}
-                                >
-                                  {p.data.name || p.url}
-                                </button>
-                              </td>
-                              <td>
-                                <Badge value={p.delivery[0].status} />
-                              </td>
-                              <td>
-                                {p.delivery[0].detail}
-                                <small>{fmt(p.delivery[0].updated)}</small>
-                                <details>
-                                  <summary>Текст сообщения</summary>
-                                  <p className="message-text">
-                                    {p.delivery[0].message}
-                                  </p>
-                                </details>
-                                {p.delivery[0].status === "unknown" && (
-                                  <div className="resolution">
-                                    <p>
-                                      Откройте диалог и проверьте, появилось ли
-                                      это сообщение.
-                                    </p>
-                                    <Button
-                                      onClick={() => openInSenderAccount(p.url)}
-                                    >
-                                      Открыть LinkedIn
-                                    </Button>
-                                    <Button
-                                      disabled={active || busy}
-                                      onClick={() =>
-                                        act("delivery.resolve", {
-                                          id: p.delivery[0].id,
-                                          status: "sent",
-                                        })
-                                      }
-                                    >
-                                      Сообщение есть
-                                    </Button>
-                                    <Button
-                                      disabled={active || busy}
-                                      onClick={() =>
-                                        act("delivery.resolve", {
-                                          id: p.delivery[0].id,
-                                          status: "blocked",
-                                        })
-                                      }
-                                    >
-                                      Сообщения нет
-                                    </Button>
-                                  </div>
-                                )}
-                              </td>
+                  {hasMessageHistory && (
+                    <>
+                      {hasOutreachHistory && (
+                        <h3 className="history-message-title">
+                          Другие сообщения
+                        </h3>
+                      )}
+                      <div className="table-scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Получатель</th>
+                              <th>Результат</th>
+                              <th>Подробности</th>
                             </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  ) : (
+                          </thead>
+                          <tbody>
+                            {detail.candidates
+                              .filter((p) => p.delivery.length)
+                              .map((p) => (
+                                <tr key={p.id}>
+                                  <td>
+                                    <button
+                                      className="text-button"
+                                      onClick={() => setPerson(p)}
+                                    >
+                                      {p.data.name || p.url}
+                                    </button>
+                                  </td>
+                                  <td>
+                                    <Badge value={p.delivery[0].status} />
+                                  </td>
+                                  <td>
+                                    {p.delivery[0].detail}
+                                    <small>{fmt(p.delivery[0].updated)}</small>
+                                    <details>
+                                      <summary>Текст сообщения</summary>
+                                      <p className="message-text">
+                                        {p.delivery[0].message}
+                                      </p>
+                                    </details>
+                                    {p.delivery[0].status === "unknown" && (
+                                      <div className="resolution">
+                                        <p>
+                                          Откройте диалог и проверьте, появилось
+                                          ли это сообщение.
+                                        </p>
+                                        <Button
+                                          onClick={() =>
+                                            openInSenderAccount(p.url)
+                                          }
+                                        >
+                                          Открыть LinkedIn
+                                        </Button>
+                                        <Button
+                                          disabled={active || busy}
+                                          onClick={() =>
+                                            act("delivery.resolve", {
+                                              id: p.delivery[0].id,
+                                              status: "sent",
+                                            })
+                                          }
+                                        >
+                                          Сообщение есть
+                                        </Button>
+                                        <Button
+                                          disabled={active || busy}
+                                          onClick={() =>
+                                            act("delivery.resolve", {
+                                              id: p.delivery[0].id,
+                                              status: "blocked",
+                                            })
+                                          }
+                                        >
+                                          Сообщения нет
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                  {!hasMessageHistory && !hasOutreachHistory && (
                     <div className="empty compact">
                       <Inbox />
-                      <h3>Здесь появится история обработки</h3>
+                      <h3>Обращений пока нет</h3>
                       <p>
-                        У каждого получателя сохраняются точный текст и
-                        результат попытки.
+                        После запуска здесь появятся приглашения, сообщения и
+                        результаты по каждому кандидату.
                       </p>
+                      <Button onClick={() => setTab("automation")}>
+                        Настроить автоматизацию
+                      </Button>
                     </div>
                   )}
                 </div>
