@@ -830,7 +830,9 @@ const { execFileSync } = require("node:child_process");
     await app.evaluate(() => {
       global.__uiSettings.mode = "save-error";
     });
-    await background.check();
+    // This write must roll back; check() incorrectly requires a lasting checked
+    // state and can fail before the assertions when rejection returns quickly.
+    await background.click();
     await expect(page.getByRole("alert")).toContainText(
       "Не удалось подтвердить сохранение",
     );
