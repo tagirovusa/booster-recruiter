@@ -31,6 +31,8 @@ command = [
     "--onedir",
     "--name",
     "booster-backend",
+    "--paths",
+    str(root / "backend"),
     "--distpath",
     str(root / "runtime"),
     "--workpath",
@@ -58,7 +60,16 @@ command += [
     "mcp.cli",
     str(root / "scripts/entry.py"),
 ]
-subprocess.run(command, cwd=root, check=True)
+# Use the actual source tree for both collection helpers and module analysis.
+# An editable-install .pth file can be ignored when the filesystem marks it
+# hidden; packaging must not silently omit the application in that case.
+build_env = {
+    **os.environ,
+    "PYTHONPATH": os.pathsep.join(
+        filter(None, (str(root / "backend"), os.environ.get("PYTHONPATH")))
+    ),
+}
+subprocess.run(command, cwd=root, env=build_env, check=True)
 # Local wheel/editable-install provenance contains build-machine source paths.
 # Runtime metadata and dependency notices remain available without these files.
 for provenance in (root / "runtime/booster-backend").rglob(
