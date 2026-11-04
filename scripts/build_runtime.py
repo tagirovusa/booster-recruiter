@@ -59,6 +59,12 @@ command += [
     str(root / "scripts/entry.py"),
 ]
 subprocess.run(command, cwd=root, check=True)
+# Local wheel/editable-install provenance contains build-machine source paths.
+# Runtime metadata and dependency notices remain available without these files.
+for provenance in (root / "runtime/booster-backend").rglob(
+    "*.dist-info/direct_url.json"
+):
+    provenance.unlink()
 env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(root / "runtime/browser")}
 subprocess.run(
     [sys.executable, "-m", "patchright", "install", "chromium", "--no-shell"],

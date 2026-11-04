@@ -1,6 +1,6 @@
 import pytest
-from booster_recruiter.worker import direct_profile_search
 from booster_linkedin.core.exceptions import InvalidReferenceError
+from booster_recruiter.worker import direct_profile_search
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,12 @@
+title = "Business Booster repository secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "linkedin-client-id"
+
+[[rules.allowlists]]
+description = "Python exception class name, not an authentication value"
+regexTarget = "secret"
+regexes = ['''^RateLimitError$''']

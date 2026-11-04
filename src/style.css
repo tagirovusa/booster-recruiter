@@ -991,8 +991,21 @@ input[type="checkbox"] {
   margin-bottom: 24px;
 }
 .action-record {
-  padding: 16px 0;
+  padding: 16px 24px;
   border-top: 1px solid #e5e5e5;
+}
+.history-message-title {
+  padding: 16px 24px;
+  font-size: 16px;
+}
+.resolution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.resolution p {
+  flex-basis: 100%;
 }
 .action-record summary {
   cursor: pointer;
@@ -1001,6 +1014,12 @@ input[type="checkbox"] {
 .action-record pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.6;
+  margin-top: 12px;
+  padding: 16px;
+  background: #f8f7f5;
+  border-radius: 8px;
 }
 .text-link {
   background: none;

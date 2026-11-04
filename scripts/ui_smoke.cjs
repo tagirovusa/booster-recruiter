@@ -11,17 +11,10 @@ const { execFileSync } = require("node:child_process");
     ".venv",
     process.platform === "win32" ? "Scripts/python.exe" : "bin/python",
   );
-  execFileSync(
-    python,
-    [
-      "-c",
-      `from booster_recruiter.store import Store\nfrom pathlib import Path\ns=Store(Path(${JSON.stringify(data)}))\na=s.create_account('Демо · команда подбора')\ns.set_account(a['id'],'ready','demo-recruiter')\nc=s.create_campaign({'name':'Head of Recruitment · пример','account_id':a['id'],'keywords':'"driver recruitment" manager','max_profiles':20,'template_open':'Hi {first_name}, I noticed you are open to opportunities. Let us discuss a remote recruitment role.','template_neutral':'Hi {first_name}, would you be interested in discussing a remote recruitment role?'})\nfor name,url,status in [('Alex Morgan','demo-alex','open_to_work'),('Sam Taylor','demo-sam','unknown'),('Jamie Reed','demo-jamie','hiring')]:\n s.add_candidate(c['id'],{'url':url,'name':name,'headline':'Recruitment operations · US trucking','photo_frame':{'status':status},'sections':{'main_profile':'Example profile for interface testing.'}})\ns.progress(c['id'],'ready','Демонстрационные данные для проверки интерфейса. Сообщения не отправляются.')\ns.db.close()`,
-    ],
-    {
-      cwd: root,
-      env: { ...process.env, PYTHONPATH: path.join(root, "backend") },
-    },
-  );
+  execFileSync(python, [path.join(root, "scripts/ui_fixtures.py"), data], {
+    cwd: root,
+    env: { ...process.env, PYTHONPATH: path.join(root, "backend") },
+  });
   const env = { ...process.env, BOOSTER_DATA_DIR: data };
   if (!process.env.BOOSTER_EXECUTABLE)
     env.PYTHONPATH = path.join(root, "backend");
@@ -145,7 +138,9 @@ const { execFileSync } = require("node:child_process");
       page.getByText("InMail · Recruitment opportunity", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Бюджет InMail на всю кампанию: 1 кредит.", { exact: true }),
+      page.getByText("Бюджет InMail на всю кампанию: 1 кредит.", {
+        exact: true,
+      }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Вернуться к настройкам" }).click();
     await page.getByRole("button", { name: "Кандидаты", exact: true }).click();
@@ -168,6 +163,112 @@ const { execFileSync } = require("node:child_process");
       path: path.join(root, "..", "booster-recruiter-preview.png"),
       fullPage: true,
     });
+    await page
+      .getByRole("button", { name: "Все кампании", exact: true })
+      .click();
+    await page.getByText("История · без обращений", { exact: true }).click();
+    await page.getByRole("button", { name: "История", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "История контактов" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Обращений пока нет" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Список в CSV" }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Настроить автоматизацию", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "От знакомства — к разговору" }),
+    ).toBeVisible();
+    for (const [campaign, outreach, legacy] of [
+      ["История · автоматизация", true, false],
+      ["История · сообщения", false, true],
+      ["История · вместе", true, true],
+    ]) {
+      await page
+        .getByRole("button", { name: "Все кампании", exact: true })
+        .click();
+      await page.getByText(campaign, { exact: true }).click();
+      await page.getByRole("button", { name: "История", exact: true }).click();
+      await expect(
+        page.getByRole("heading", { name: "История контактов" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Обращений пока нет" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByText("Здесь появится история обработки", { exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Список в CSV" }),
+      ).toBeVisible();
+      const automatedHistory = page.getByRole("region", {
+        name: "Приглашения и сообщения",
+      });
+      if (outreach) {
+        await expect(automatedHistory).toBeVisible();
+        await expect(
+          automatedHistory.getByRole("cell", {
+            name: "Ждём принятия",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          automatedHistory.getByRole("cell", {
+            name: "После возобновления",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          automatedHistory.getByRole("cell", {
+            name: "Ответ получен",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          automatedHistory.getByText("Спасибо за сообщение.", { exact: true }),
+        ).toBeVisible();
+        await automatedHistory
+          .locator("summary")
+          .filter({ hasText: "Обычное сообщение" })
+          .click();
+        await expect(
+          automatedHistory.locator("pre").filter({ hasText: "Hi Jordan," }),
+        ).toBeVisible();
+      } else {
+        await expect(automatedHistory).toHaveCount(0);
+      }
+      const oldRecipient = page.getByRole("button", {
+        name: "Taylor Parker",
+        exact: true,
+      });
+      if (legacy) {
+        await expect(oldRecipient).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Сообщение есть", exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Сообщения нет", exact: true }),
+        ).toBeVisible();
+      } else {
+        await expect(oldRecipient).toHaveCount(0);
+        await expect(
+          page.getByRole("heading", { name: "Другие сообщения" }),
+        ).toHaveCount(0);
+      }
+      if (outreach && legacy) {
+        await expect(
+          page.getByRole("heading", { name: "Другие сообщения" }),
+        ).toBeVisible();
+        await page.screenshot({
+          path: path.join(root, "..", "booster-recruiter-history-preview.png"),
+          fullPage: true,
+        });
+      }
+    }
     await page.getByRole("button", { name: "Аккаунты", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "LinkedIn-аккаунты" }),
@@ -202,7 +303,7 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     if (errors.length) throw Error(errors.join("\n"));
     console.log(
-      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup with collapsed advanced settings, isolated background close/reopen, account UI; no LinkedIn requests or sends.",
+      "PASS: desktop startup, local API, selection, frame groups, exact invitation/InMail preview and budget, guided setup, empty/automation/message/mixed history with wait/reply/unknown states, isolated background close/reopen, account UI; no LinkedIn requests or sends.",
     );
   } finally {
     await app.close();

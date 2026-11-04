@@ -960,6 +960,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 # Deliberately no host wildcard: it would accept any Host and
                 # reopen the same hole from the other side.
                 mcp.run(
+                    show_banner=False,
                     transport=transport,
                     host=config.server.host,
                     port=config.server.port,
@@ -967,7 +968,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     host_origin_protection=True,
                 )
             else:
-                mcp.run(transport=transport)
+                mcp.run(transport=transport, show_banner=False)
 
         except KeyboardInterrupt:
             exit_gracefully(0)

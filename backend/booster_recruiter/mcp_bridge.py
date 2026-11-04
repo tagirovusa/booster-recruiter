@@ -120,4 +120,4 @@ def run(root: Path):
         """Resume an unchanged plan already approved in the desktop app."""
         return call("outreach.resume", {"id": run_id})
 
-    mcp.run(transport="stdio")
+    mcp.run(transport="stdio", show_banner=False)
