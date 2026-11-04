@@ -362,13 +362,13 @@ class OutreachRuntime:
                             status="needs_review",
                             detail="Результат не подтверждён. Повтор для этого человека заблокирован.",
                         )
+                    if result.get("account_restricted"):
+                        raise AppError(self.rt.restrict_account(aid))
                     if result.get("platform_limited"):
                         raise LinkedInLimitError(
                             result.get("message")
                             or "LinkedIn сообщил о лимите отправки."
                         )
-                    if result.get("account_restricted"):
-                        raise AppError(self.rt.restrict_account(aid))
                 active = (
                     self.repo.run(rid)["status"] == "active"
                     and cid not in self.rt.pause_flags

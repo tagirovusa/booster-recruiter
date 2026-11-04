@@ -522,3 +522,24 @@ def test_retired_quota_migration_preserves_schedule_pause_and_unknown_guard(tmp_
         assert not s.rows("SELECT * FROM outreach_actions")
     finally:
         s.db.close()
+
+
+async def test_account_restriction_takes_priority_over_send_limit(store):
+    a, _, _, p, rt, worker = activate(store)
+    twin = store.create_account("Same sender")
+    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
+    _, other = additional_outreach(store, twin["id"], p["rules"], "restricted")
+    original = worker.call
+
+    async def call(action, params=None):
+        result = await original(action, params)
+        if action == "invite":
+            return result | {"account_restricted": True, "platform_limited": True}
+        return result
+
+    worker.call = call
+    await rt.outreach.process(p["run_id"])
+    assert store.account(a["id"])["status"] == "restricted"
+    assert store.account(twin["id"])["status"] == "restricted"
+    assert store.outreach.run(other["run_id"])["status"] == "paused"
+    assert store.rows("SELECT status FROM outreach_actions") == [{"status": "sent"}]
