@@ -253,6 +253,15 @@ class OutreachStore:
             "SELECT a.*,r.campaign_id FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id JOIN outreach_runs r ON r.id=m.run_id WHERE a.url=? AND a.member_id!=? AND a.status IN ('submitting','unknown','sent','satisfied')",
             (url, member_id or ""),
         ):
+            from .invitation_repair import covered_invitation_actions
+
+            covered = covered_invitation_actions(self.s, action["member_id"])
+            if (
+                action["id"] in covered
+                and action["campaign_id"] == campaign_id
+                and action["account_id"] == account_id
+            ):
+                continue
             if (
                 action["kind"] == "invite"
                 and action["status"] in {"sent", "satisfied"}
@@ -553,6 +562,13 @@ class OutreachStore:
                 "SELECT a.* FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id WHERE m.run_id=? ORDER BY a.created DESC",
                 (run["id"],),
             )
+            from .invitation_repair import covered_invitation_actions
+
+            for member in run["members"]:
+                covered = covered_invitation_actions(self.s, member["id"])
+                for action in run["actions"]:
+                    if action["id"] in covered:
+                        action["repair_replaced_by"] = covered[action["id"]]
             run["credits_reserved"] = sum(
                 (1 if a["credit_cost"] is None else a["credit_cost"])
                 if a["kind"] == "inmail"
@@ -667,9 +683,18 @@ class OutreachStore:
             r = self.run(m["run_id"])
             if r["status"] != "active" or self.blocked(m["url"], mid):
                 raise AppError("Получатель исключён или план приостановлен.")
-            if self.s.rows(
-                "SELECT 1 FROM outreach_actions WHERE member_id=? AND status IN ('unknown','submitting')",
+            from .invitation_repair import covered_invitation_actions
+
+            covered = covered_invitation_actions(self.s, mid)
+            uncertain = self.s.rows(
+                "SELECT id,kind,status FROM outreach_actions WHERE member_id=? AND status IN ('unknown','submitting')",
                 (mid,),
+            )
+            if any(
+                a["id"] not in covered
+                or a["kind"] != "invite"
+                or a["status"] != "unknown"
+                for a in uncertain
             ):
                 raise AppError(
                     "Есть действие с неизвестным результатом. Повтор запрещён."

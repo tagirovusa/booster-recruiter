@@ -149,6 +149,7 @@ class Runtime:
         self.workers = {}
         self.jobs = {}
         self.pause_flags = set()
+        self.pause_generations = {}
         self.campaign_operations = {}
         self.active_campaign_tasks = set()
         # A single active browser action across the application also avoids
@@ -216,6 +217,9 @@ class Runtime:
 
     async def pause_campaign(self, cid):
         self.store.campaign(cid)
+        # A repeated pause still revokes an explicit repair waiting for the
+        # browser lock, even when this campaign was already paused.
+        self.pause_generations[cid] = self.pause_generations.get(cid, 0) + 1
         self.pause_flags.add(cid)
         for run in self.store.outreach.detail(cid)["runs"]:
             if run["status"] == "active":
@@ -293,6 +297,7 @@ class Runtime:
             sender_ids,
         ):
             cid = campaign["id"]
+            self.pause_generations[cid] = self.pause_generations.get(cid, 0) + 1
             # Includes a legacy batch or a task already queued for browser access.
             self.pause_flags.add(cid)
             if cid in self.jobs or self.store.rows(
@@ -479,16 +484,20 @@ class Runtime:
                 if cid in self.pause_flags:
                     self.store.progress(cid, "paused", "Отправка приостановлена.")
                     return
-                if self.store.rows(
-                    "SELECT id FROM deliveries WHERE batch_id=? AND status='unknown'",
-                    (bid,),
-                ):
-                    raise AppError(
-                        "Сначала проверьте неподтверждённую отправку в истории кампании."
-                    )
                 await self.verify(aid)
                 sent = 0
+                verify_before_next = False
                 while cid not in self.pause_flags:
+                    if verify_before_next:
+                        if not self.store.rows(
+                            "SELECT d.id FROM deliveries d JOIN batches b ON b.id=d.batch_id WHERE d.batch_id=? AND d.status='pending' AND b.status='approved'",
+                            (bid,),
+                        ):
+                            break
+                        await self.verify(aid)
+                        verify_before_next = False
+                        if cid in self.pause_flags:
+                            break
                     row = self.store.claim(bid)
                     if not row:
                         break
@@ -503,13 +512,28 @@ class Runtime:
                         result = await self.worker(aid).call(
                             "send", {"url": row["url"], "message": row["message"]}
                         )
-                    except BaseException:
+                    except BaseException as exc:
                         self.store.finish(
                             row["id"],
                             "unknown",
-                            "Ответ браузера не получен. Проверьте диалог перед дальнейшими действиями.",
+                            "Ответ браузера не получен. Этот получатель отложен для проверки; повтор исключён.",
                         )
-                        raise
+                        if (
+                            not isinstance(exc, Exception)
+                            or isinstance(
+                                exc,
+                                (
+                                    LinkedInAccountRestrictedError,
+                                    LinkedInChallengeError,
+                                    LinkedInLimitError,
+                                ),
+                            )
+                            or self.store.account(aid)["status"] != "ready"
+                        ):
+                            raise
+                        await self.outreach.reset_profile_browser(aid)
+                        verify_before_next = True
+                        continue
                     restriction = (
                         self.restrict_account(aid)
                         if result.get("account_restricted")
@@ -544,14 +568,6 @@ class Runtime:
                             result.get("message")
                             or "Результат отправки не подтверждён.",
                         )
-                        if result.get("platform_limited"):
-                            raise LinkedInLimitError(
-                                result.get("message")
-                                or "LinkedIn сообщил о лимите отправки."
-                            )
-                        raise AppError(
-                            "Результат последней отправки неизвестен. Очередь остановлена для проверки."
-                        )
                     if result.get("platform_limited"):
                         raise LinkedInLimitError(
                             result.get("message")
@@ -564,14 +580,24 @@ class Runtime:
                         )
                     if restriction:
                         raise AppError(restriction)
+                    if result.get("sent") is not True:
+                        await self.outreach.reset_profile_browser(aid)
+                        verify_before_next = True
                 self.store.progress(
                     cid,
                     "paused" if cid in self.pause_flags else "ready",
-                    f"Обработка завершена. Подтверждено сообщений в этой сессии: {sent}.",
+                    f"Обработка завершена. Подтверждено сообщений в этой сессии: {sent}."
+                    + (
+                        " Отдельные получатели требуют проверки; повторная отправка им заблокирована."
+                        if self.store.rows(
+                            "SELECT id FROM deliveries WHERE batch_id=? AND status='unknown'",
+                            (bid,),
+                        )
+                        else ""
+                    ),
                 )
         except Exception as exc:
-            if isinstance(exc, LinkedInLimitError):
-                self.pause_sender(aid, self.friendly(exc))
+            self.pause_sender(aid, self.friendly(exc))
             self.store.progress(cid, "paused", self.friendly(exc))
 
     async def close(self):

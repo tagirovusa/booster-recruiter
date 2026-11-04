@@ -615,6 +615,16 @@ class Store:
                 return None
             row = rows[0]
             batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
+            campaign = self.campaign(batch["campaign_id"])
+            if self.account(batch["account_id"])["status"] != "ready":
+                raise AppError(
+                    "Подключите аккаунт отправителя перед продолжением очереди."
+                )
+            if (
+                campaign["status"] == "archived"
+                or campaign["account_id"] != batch["account_id"]
+            ):
+                raise AppError("Отправитель очереди изменился или кампания в архиве.")
             if (
                 self.outreach.blocked(
                     row["url"],

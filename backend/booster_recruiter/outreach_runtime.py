@@ -4,7 +4,11 @@ import asyncio
 from datetime import timedelta
 
 from .outreach import TERMINAL, later, now, route, utc, within_hours
-from .platform_limits import LinkedInChallengeError, LinkedInLimitError
+from .platform_limits import (
+    LinkedInAccountRestrictedError,
+    LinkedInChallengeError,
+    LinkedInLimitError,
+)
 from .store import AppError
 
 
@@ -57,13 +61,18 @@ class OutreachRuntime:
                 break
             if not any(m["status"] not in TERMINAL for m in members):
                 needs_review = any(m["status"] == "needs_review" for m in members)
-                self.repo.status(
-                    run["id"],
-                    "paused" if needs_review else "completed",
-                    "Проверьте спорные результаты в истории."
-                    if needs_review
-                    else "Все получатели обработаны.",
-                )
+                if needs_review:
+                    # A parked profile does not withdraw the approved plan.
+                    # No member is due here, so keeping it active cannot send.
+                    self.store.progress(
+                        run["campaign_id"],
+                        "waiting",
+                        "Остальным получателям обработка завершена. Отдельные профили требуют внимания; исправьте их в том же плане.",
+                    )
+                else:
+                    self.repo.status(
+                        run["id"], "completed", "Все получатели обработаны."
+                    )
 
     async def check(self, cid):
         """Explicit read-only refresh, including people not approved for outreach."""
@@ -126,6 +135,8 @@ class OutreachRuntime:
                     cid in self.rt.pause_flags
                     or self.repo.run(rid)["status"] != "active"
                 ):
+                    if self.repo.run(rid)["status"] == "active":
+                        self.repo.status(rid, "paused", "Кампания приостановлена.")
                     self.store.progress(cid, "paused", "Кампания приостановлена.")
                     return
                 if not within_hours(rules):
@@ -136,6 +147,7 @@ class OutreachRuntime:
                     )
                     return
                 await self.rt.verify(aid)
+                verify_before_next = False
                 for member in self.repo.members(rid):
                     if (
                         cid in self.rt.pause_flags
@@ -145,263 +157,292 @@ class OutreachRuntime:
                         break
                     if member["status"] in TERMINAL or member["next_check"] > now():
                         continue
-                    if self.repo.blocked(member["url"], member["id"]):
-                        self.repo.update_member(
-                            member["id"],
-                            status="excluded",
-                            detail="Получатель исключён или уже обработан в другой кампании.",
-                        )
-                        continue
-                    if utc() >= utc(member["sent_at"] or run["created"]) + timedelta(
-                        days=rules["monitor_days"]
-                    ):
-                        self.repo.update_member(
-                            member["id"],
-                            status="finished",
-                            detail="Период наблюдения завершён. История сохранена.",
-                        )
-                        continue
-                    self.store.progress(
-                        cid,
-                        "automating",
-                        f"Проверяем: {member['name'] or member['url']}",
-                    )
-                    if member["sent_at"]:
-                        sent_actions = self.store.rows(
-                            "SELECT kind FROM outreach_actions WHERE member_id=? AND status='sent' AND kind IN ('message','inmail') ORDER BY created DESC LIMIT 1",
-                            (member["id"],),
-                        )
-                        recruiter_context = (
-                            run["context"]
-                            if (
-                                run["context"]
-                                and sent_actions
-                                and sent_actions[0]["kind"] == "inmail"
+                    if verify_before_next:
+                        await self.rt.verify(aid)
+                        verify_before_next = False
+                    try:
+                        if self.repo.blocked(member["url"], member["id"]):
+                            self.repo.update_member(
+                                member["id"],
+                                status="excluded",
+                                detail="Получатель исключён или уже обработан в другой кампании.",
                             )
-                            else None
+                            continue
+                        if utc() >= utc(
+                            member["sent_at"] or run["created"]
+                        ) + timedelta(days=rules["monitor_days"]):
+                            self.repo.update_member(
+                                member["id"],
+                                status="finished",
+                                detail="Период наблюдения завершён. История сохранена.",
+                            )
+                            continue
+                        self.store.progress(
+                            cid,
+                            "automating",
+                            f"Проверяем: {member['name'] or member['url']}",
                         )
-                        result = await self.rt.worker(aid).call(
-                            "check_reply",
+                        if member["sent_at"]:
+                            sent_actions = self.store.rows(
+                                "SELECT kind FROM outreach_actions WHERE member_id=? AND status='sent' AND kind IN ('message','inmail') ORDER BY created DESC LIMIT 1",
+                                (member["id"],),
+                            )
+                            recruiter_context = (
+                                run["context"]
+                                if (
+                                    run["context"]
+                                    and sent_actions
+                                    and sent_actions[0]["kind"] == "inmail"
+                                )
+                                else None
+                            )
+                            result = await self.rt.worker(aid).call(
+                                "check_reply",
+                                {
+                                    "url": member["url"],
+                                    "thread_id": member["thread_id"],
+                                    "since": member["sent_at"],
+                                    "recruiter": recruiter_context,
+                                    "message": member["inmail_message"]
+                                    if recruiter_context
+                                    else "",
+                                    "subject": member["subject"]
+                                    if recruiter_context
+                                    else "",
+                                },
+                            )
+                            self.repo.update_member(
+                                member["id"],
+                                status="replied" if result.get("has_reply") else "sent",
+                                reply_text=result.get("reply_text", ""),
+                                thread_id=result.get("thread_id", member["thread_id"]),
+                                detail=result.get("detail", "Ответ пока не обнаружен."),
+                                checked_at=now(),
+                                next_check=later(hours=rules["check_hours"]),
+                            )
+                            continue
+                        observation = await self.rt.worker(aid).call(
+                            "observe",
                             {
                                 "url": member["url"],
-                                "thread_id": member["thread_id"],
-                                "since": member["sent_at"],
-                                "recruiter": recruiter_context,
-                                "message": member["inmail_message"]
-                                if recruiter_context
-                                else "",
-                                "subject": member["subject"]
-                                if recruiter_context
-                                else "",
+                                "check_history": True,
+                                "recruiter": run["context"] or None,
                             },
                         )
+                        # Observed pending invitations made outside the app start their wait now.
+                        invited = member["invitation_at"]
+                        if observation.get("relationship") == "pending" and not invited:
+                            invited = now()
                         self.repo.update_member(
                             member["id"],
-                            status="replied" if result.get("has_reply") else "sent",
-                            reply_text=result.get("reply_text", ""),
-                            thread_id=result.get("thread_id", member["thread_id"]),
-                            detail=result.get("detail", "Ответ пока не обнаружен."),
+                            observation=observation,
+                            relationship=observation.get("relationship", "unknown"),
                             checked_at=now(),
-                            next_check=later(hours=rules["check_hours"]),
+                            invitation_at=invited,
                         )
-                        continue
-                    observation = await self.rt.worker(aid).call(
-                        "observe",
-                        {
-                            "url": member["url"],
-                            "check_history": True,
-                            "recruiter": run["context"] or None,
-                        },
-                    )
-                    # Observed pending invitations made outside the app start their wait now.
-                    invited = member["invitation_at"]
-                    if observation.get("relationship") == "pending" and not invited:
-                        invited = now()
-                    self.repo.update_member(
-                        member["id"],
-                        observation=observation,
-                        relationship=observation.get("relationship", "unknown"),
-                        checked_at=now(),
-                        invitation_at=invited,
-                    )
-                    action, reason = route(rules, observation, invited)
-                    if action not in ("invite", "message", "inmail"):
-                        self.repo.update_member(
-                            member["id"],
-                            status=action,
-                            reply_text=observation.get("reply_text", ""),
-                            detail=reason,
-                            next_check=later(hours=rules["check_hours"]),
-                        )
-                        continue
-                    if (
-                        action == "inmail"
-                        and not observation.get("inmail_free")
-                        and (
-                            type(observation.get("credits")) is not int
-                            or observation["credits"] < 1
-                        )
-                    ):
-                        self.repo.update_member(
-                            member["id"],
-                            status="waiting_credits",
-                            detail="Нет подтверждённых доступных InMail-кредитов. Проверим позже.",
-                            next_check=later(hours=rules["check_hours"]),
-                        )
-                        continue
-                    # Re-read approval/suppression after the asynchronous observation.
-                    if (
-                        cid in self.rt.pause_flags
-                        or self.repo.run(rid)["status"] != "active"
-                        or not within_hours(rules)
-                    ):
-                        break
-                    try:
-                        action_id = self.repo.reserve(
-                            member["id"],
-                            action,
-                            credit_cost=(0 if observation.get("inmail_free") else 1)
-                            if action == "inmail"
-                            else None,
-                        )
-                    except AppError as exc:
-                        self.repo.update_member(
-                            member["id"],
-                            status="needs_review",
-                            detail=str(exc),
-                            next_check=later(hours=rules["check_hours"]),
-                        )
-                        continue
-                    params = {"url": member["url"]}
-                    if action == "invite":
-                        params["note"] = member["invitation"]
-                    else:
-                        params["message"] = (
-                            member["inmail_message"]
-                            if action == "inmail"
-                            else member["message"]
-                        )
-                    if action == "inmail":
-                        params["subject"] = member["subject"]
-                        if run["context"]:
-                            params["recruiter"] = run["context"]
-                            params["credit_cost"] = (
-                                0 if observation.get("inmail_free") else 1
+                        action, reason = route(rules, observation, invited)
+                        if action not in ("invite", "message", "inmail"):
+                            self.repo.update_member(
+                                member["id"],
+                                status=action,
+                                reply_text=observation.get("reply_text", ""),
+                                detail=reason,
+                                next_check=later(hours=rules["check_hours"]),
                             )
-                    try:
-                        result = await self.rt.worker(aid).call(
-                            {
-                                "invite": "invite",
-                                "message": "send_free",
-                                "inmail": "send_inmail",
-                            }[action],
-                            params,
+                            continue
+                        if (
+                            action == "inmail"
+                            and not observation.get("inmail_free")
+                            and (
+                                type(observation.get("credits")) is not int
+                                or observation["credits"] < 1
+                            )
+                        ):
+                            self.repo.update_member(
+                                member["id"],
+                                status="waiting_credits",
+                                detail="Нет подтверждённых доступных InMail-кредитов. Проверим позже.",
+                                next_check=later(hours=rules["check_hours"]),
+                            )
+                            continue
+                        # Re-read approval/suppression after the asynchronous observation.
+                        if (
+                            cid in self.rt.pause_flags
+                            or self.repo.run(rid)["status"] != "active"
+                            or not within_hours(rules)
+                        ):
+                            break
+                        try:
+                            action_id = self.repo.reserve(
+                                member["id"],
+                                action,
+                                credit_cost=(0 if observation.get("inmail_free") else 1)
+                                if action == "inmail"
+                                else None,
+                            )
+                        except AppError as exc:
+                            self.repo.update_member(
+                                member["id"],
+                                status="needs_review",
+                                detail=str(exc),
+                                next_check=later(hours=rules["check_hours"]),
+                            )
+                            continue
+                        params = {"url": member["url"]}
+                        if action == "invite":
+                            params["note"] = member["invitation"]
+                        else:
+                            params["message"] = (
+                                member["inmail_message"]
+                                if action == "inmail"
+                                else member["message"]
+                            )
+                        if action == "inmail":
+                            params["subject"] = member["subject"]
+                            if run["context"]:
+                                params["recruiter"] = run["context"]
+                                params["credit_cost"] = (
+                                    0 if observation.get("inmail_free") else 1
+                                )
+                        try:
+                            result = await self.rt.worker(aid).call(
+                                {
+                                    "invite": "invite",
+                                    "message": "send_free",
+                                    "inmail": "send_inmail",
+                                }[action],
+                                params,
+                            )
+                        except BaseException:
+                            self.repo.finish(
+                                action_id,
+                                "unknown",
+                                "Ответ браузера потерян. Повторное действие заблокировано.",
+                            )
+                            self.repo.update_member(
+                                member["id"],
+                                status="needs_review",
+                                detail="Проверьте результат действия в LinkedIn.",
+                            )
+                            raise
+                        confirmed = (
+                            result.get("invited") is True
+                            if action == "invite"
+                            else result.get("sent") is True
                         )
-                    except BaseException:
-                        self.repo.finish(
-                            action_id,
-                            "unknown",
-                            "Ответ браузера потерян. Повторное действие заблокировано.",
-                        )
-                        self.repo.update_member(
-                            member["id"],
-                            status="needs_review",
-                            detail="Проверьте результат действия в LinkedIn.",
-                        )
-                        raise
-                    confirmed = (
-                        result.get("invited") is True
-                        if action == "invite"
-                        else result.get("sent") is True
-                    )
-                    if (
-                        action == "invite"
-                        and result.get("contact_satisfied") is True
-                        and result.get("relationship") in {"connected", "pending"}
+                        if (
+                            action == "invite"
+                            and result.get("contact_satisfied") is True
+                            and result.get("relationship") in {"connected", "pending"}
+                        ):
+                            self.repo.finish(
+                                action_id,
+                                "satisfied",
+                                result.get("message", "Связь подтверждена."),
+                            )
+                            relation = result["relationship"]
+                            self.repo.update_member(
+                                member["id"],
+                                relationship=relation,
+                                status="planned"
+                                if relation == "connected"
+                                else "waiting_acceptance",
+                                invitation_at=member["invitation_at"]
+                                if relation == "connected"
+                                else member["invitation_at"] or now(),
+                                checked_at=now(),
+                                next_check=now()
+                                if relation == "connected"
+                                else later(hours=rules["check_hours"]),
+                                detail="Контакт уже существует; проверим сообщение по утверждённому плану."
+                                if relation == "connected"
+                                else "Приглашение уже ожидает принятия; повтор не нужен.",
+                            )
+                        elif confirmed:
+                            self.repo.finish(
+                                action_id,
+                                "sent",
+                                result.get(
+                                    "message", "Действие подтверждено в LinkedIn."
+                                ),
+                                result.get("thread_id"),
+                            )
+                            fields = (
+                                {"status": "waiting_acceptance", "invitation_at": now()}
+                                if action == "invite"
+                                else {
+                                    "status": "sent",
+                                    "sent_at": now(),
+                                    "thread_id": result.get("thread_id"),
+                                }
+                            )
+                            self.repo.update_member(
+                                member["id"],
+                                **fields,
+                                detail="Приглашение отправлено; ожидаем принятия."
+                                if action == "invite"
+                                else "Появление сообщения подтверждено в LinkedIn.",
+                                next_check=later(hours=rules["check_hours"]),
+                            )
+                        elif result.get("retry_safe") is True:
+                            self.repo.finish(
+                                action_id,
+                                "blocked",
+                                result.get("message", "Действие не выполнено."),
+                            )
+                            self.repo.update_member(
+                                member["id"],
+                                status="needs_review",
+                                detail=result.get(
+                                    "message", "Проверьте доступность действия."
+                                ),
+                            )
+                        else:
+                            self.repo.finish(
+                                action_id,
+                                "unknown",
+                                result.get("message", "Результат не подтверждён."),
+                            )
+                            self.repo.update_member(
+                                member["id"],
+                                status="needs_review",
+                                detail="Результат не подтверждён. Повтор для этого человека заблокирован.",
+                            )
+                        if result.get("account_restricted"):
+                            raise AppError(self.rt.restrict_account(aid))
+                        if result.get("auth_required"):
+                            raise LinkedInChallengeError(
+                                result.get("message")
+                                or "Завершите проверку в окне LinkedIn."
+                            )
+                        if result.get("platform_limited"):
+                            raise LinkedInLimitError(
+                                result.get("message")
+                                or "LinkedIn сообщил о лимите отправки."
+                            )
+                        if not confirmed and not result.get("contact_satisfied"):
+                            await self.reset_profile_browser(aid)
+                            verify_before_next = True
+                    except (
+                        LinkedInAccountRestrictedError,
+                        LinkedInChallengeError,
+                        LinkedInLimitError,
                     ):
-                        self.repo.finish(
-                            action_id,
-                            "satisfied",
-                            result.get("message", "Связь подтверждена."),
-                        )
-                        relation = result["relationship"]
+                        raise
+                    except Exception as exc:
+                        # Only this profile is parked. The next person starts
+                        # with a clean browser and a fresh sender verification.
+                        if self.store.account(aid)["status"] != "ready":
+                            raise
                         self.repo.update_member(
                             member["id"],
-                            relationship=relation,
-                            status="planned"
-                            if relation == "connected"
-                            else "waiting_acceptance",
-                            invitation_at=member["invitation_at"]
-                            if relation == "connected"
-                            else member["invitation_at"] or now(),
+                            status="needs_review",
+                            detail="Не удалось обработать этот профиль. Остальная кампания продолжается. "
+                            + self.rt.friendly(exc),
                             checked_at=now(),
-                            next_check=now()
-                            if relation == "connected"
-                            else later(hours=rules["check_hours"]),
-                            detail="Контакт уже существует; проверим сообщение по утверждённому плану."
-                            if relation == "connected"
-                            else "Приглашение уже ожидает принятия; повтор не нужен.",
                         )
-                    elif confirmed:
-                        self.repo.finish(
-                            action_id,
-                            "sent",
-                            result.get("message", "Действие подтверждено в LinkedIn."),
-                            result.get("thread_id"),
-                        )
-                        fields = (
-                            {"status": "waiting_acceptance", "invitation_at": now()}
-                            if action == "invite"
-                            else {
-                                "status": "sent",
-                                "sent_at": now(),
-                                "thread_id": result.get("thread_id"),
-                            }
-                        )
-                        self.repo.update_member(
-                            member["id"],
-                            **fields,
-                            detail="Приглашение отправлено; ожидаем принятия."
-                            if action == "invite"
-                            else "Появление сообщения подтверждено в LinkedIn.",
-                            next_check=later(hours=rules["check_hours"]),
-                        )
-                    elif result.get("retry_safe") is True:
-                        self.repo.finish(
-                            action_id,
-                            "blocked",
-                            result.get("message", "Действие не выполнено."),
-                        )
-                        self.repo.update_member(
-                            member["id"],
-                            status="needs_review",
-                            detail=result.get(
-                                "message", "Проверьте доступность действия."
-                            ),
-                        )
-                    else:
-                        self.repo.finish(
-                            action_id,
-                            "unknown",
-                            result.get("message", "Результат не подтверждён."),
-                        )
-                        self.repo.update_member(
-                            member["id"],
-                            status="needs_review",
-                            detail="Результат не подтверждён. Повтор для этого человека заблокирован.",
-                        )
-                    if result.get("account_restricted"):
-                        raise AppError(self.rt.restrict_account(aid))
-                    if result.get("auth_required"):
-                        raise LinkedInChallengeError(
-                            result.get("message")
-                            or "Завершите проверку в окне LinkedIn."
-                        )
-                    if result.get("platform_limited"):
-                        raise LinkedInLimitError(
-                            result.get("message")
-                            or "LinkedIn сообщил о лимите отправки."
-                        )
+                        await self.reset_profile_browser(aid)
+                        verify_before_next = True
                 active = (
                     self.repo.run(rid)["status"] == "active"
                     and cid not in self.rt.pause_flags
@@ -409,16 +450,28 @@ class OutreachRuntime:
                 self.store.progress(
                     cid,
                     "waiting" if active else "paused",
-                    "Очередь сохранена. Следующие проверки выполнятся по расписанию."
+                    (
+                        "Очередь сохранена. Следующие проверки выполнятся по расписанию. Отдельные профили требуют внимания."
+                        if any(
+                            m["status"] == "needs_review"
+                            for m in self.repo.members(rid)
+                        )
+                        else "Очередь сохранена. Следующие проверки выполнятся по расписанию."
+                    )
                     if active
                     else "Кампания приостановлена. Очередь и результаты сохранены.",
                 )
         except Exception as exc:
-            if isinstance(exc, LinkedInLimitError):
-                self.rt.pause_sender(aid, self.rt.friendly(exc))
+            self.rt.pause_sender(aid, self.rt.friendly(exc))
             for row in self.store.rows(
                 "SELECT id FROM outreach_runs WHERE account_id=? AND status='active'",
                 (aid,),
             ):
                 self.repo.status(row["id"], "paused", self.rt.friendly(exc))
             self.store.progress(cid, "paused", self.rt.friendly(exc))
+
+    async def reset_profile_browser(self, aid):
+        """Discard a failed page/transport; never retry the failed action."""
+        stop = getattr(self.rt.worker(aid), "stop", None)
+        if stop:
+            await stop()

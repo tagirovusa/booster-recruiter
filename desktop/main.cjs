@@ -141,6 +141,7 @@ const operations = new Set([
   "state",
   "workspace.summary",
   "workspace.recheck",
+  "workspace.retry_invitation",
   "account.deletion_preview",
   "account.delete",
   "workspace.acknowledge",

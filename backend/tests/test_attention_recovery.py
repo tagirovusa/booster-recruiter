@@ -245,7 +245,7 @@ async def test_future_invite_race_enters_planned_without_false_review(store):
     assert not any(i["kind"] == "review" for i in store.workspace.summary()["items"])
 
 
-async def test_recheck_pauses_active_approval_before_reactivating_review_member(store):
+async def test_recheck_preserves_active_approval_without_direct_dispatch(store):
     a, c, member, _ = uncertain_invite(store)
     store.outreach.status(member["run_id"], "active")
 
@@ -260,12 +260,11 @@ async def test_recheck_pauses_active_approval_before_reactivating_review_member(
 
     rt = Runtime(store, ReadOnly)
     rt.attention.start("review:" + member["id"])
-    assert store.outreach.run(member["run_id"])["status"] == "paused"
+    assert store.outreach.run(member["run_id"])["status"] == "active"
     await asyncio.gather(*rt.jobs.values())
-    before = len(rt.jobs)
-    rt.outreach.tick()
-    assert len(rt.jobs) == before
-    assert store.outreach.run(member["run_id"])["status"] == "paused"
+    assert not rt.worker(a["id"]).actions
+    assert c["id"] not in rt.pause_flags
+    assert store.outreach.run(member["run_id"])["status"] == "active"
 
 
 async def test_legacy_recheck_never_uses_preview_time_as_dispatch_evidence(store):

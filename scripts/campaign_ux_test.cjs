@@ -103,3 +103,47 @@ test("pause during submission waits for confirmation instead of asking for manua
   assert.equal(value.kind, "busy");
   assert.match(value.text, /Дождитесь результата/);
 });
+test("one parked profile does not label the whole active campaign stopped", () => {
+  const value = next(
+    run({
+      members: [
+        { status: "needs_review" },
+        { status: "waiting_acceptance", next_check: "2026-11-04T16:00:00Z" },
+      ],
+    }),
+    ready,
+    now,
+  );
+  assert.match(value.title, /Ожидаем принятия/);
+  assert.match(value.text, /Отложены для проверки: 1/);
+  assert.match(value.text, /Остальные получатели продолжают/);
+});
+test("a repaired old unknown invitation does not demand manual resolution again", () => {
+  const value = next(
+    run({
+      status: "paused",
+      actions: [
+        { status: "unknown", repair_replaced_by: "confirmed-new-action" },
+      ],
+    }),
+    ready,
+    now,
+  );
+  assert.equal(value.kind, "paused");
+  assert.doesNotMatch(value.text, /укажите результат|заблокирована/i);
+});
+
+test("manual pause can resume other approved recipients while uncertain people stay parked", () => {
+  const value = next(
+    run({
+      status: "paused",
+      actions: [{ status: "unknown" }],
+      members: [{ status: "needs_review" }, { status: "planned" }],
+    }),
+    ready,
+    now,
+  );
+  assert.equal(value.kind, "paused");
+  assert.match(value.text, /Можно продолжить план для остальных/);
+  assert.match(value.text, /спорные действия повторяться не будут/);
+});

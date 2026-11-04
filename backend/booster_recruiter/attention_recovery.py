@@ -1,6 +1,11 @@
 """Explicit read-only reconciliation. This module never dispatches outreach."""
 
 from .outreach import now
+from .platform_limits import (
+    LinkedInAccountRestrictedError,
+    LinkedInChallengeError,
+    LinkedInLimitError,
+)
 from .store import AppError
 
 
@@ -9,6 +14,9 @@ class AttentionRecovery:
         self.rt = runtime
         self.store = runtime.store
         self.states = {}
+        from .invitation_repair import InvitationRepair
+
+        self.repairs = InvitationRepair(self)
 
     def capability(self, item):
         if item["id"].startswith("delivery:"):
@@ -41,6 +49,7 @@ class AttentionRecovery:
             if item["kind"] == "review":
                 available, reason = self.capability(item)
                 item.update(
+                    repair=self.repairs.public(item["id"]),
                     can_recheck=available,
                     recheck_unavailable_reason=reason,
                     recheck_label="Проверить автоматически",
@@ -75,21 +84,6 @@ class AttentionRecovery:
                 "Браузер занят. Дождитесь текущего действия или приостановите кампанию."
             )
         self.store.ensure_idle(item["campaign_id"])
-        # A terminal review member can become routable after this check. Pause
-        # its existing approval so the scheduler cannot turn a read into a send.
-        for run in self.store.outreach.detail(item["campaign_id"])["runs"]:
-            if run["status"] == "active":
-                self.store.outreach.status(
-                    run["id"],
-                    "paused",
-                    "Проверка результата без отправки. Продолжите кампанию вручную.",
-                )
-        self.rt.pause_flags.add(item["campaign_id"])
-        self.store.progress(
-            item["campaign_id"],
-            "paused",
-            "Проверяем результат без отправки; кампания остаётся на паузе.",
-        )
         self.states[identity] = {"checking": True, "check_error": ""}
         self.rt.spawn("attention:" + item["campaign_id"], self.check(item))
         return {"started": True}
@@ -156,7 +150,9 @@ class AttentionRecovery:
                         "SELECT * FROM outreach_actions WHERE member_id=? AND status IN ('unknown','submitting') ORDER BY created DESC",
                         (member["id"],),
                     )
-                    if len(actions) > 1:
+                    if len(actions) > 1 and not all(
+                        a["kind"] == "invite" for a in actions
+                    ):
                         raise AppError(
                             "Есть несколько неоднозначных действий. Проверьте их в истории отдельно."
                         )
@@ -232,6 +228,24 @@ class AttentionRecovery:
         except Exception as exc:
             failed = True
             detail = self.rt.friendly(exc)
+            if isinstance(exc, LinkedInAccountRestrictedError):
+                self.rt.restrict_account(aid)
+            elif isinstance(exc, LinkedInChallengeError):
+                self.rt.pause_for_challenge(aid, detail)
+            elif isinstance(exc, LinkedInLimitError):
+                self.rt.pause_sender(aid, detail)
+            elif self.store.account(aid)["status"] != "ready":
+                self.rt.pause_sender(aid, detail)
+            else:
+                worker = self.rt.workers.get(aid)
+                if worker:
+                    try:
+                        await worker.stop()
+                    except Exception:
+                        self.rt.pause_for_challenge(
+                            aid, "Браузер не закрылся после ошибки. Проверьте вход."
+                        )
+                    self.rt.workers.pop(aid, None)
             self.states[identity] = {"checking": False, "check_error": detail}
         finally:
             self.states.setdefault(identity, {})["checking"] = False
@@ -240,7 +254,13 @@ class AttentionRecovery:
             try:
                 self.store.progress(
                     cid,
-                    "paused" if failed or cid in self.rt.pause_flags else previous,
+                    "paused"
+                    if cid in self.rt.pause_flags
+                    else (
+                        "waiting"
+                        if failed and previous in {"waiting", "ready"}
+                        else previous
+                    ),
                     detail,
                 )
             except AppError:
@@ -329,4 +349,13 @@ class AttentionRecovery:
                 "Пока недостаточно данных для подтверждения результата. Повтор не выполнялся; можно проверить ещё раз позже или открыть LinkedIn."
             )
         repo.update_member(member["id"], **fields)
+        identity = "review:" + member["id"]
+        proposal = self.repairs.offer(identity, member["id"], observation)
+        if proposal:
+            fields["detail"] = (
+                "LinkedIn сейчас предлагает приглашение. Можно подтвердить одну новую попытку; старый исход остаётся неизвестным."
+            )
+            repo.update_member(member["id"], detail=fields["detail"])
+            # The explanatory update is part of the proposal snapshot.
+            self.repairs.offer(identity, member["id"], observation)
         return fields["detail"]

@@ -43,6 +43,10 @@ def create_app(store, runtime, token):
                 result = runtime.attention.decorate(store.workspace.summary())
             elif op == "workspace.recheck":
                 result = runtime.attention.start(p["id"])
+            elif op == "workspace.retry_invitation":
+                result = runtime.attention.repairs.start(
+                    p["id"], p.get("digest"), p.get("confirm")
+                )
             elif op == "workspace.acknowledge":
                 result = store.workspace.acknowledge(p["id"])
             elif op == "template.list":
@@ -202,13 +206,6 @@ def create_app(store, runtime, token):
             elif op == "batch.resume":
                 batch = store.one("SELECT * FROM batches WHERE id=?", (p["id"],))
                 store.ensure_idle(batch["campaign_id"])
-                if store.rows(
-                    "SELECT d.id FROM deliveries d WHERE d.batch_id=? AND d.status='unknown'",
-                    (p["id"],),
-                ):
-                    raise AppError(
-                        "Есть неподтверждённая отправка. Проверьте её в LinkedIn."
-                    )
                 if batch["status"] != "approved":
                     raise AppError(
                         "Эта очередь больше не действует. Подготовьте новый предпросмотр."

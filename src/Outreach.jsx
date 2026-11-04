@@ -260,7 +260,25 @@ export function campaignNextEvent(run, account, at = Date.now()) {
       title: "Завершаем текущее действие",
       text: "Дождитесь результата. Пауза сохранится после завершения; повторять действие не нужно.",
     };
-  const uncertain = (run.actions || []).some((a) => a.status === "unknown");
+  const uncertain = (run.actions || []).some(
+    (a) => a.status === "unknown" && !a.repair_replaced_by,
+  );
+  const members = run.members || [];
+  const otherRecipients = members.filter((m) =>
+    [
+      "planned",
+      "waiting_acceptance",
+      "waiting_credits",
+      "check_pending",
+      "sent",
+    ].includes(m.status),
+  ).length;
+  if (run.status === "paused" && uncertain && otherRecipients > 0)
+    return {
+      kind: "paused",
+      title: "Кампания на паузе",
+      text: `Неподтверждённые действия остаются на проверке. Можно продолжить план для остальных получателей (${otherRecipients}); спорные действия повторяться не будут.`,
+    };
   if (run.status === "paused")
     return {
       kind: uncertain ? "review" : "paused",
@@ -269,7 +287,6 @@ export function campaignNextEvent(run, account, at = Date.now()) {
         ? "Укажите результат в истории перед продолжением. Повторная отправка заблокирована."
         : "Автоматические проверки остановлены. Продолжите кампанию, когда причина остановки устранена.",
     };
-  const members = run.members || [];
   const waiting = members.filter(
     (m) => m.status === "waiting_acceptance",
   ).length;
@@ -286,6 +303,7 @@ export function campaignNextEvent(run, account, at = Date.now()) {
     .map((m) => Date.parse(m.next_check))
     .filter(Number.isFinite)
     .sort((a, b) => a - b)[0];
+  const parked = members.filter((m) => m.status === "needs_review").length;
   const zone = run.rules?.timezone || "UTC";
   const schedule =
     next === undefined
@@ -307,6 +325,9 @@ export function campaignNextEvent(run, account, at = Date.now()) {
           ? "Проверяем доступную связь и ответы по утверждённому плану."
           : "Результаты и ответы доступны в истории.",
       schedule,
+      parked
+        ? `Отложены для проверки: ${parked}. Остальные получатели продолжают свой план; исправьте отдельный профиль в «Требует внимания».`
+        : "",
     ]
       .filter(Boolean)
       .join(" "),
@@ -770,8 +791,9 @@ export function Automation({
   const recoverableMembers = reviewMembers.filter(
     (m) => !active.actions.some((a) => a.member_id === m.id),
   );
-  const uncertainActions = active?.actions.some((a) =>
-    ["unknown", "submitting"].includes(a.status),
+  const uncertainActions = active?.actions.some(
+    (a) =>
+      ["unknown", "submitting"].includes(a.status) && !a.repair_replaced_by,
   );
   const counts = outreachCounts(active);
   const nextEvent = campaignNextEvent(active, account);
@@ -1431,6 +1453,9 @@ export function Automation({
 
 export function OutreachHistory({
   runs,
+  repairs = {},
+  onRepair,
+  checkDisabled,
   disabled,
   onResolve,
   onResume,
@@ -1478,7 +1503,8 @@ export function OutreachHistory({
                   const uncertain = run.actions.some(
                     (a) =>
                       a.member_id === m.id &&
-                      ["unknown", "submitting"].includes(a.status),
+                      ["unknown", "submitting"].includes(a.status) &&
+                      !a.repair_replaced_by,
                   );
                   const stoppedKnown =
                     ["cancelled", "completed"].includes(run.status) &&
@@ -1520,13 +1546,22 @@ export function OutreachHistory({
                           status={m.status}
                           stopped={stoppedKnown}
                         />
+                        {repairs[m.id] && onRepair && (
+                          <button
+                            className="button primary small"
+                            disabled={checkDisabled}
+                            onClick={() => onRepair(repairs[m.id])}
+                          >
+                            Отправить приглашение
+                          </button>
+                        )}
                         {m.status === "needs_review" &&
                           !stoppedKnown &&
                           !uncertain &&
                           onCheck && (
                             <button
                               className="button small"
-                              disabled={disabled}
+                              disabled={checkDisabled ?? disabled}
                               onClick={() => onCheck(m.id)}
                             >
                               Проверить автоматически
@@ -1552,18 +1587,27 @@ export function OutreachHistory({
                 tabIndex={-1}
               >
                 <summary>
-                  {kindNames[a.kind]} · {m?.name || a.url} · {states[a.status]}{" "}
-                  · {date(a.created)}
+                  {kindNames[a.kind]} · {m?.name || a.url} ·{" "}
+                  {a.repair_replaced_by ? "Старая попытка" : states[a.status]} ·{" "}
+                  {date(a.created)}
                 </summary>
-                <DetailMessage
-                  detail={a.detail}
-                  status={a.status}
-                  kind={a.kind}
-                  stopped={
-                    ["cancelled", "completed"].includes(run.status) &&
-                    a.status === "blocked"
-                  }
-                />
+                {a.repair_replaced_by ? (
+                  <p className="hint">
+                    Исход старой попытки не подтверждён. Новая проверка
+                    подтвердила актуальное состояние приглашения или связи;
+                    повторная проверка этой старой записи не требуется.
+                  </p>
+                ) : (
+                  <DetailMessage
+                    detail={a.detail}
+                    status={a.status}
+                    kind={a.kind}
+                    stopped={
+                      ["cancelled", "completed"].includes(run.status) &&
+                      a.status === "blocked"
+                    }
+                  />
+                )}
                 {a.kind === "inmail" && <b>Тема: {m?.subject}</b>}
                 <pre>
                   {a.kind === "invite"
@@ -1572,7 +1616,7 @@ export function OutreachHistory({
                       ? m?.inmail_message
                       : m?.message}
                 </pre>
-                {a.status === "unknown" && (
+                {a.status === "unknown" && !a.repair_replaced_by && (
                   <div className="actions">
                     {a.kind === "inmail" && (run.context || m?.subject) && (
                       <p className="hint">
@@ -1586,7 +1630,7 @@ export function OutreachHistory({
                       !(a.kind === "inmail" && (run.context || m.subject)) && (
                         <button
                           className="button"
-                          disabled={disabled}
+                          disabled={checkDisabled ?? disabled}
                           onClick={() => onCheck(m.id)}
                         >
                           Проверить автоматически
