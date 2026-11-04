@@ -16,6 +16,8 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const readline = require("node:readline");
 const { createPreferencesStore } = require("./preferences.cjs");
+const { createPauseAllHandler } = require("./tray_pause.cjs");
+const { createCloseHandler } = require("./window_lifecycle.cjs");
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "booster",
@@ -103,18 +105,27 @@ function createTray() {
     .resize({ width: 22, height: 22 });
   tray = new Tray(icon);
   tray.setToolTip("Booster Recruiter");
+  const pauseAll = createPauseAllHandler({
+    call,
+    report: async (result) => {
+      if (exiting) return;
+      showWindow();
+      const options = {
+        ...result,
+        buttons: ["Понятно"],
+        defaultId: 0,
+        noLink: true,
+      };
+      if (win && !win.isDestroyed()) await dialog.showMessageBox(win, options);
+      else await dialog.showMessageBox(options);
+    },
+  });
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Открыть Booster Recruiter", click: showWindow },
       {
         label: "Приостановить все кампании",
-        click: async () => {
-          try {
-            const state = await call("state");
-            for (const c of state.campaigns)
-              await call("campaign.pause", { id: c.id });
-          } catch {}
-        },
+        click: pauseAll,
       },
       { type: "separator" },
       { label: "Завершить работу", click: () => app.quit() },
@@ -293,12 +304,26 @@ async function start() {
     if (!url.startsWith("booster://app/")) event.preventDefault();
   });
   win.once("ready-to-show", () => win.show());
-  win.on("close", (event) => {
-    if (!exiting && desktopPreferences.background) {
-      event.preventDefault();
-      win.hide();
-    }
-  });
+  win.on(
+    "close",
+    createCloseHandler({
+      preferences: desktopPreferences,
+      window: win,
+      isQuitting: () => exiting,
+      reportFailure: async (error) => {
+        await dialog.showMessageBox(win, {
+          type: "error",
+          title: "Настройки не сохранены",
+          message:
+            "Не удалось подтвердить сохранение настроек. Окно оставлено открытым.",
+          detail: `Закрытие отменено, чтобы работа кампаний не прервалась. Проверьте настройки и попробуйте ещё раз.\n\nТехнические подробности: ${error.message}`,
+          buttons: ["Понятно"],
+          defaultId: 0,
+          noLink: true,
+        });
+      },
+    }),
+  );
   createTray();
   await win.loadURL("booster://app/");
   child.on("exit", () => {

@@ -17,6 +17,7 @@ function createPreferencesStore({
     };
   } catch {}
   let queue = Promise.resolve();
+  const pendingWrites = new Set();
 
   function loginState() {
     if (!app.isPackaged) return null;
@@ -120,6 +121,16 @@ function createPreferencesStore({
     get background() {
       return committed.background;
     },
+    get isSaving() {
+      return pendingWrites.size > 0;
+    },
+    async waitForWrites() {
+      while (pendingWrites.size) {
+        const results = await Promise.allSettled([...pendingWrites]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) throw failed.reason;
+      }
+    },
     async access(patch) {
       if (patch !== undefined) {
         if (
@@ -141,6 +152,13 @@ function createPreferencesStore({
       // request does not poison later reads or lose unrelated saved settings.
       const operation = queue.then(() => update(patch));
       queue = operation.catch(() => {});
+      if (patch !== undefined) {
+        pendingWrites.add(operation);
+        operation.then(
+          () => pendingWrites.delete(operation),
+          () => pendingWrites.delete(operation),
+        );
+      }
       return operation;
     },
   };

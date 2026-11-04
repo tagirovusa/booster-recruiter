@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { createPreferencesStore } = require("../desktop/preferences.cjs");
+const { createCloseHandler } = require("../desktop/window_lifecycle.cjs");
 
 function fixture(
   t,
@@ -311,4 +312,188 @@ test("OS query failure is explicit instead of returning a stale cached value", a
   };
   await assert.rejects(f.store.access(), /OS query unavailable/);
   assert.equal(f.calls.length, 0);
+});
+
+function closeFixture(preferences) {
+  let quitting = false;
+  const errors = [];
+  const window = {
+    hidden: false,
+    destroyed: false,
+    hideCount: 0,
+    showCount: 0,
+    hide() {
+      this.hidden = true;
+      this.hideCount++;
+    },
+    show() {
+      this.hidden = false;
+      this.showCount++;
+    },
+    focus() {},
+    isDestroyed() {
+      return this.destroyed;
+    },
+    close() {
+      const event = {
+        prevented: false,
+        preventDefault() {
+          this.prevented = true;
+        },
+      };
+      const done = handler(event);
+      if (!event.prevented) this.destroyed = true;
+      return { event, done };
+    },
+  };
+  const handler = createCloseHandler({
+    preferences,
+    window,
+    isQuitting: () => quitting,
+    reportFailure: async (error) => {
+      errors.push(error.message);
+    },
+  });
+  return {
+    window,
+    errors,
+    quit: () => {
+      quitting = true;
+    },
+  };
+}
+
+function gatedRename() {
+  let release, entered;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const arrived = new Promise((resolve) => {
+    entered = resolve;
+  });
+  return {
+    release,
+    arrived,
+    io: withIO({
+      rename: async (...args) => {
+        entered();
+        const error = await gate;
+        if (error) throw Error(error);
+        return fs.promises.rename(...args);
+      },
+    }),
+  };
+}
+
+test("close during background enable waits for persistence and deduplicates repeated X", async (t) => {
+  const gate = gatedRename();
+  const f = fixture(t, { saved: savedDefaults, io: gate.io });
+  const close = closeFixture(f.store);
+  const save = f.store.access({ background: true });
+  assert.equal(f.store.isSaving, true);
+  await gate.arrived;
+  const first = close.window.close();
+  const repeated = close.window.close();
+  assert.equal(first.event.prevented, true);
+  assert.equal(repeated.event.prevented, true);
+  assert.equal(close.window.destroyed, false);
+  assert.equal(close.window.hideCount, 0);
+  gate.release();
+  await save;
+  await first.done;
+  assert.equal(f.store.isSaving, false);
+  assert.equal(close.window.destroyed, false);
+  assert.equal(close.window.hideCount, 1);
+  assert.deepEqual(close.errors, []);
+});
+
+test("close during background disable uses the committed result and then closes", async (t) => {
+  const gate = gatedRename();
+  const f = fixture(t, {
+    saved: { background: true, autoStart: false },
+    io: gate.io,
+  });
+  const close = closeFixture(f.store);
+  const save = f.store.access({ background: false });
+  await gate.arrived;
+  const attempt = close.window.close();
+  assert.equal(attempt.event.prevented, true);
+  assert.equal(close.window.destroyed, false);
+  gate.release();
+  await save;
+  await attempt.done;
+  assert.equal(close.window.destroyed, true);
+  assert.equal(close.window.hideCount, 0);
+});
+
+test("failed pending save cancels close and reports outside the renderer", async (t) => {
+  const gate = gatedRename();
+  const f = fixture(t, { saved: savedDefaults, io: gate.io });
+  const close = closeFixture(f.store);
+  const save = assert.rejects(
+    f.store.access({ background: true }),
+    /write denied/,
+  );
+  await gate.arrived;
+  const attempt = close.window.close();
+  gate.release("write denied");
+  await save;
+  await attempt.done;
+  assert.equal(close.window.destroyed, false);
+  assert.equal(close.window.hidden, false);
+  assert.equal(close.window.showCount, 1);
+  assert.equal(close.errors.length, 1);
+  assert.match(close.errors[0], /write denied/);
+  assert.equal(f.store.isSaving, false);
+  assert.deepEqual(f.persisted(), savedDefaults);
+});
+
+test("normal close uses saved background preference without waiting or OS calls", async () => {
+  for (const background of [true, false]) {
+    const close = closeFixture({
+      background,
+      isSaving: false,
+      waitForWrites: () => {
+        throw Error("Unexpected wait");
+      },
+    });
+    await close.window.close().done;
+    assert.equal(close.window.hidden, background);
+    assert.equal(close.window.destroyed, !background);
+  }
+});
+
+test("explicit Quit bypasses a pending preference write", async () => {
+  const close = closeFixture({
+    background: true,
+    isSaving: true,
+    waitForWrites: () => {
+      throw Error("Quit must not wait here");
+    },
+  });
+  close.quit();
+  const attempt = close.window.close();
+  await attempt.done;
+  assert.equal(attempt.event.prevented, false);
+  assert.equal(close.window.destroyed, true);
+  assert.deepEqual(close.errors, []);
+});
+
+test("explicit Quit during a deferred close is not reversed when saving finishes", async (t) => {
+  const gate = gatedRename();
+  const f = fixture(t, { saved: savedDefaults, io: gate.io });
+  const close = closeFixture(f.store);
+  const save = f.store.access({ background: true });
+  await gate.arrived;
+  const waiting = close.window.close();
+  close.quit();
+  const quitting = close.window.close();
+  assert.equal(quitting.event.prevented, false);
+  assert.equal(close.window.destroyed, true);
+  gate.release();
+  await save;
+  await waiting.done;
+  assert.equal(close.window.hideCount, 0);
+  assert.equal(close.window.showCount, 0);
+  assert.deepEqual(close.errors, []);
 });
