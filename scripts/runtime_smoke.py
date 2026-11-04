@@ -16,6 +16,9 @@ exe = (
     / "runtime/booster-backend"
     / ("booster-backend.exe" if os.name == "nt" else "booster-backend")
 )
+assert not any(exe.parent.rglob("*.dist-info/direct_url.json")), (
+    "Packaged runtime contains build-machine installation provenance."
+)
 subprocess.run([str(exe), "--self-test"], check=True, timeout=120)
 
 
