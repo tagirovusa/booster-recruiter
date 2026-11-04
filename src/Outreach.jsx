@@ -21,6 +21,7 @@ import {
 
 const states = {
   planned: "Готов к обработке",
+  check_pending: "Ожидаем проверки",
   waiting_acceptance: "Ждём принятия",
   waiting_credits: "Ожидаем кредиты",
   waiting_budget: "Ожидаем бюджет",
@@ -52,20 +53,204 @@ const kindNames = {
   message: "Обычное сообщение",
   inmail: "InMail",
 };
+
+const TEMPLATE_FIELDS = new Set(["name", "first_name", "headline", "company"]);
+const characterCount = (value) => [...value].length;
+
+// This catches editing mistakes early. The backend still validates every exact
+// recipient text, including the current Recruiter signature, before approval.
+export function validateTemplate(
+  template,
+  recipients,
+  { limit = 1900, required = false, singleLine = false } = {},
+) {
+  const source = String(template || "");
+  const result = {
+    count: characterCount(source),
+    rendered: false,
+    error: "",
+  };
+  const fail = (error) => ({ ...result, error });
+  if (characterCount(source) > 4000)
+    return fail("В шаблоне допустимо не больше 4000 символов.");
+  if (!source.trim())
+    return required && recipients.length
+      ? fail("Заполните это поле для выбранных кандидатов.")
+      : { ...result, count: 0 };
+  const parts = [];
+  let literal = "";
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if ((char === "{" || char === "}") && source[index + 1] === char) {
+      literal += char;
+      index++;
+    } else if (char === "{") {
+      parts.push({ literal });
+      literal = "";
+      const end = source.indexOf("}", index + 1);
+      if (end < 0)
+        return fail("Закройте фигурную скобку в переменной шаблона.");
+      const field = source.slice(index + 1, end).replace(/:$/, "");
+      if (!TEMPLATE_FIELDS.has(field))
+        return fail(
+          "Используйте только {first_name}, {name}, {headline} или {company}. Для обычных скобок напишите {{ и }}.",
+        );
+      parts.push({ field });
+      index = end;
+    } else if (char === "}") {
+      return fail(
+        "Проверьте фигурные скобки в шаблоне: у закрывающей нет пары.",
+      );
+    } else literal += char;
+  }
+  parts.push({ literal });
+  const evaluate = (values) =>
+    parts
+      .map((part) => (part.field ? values[part.field] : part.literal))
+      .join("");
+  const texts = [];
+  for (const recipient of recipients) {
+    const person = recipient.data || recipient;
+    const values = Object.fromEntries(
+      [...TEMPLATE_FIELDS].map((key) => [
+        key,
+        String(person[key] || "").trim(),
+      ]),
+    );
+    values.first_name = values.name.split(" ")[0];
+    const missing = parts.find((part) => part.field && !values[part.field]);
+    if (missing)
+      return fail(
+        `У «${person.name || recipient.url || "кандидата"}» нет значения {${missing.field}}. Измените текст или выбор кандидатов.`,
+      );
+    texts.push(evaluate(values).trim());
+  }
+  // Without recipients the counter describes the template, not an invented
+  // rendered name. Literal-only templates can already be checked in full.
+  if (!recipients.length && !parts.some((part) => part.field))
+    texts.push(evaluate({}).trim());
+  if (texts.length) {
+    result.rendered = recipients.length > 0;
+    result.count = Math.max(...texts.map(characterCount));
+    for (const text of texts) {
+      if (!text || characterCount(text) > 1900)
+        return fail(
+          `После подстановки данных допустимо от 1 до ${limit} символов.`,
+        );
+      const normalized = text.replace(/\r\n?/g, "\n");
+      if (characterCount(normalized) > limit)
+        return fail(
+          `После подстановки данных должно быть не больше ${limit} символов.`,
+        );
+      if (singleLine && normalized.includes("\n"))
+        return fail("Тема InMail должна быть одной строкой.");
+      if (/\[(?:link|ссылка)\]/i.test(text))
+        return fail("Замените [link] или [ссылка] настоящей ссылкой.");
+      if (/[\u0000-\u0009\u000b\u000c\u000e-\u001f]/.test(text))
+        return fail("Удалите служебные символы из текста, например табуляцию.");
+    }
+    if (limit < 1900)
+      result.count = Math.max(
+        ...texts.map((text) => characterCount(text.replace(/\r\n?/g, "\n"))),
+      );
+  }
+  return result;
+}
+
+export function describeOutreach(rules) {
+  const steps = ["Сначала — доступное бесплатное сообщение."];
+  if (rules.allow_inmail)
+    steps.push(
+      "Если LinkedIn предлагает InMail без списания кредита, его можно отправить без ожидания.",
+    );
+  if (rules.allow_inmail && rules.strategy === "fast") {
+    steps.push(
+      "Платный InMail — без ожидания приглашения, в пределах бюджета.",
+    );
+    if (rules.allow_invites)
+      steps.push(
+        "Если InMail недоступен в LinkedIn или кредитов нет, используем доступное приглашение; после принятия — сообщение.",
+      );
+  } else if (rules.allow_invites) {
+    steps.push(
+      "Если бесплатно написать нельзя, отправим доступное приглашение; после принятия — сообщение.",
+    );
+    if (rules.allow_inmail)
+      steps.push(
+        `Если приглашение не примут за ${rules.wait_days} дн., проверим возможность InMail. Если пригласить нельзя, InMail возможен без ожидания.`,
+      );
+  } else if (rules.allow_inmail) {
+    steps.push(
+      "Приглашения выключены: если бесплатная связь недоступна, используем доступный InMail в пределах бюджета.",
+    );
+  } else {
+    steps.push(
+      "Приглашения и InMail выключены: если бесплатное сообщение недоступно, отправки не будет.",
+    );
+  }
+  steps.push("После ответа кандидата автоматические обращения прекратятся.");
+  return steps.join(" ");
+}
+
+function TemplateFeedback({ id, value, limit = 1900, extra = "" }) {
+  return (
+    <span id={id} className="field-feedback">
+      <small>
+        {value.count} / {limit} символов
+        {value.rendered ? " · максимум после подстановки" : " · в шаблоне"}
+        {extra && ` · ${extra}`}
+      </small>
+      {value.error && (
+        <span className="field-error" role="status">
+          {value.error}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const date = (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—");
 export function ContactState({ person, member }) {
   const contact = member?.observation || person.data.contact || {};
+  const unfinished = [
+    "planned",
+    "waiting_acceptance",
+    "waiting_budget",
+    "waiting_credits",
+    "check_pending",
+  ].includes(member?.status);
+  const stopped =
+    unfinished && ["cancelled", "completed"].includes(member?.run_status);
+  const label = stopped
+    ? member.run_status === "cancelled"
+      ? "План остановлен"
+      : "Наблюдение завершено"
+    : member
+      ? states[member.status] || member.status
+      : relations[contact.relationship] || relations.unknown;
+  const detail = stopped
+    ? member.invitation_at || member.status === "waiting_acceptance"
+      ? "Приглашение уже было отправлено. Проверки принятия и последующие сообщения остановлены."
+      : "Этот план больше не выполняется. Для новых обращений подготовьте новый план."
+    : member?.detail;
   return (
     <div className="contact-state">
-      <span className={"badge " + (member?.status || "neutral")}>
-        {member
-          ? states[member.status] || member.status
-          : relations[contact.relationship] || relations.unknown}
+      <span
+        className={
+          "badge " + (stopped ? "cancelled" : member?.status || "neutral")
+        }
+      >
+        {label}
       </span>
       {member && (
         <small>{relations[member.relationship] || relations.unknown}</small>
       )}
-      {member?.detail && <small title={member.detail}>{member.detail}</small>}
+      {detail && <small title={detail}>{detail}</small>}
+      {unfinished && member?.run_status === "paused" && (
+        <small>
+          Автоматические проверки продолжатся после возобновления плана.
+        </small>
+      )}
       {(member?.checked_at || contact.checked_at) && (
         <small>
           Проверено: {date(member?.checked_at || contact.checked_at)}
@@ -91,6 +276,7 @@ export function Automation({
   onAccounts,
   initialDraft,
   onDraftChange,
+  draftPersisted = false,
 }) {
   const draft =
     initialDraft?.baseRules === JSON.stringify(data.rules) &&
@@ -140,14 +326,18 @@ export function Automation({
       icon: UserRoundPlus,
       title: "Без InMail",
       tag: "Без расхода кредитов",
-      description: "Бесплатное сообщение или приглашение в контакты.",
+      description: rules.allow_invites
+        ? "Бесплатное сообщение или приглашение в контакты."
+        : "Только доступное бесплатное сообщение. Приглашения выключены.",
     },
     {
       id: "economy",
       icon: Clock3,
       title: "Экономить кредиты",
-      tag: "Сначала знакомство",
-      description: "InMail, только если приглашение не приняли.",
+      tag: rules.allow_invites ? "Сначала знакомство" : "Без приглашений",
+      description: rules.allow_invites
+        ? "Сначала приглашение. Платный InMail — после ожидания или если пригласить нельзя."
+        : "Приглашения выключены: доступный InMail без ожидания, если бесплатно написать нельзя.",
     },
     {
       id: "fast",
@@ -208,13 +398,66 @@ export function Automation({
   }[new Intl.PluralRules("ru").select(selected.length)];
   const openCount = selected.filter((p) => p.segment === "open").length;
   const neutralCount = selected.filter((p) => p.segment === "neutral").length;
-  const missingText =
-    (openCount > 0 && !texts.open.trim()) ||
-    (neutralCount > 0 && !texts.neutral.trim());
-  const missingSubject =
-    rules.allow_inmail &&
-    ((openCount > 0 && !rules.subject_open.trim()) ||
-      (neutralCount > 0 && !rules.subject_neutral.trim()));
+  const fieldChecks = {
+    invitation: validateTemplate(rules.invitation, selected, { limit: 200 }),
+  };
+  for (const segment of ["open", "neutral"]) {
+    const recipients = selected.filter((person) => person.segment === segment);
+    fieldChecks[segment] = validateTemplate(texts[segment], recipients, {
+      required: true,
+    });
+    fieldChecks["subject_" + segment] = validateTemplate(
+      rules["subject_" + segment],
+      recipients,
+      {
+        required: true,
+        limit: 200,
+        singleLine: true,
+      },
+    );
+    fieldChecks["inmail_" + segment] = validateTemplate(
+      rules["inmail_" + segment],
+      recipients,
+      {
+        required: !!rules["inmail_" + segment],
+      },
+    );
+  }
+  const checkedFields = [
+    ...(rules.allow_invites
+      ? [["Текст приглашения", fieldChecks.invitation]]
+      : []),
+    ...["open", "neutral"].flatMap((segment) => {
+      if (!selected.some((person) => person.segment === segment)) return [];
+      const label =
+        segment === "open" ? "Open to Work" : "Нейтральное сообщение";
+      return [
+        [label, fieldChecks[segment]],
+        ...(rules.allow_inmail
+          ? [
+              [`Тема InMail · ${label}`, fieldChecks["subject_" + segment]],
+              [`InMail · ${label}`, fieldChecks["inmail_" + segment]],
+            ]
+          : []),
+      ];
+    }),
+  ];
+  const invalidText = checkedFields.find(([, value]) => value.error);
+  const stepTextError =
+    step === 1
+      ? invalidText
+      : rules.allow_invites && fieldChecks.invitation.error
+        ? ["Текст приглашения", fieldChecks.invitation]
+        : null;
+  const unsavableTemplate = [
+    texts.open,
+    texts.neutral,
+    rules.invitation,
+    rules.subject_open,
+    rules.subject_neutral,
+    rules.inmail_open,
+    rules.inmail_neutral,
+  ].some((value) => characterCount(String(value || "")) > 4000);
   const recruiterReady =
     account?.services?.recruiter?.status === "ready" &&
     account.services.recruiter.manual_texts;
@@ -242,13 +485,16 @@ export function Automation({
   );
   const invalidHours = rules.start_hour >= rules.end_hour;
   const invalidInmailBudget = rules.allow_inmail && rules.inmail_budget < 1;
-  const validRules = !invalidNumber && !invalidHours && !invalidInmailBudget;
+  const validRules =
+    !invalidNumber &&
+    !invalidHours &&
+    !invalidInmailBudget &&
+    !unsavableTemplate;
   const canReview =
     account?.status === "ready" &&
     validRules &&
     selected.length > 0 &&
-    !missingText &&
-    !missingSubject &&
+    !invalidText &&
     (!rules.allow_inmail || rules.inmail_budget > 0) &&
     (!rules.allow_inmail ||
       rules.inmail_channel !== "recruiter" ||
@@ -290,14 +536,16 @@ export function Automation({
   );
   const flow = [
     {
-      title: "Проверить возможность сообщения",
-      text: "Если можно написать бесплатно — используем ваш текст.",
+      title: "Проверить бесплатную связь",
+      text: rules.allow_inmail
+        ? "Обычное сообщение или доступный InMail без списания кредита."
+        : "Если можно написать бесплатно — используем ваш текст.",
     },
     ...(mode === "fast"
       ? [
           {
-            title: "Отправить InMail",
-            text: "Только при доступных кредитах и в пределах бюджета.",
+            title: "Проверить платный InMail",
+            text: "Без ожидания приглашения, при доступных кредитах и в пределах бюджета.",
           },
         ]
       : []),
@@ -305,7 +553,10 @@ export function Automation({
       ? [
           {
             title: "Пригласить в контакты",
-            text: "После принятия автоматически отправить сообщение.",
+            text:
+              mode === "fast"
+                ? "Если InMail недоступен в LinkedIn или кредитов нет. После принятия — сообщение."
+                : "После принятия автоматически отправить сообщение.",
           },
         ]
       : []),
@@ -315,7 +566,9 @@ export function Automation({
             title: rules.allow_invites
               ? `Подождать ${rules.wait_days} дн. и отправить InMail`
               : "Отправить InMail",
-            text: "Если бесплатное сообщение всё ещё недоступно.",
+            text: rules.allow_invites
+              ? "Если пригласить нельзя — проверим InMail без ожидания."
+              : "Если бесплатная связь недоступна, в пределах бюджета.",
           },
         ]
       : []),
@@ -508,8 +761,9 @@ export function Automation({
                       <div>
                         <h3>Сколько кредитов можно использовать?</h3>
                         <p>
-                          InMail расходует кредиты вашей подписки. Покупок
-                          дополнительных кредитов не будет.
+                          Бесплатный InMail не расходует бюджет. Платные
+                          отправки — в пределах выбранных кредитов;
+                          дополнительных покупок не будет.
                         </p>
                       </div>
                       <label className="field">
@@ -552,11 +806,13 @@ export function Automation({
                         <b>Приглашения в контакты</b>
                       </span>
                       <small>
-                        {rules.allow_invites
-                          ? rules.invitation.trim()
-                            ? "С вашей заметкой"
-                            : "Без заметки"
-                          : "Выключены"}
+                        {rules.allow_invites && fieldChecks.invitation.error
+                          ? "Проверьте текст"
+                          : rules.allow_invites
+                            ? rules.invitation.trim()
+                              ? "С вашей заметкой"
+                              : "Без заметки"
+                            : "Выключены"}
                       </small>
                       <ChevronDown size={16} />
                     </summary>
@@ -582,15 +838,19 @@ export function Automation({
                           <span>Текст приглашения · необязательно</span>
                           <textarea
                             rows={3}
+                            aria-invalid={!!fieldChecks.invitation.error}
+                            aria-describedby="invitation-feedback"
                             value={rules.invitation}
                             onChange={(e) =>
                               field("invitation", e.target.value)
                             }
                             placeholder="Можно оставить пустым"
                           />
-                          <small>
-                            До 200 символов с учётом подставленного имени.
-                          </small>
+                          <TemplateFeedback
+                            id="invitation-feedback"
+                            value={fieldChecks.invitation}
+                            limit={200}
+                          />
                         </label>
                       )}
                     </div>
@@ -717,11 +977,20 @@ export function Automation({
                                 : "нейтральное"}
                             </span>
                             <input
+                              aria-invalid={
+                                !!fieldChecks["subject_" + segment].error
+                              }
+                              aria-describedby={"subject-feedback-" + segment}
                               value={rules["subject_" + segment]}
                               onChange={(e) =>
                                 field("subject_" + segment, e.target.value)
                               }
                               placeholder="Например: Recruitment opportunity"
+                            />
+                            <TemplateFeedback
+                              id={"subject-feedback-" + segment}
+                              value={fieldChecks["subject_" + segment]}
+                              limit={200}
                             />
                           </label>
                         )}
@@ -733,6 +1002,8 @@ export function Automation({
                               : "нейтральное"}
                           </span>
                           <textarea
+                            aria-invalid={!!fieldChecks[segment].error}
+                            aria-describedby={"message-feedback-" + segment}
                             aria-label={
                               "Сообщение · " +
                               (segment === "open"
@@ -752,6 +1023,10 @@ export function Automation({
                                 ? "Hi {first_name}, I noticed you are open to opportunities…"
                                 : "Hi {first_name}, would you be interested in discussing…"
                             }
+                          />
+                          <TemplateFeedback
+                            id={"message-feedback-" + segment}
+                            value={fieldChecks[segment]}
                           />
                           <small>
                             <code>{"{first_name}"}</code> заменится на имя
@@ -789,11 +1064,19 @@ export function Automation({
                                   : "Нейтральный InMail"}
                               </span>
                               <textarea
+                                aria-invalid={
+                                  !!fieldChecks["inmail_" + s].error
+                                }
+                                aria-describedby={"inmail-feedback-" + s}
                                 rows={4}
                                 value={rules["inmail_" + s]}
                                 onChange={(e) =>
                                   field("inmail_" + s, e.target.value)
                                 }
+                              />
+                              <TemplateFeedback
+                                id={"inmail-feedback-" + s}
+                                value={fieldChecks["inmail_" + s]}
                               />
                             </label>
                           ))}
@@ -801,6 +1084,13 @@ export function Automation({
                       </div>
                     </details>
                   )}
+                  {rules.allow_inmail &&
+                    rules.inmail_channel === "recruiter" && (
+                      <p className="field-feedback">
+                        Подпись Recruiter входит в лимит 1900 символов. Точный
+                        текст вместе с подписью проверим перед запуском.
+                      </p>
+                    )}
                   {active && (
                     <p className="setup-caution">
                       Сохранение изменений заменит текущий план. Запуск нужно
@@ -848,7 +1138,7 @@ export function Automation({
                   <ArrowRight size={16} />
                 </button>
               </footer>
-              {(!validRules || (step === 1 && !canReview)) && (
+              {(!validRules || stepTextError || (step === 1 && !canReview)) && (
                 <p className="setup-validation" role="status">
                   {invalidHours
                     ? "Время окончания должно быть позже начала в пределах суток."
@@ -856,14 +1146,14 @@ export function Automation({
                       ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
                       : invalidInmailBudget
                         ? "Укажите бюджет InMail не меньше одного кредита."
-                        : account?.status !== "ready"
-                          ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
-                          : !selected.length
-                            ? "Сначала выберите кандидатов для этой кампании."
-                            : missingText
-                              ? "Добавьте текст для каждой выбранной группы."
-                              : missingSubject
-                                ? "Добавьте тему InMail для каждой выбранной группы."
+                        : unsavableTemplate
+                          ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
+                          : stepTextError
+                            ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
+                            : account?.status !== "ready"
+                              ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
+                              : !selected.length
+                                ? "Сначала выберите кандидатов для этой кампании."
                                 : rules.inmail_channel === "recruiter" &&
                                     !recruiterReady
                                   ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
@@ -880,7 +1170,11 @@ export function Automation({
                   role="status"
                   className={"save-indicator " + (dirty ? "unsaved" : "")}
                 >
-                  {dirty ? "Есть изменения" : "Сохранено"}
+                  {dirty
+                    ? draftPersisted
+                      ? "Черновик сохранён на этом компьютере"
+                      : "Есть несохранённые изменения"
+                    : "Сохранено"}
                 </span>
               </div>
               <h3>{modes.find((m) => m.id === mode).title}</h3>

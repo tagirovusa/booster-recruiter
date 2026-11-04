@@ -31,6 +31,7 @@ import {
   ContactState,
   OutreachHistory,
   DesktopPreferences,
+  describeOutreach,
 } from "./Outreach";
 
 const api = window.booster;
@@ -58,7 +59,7 @@ const labels = {
   sent: "Отправлено",
   unknown: "Нужно проверить отправку",
   blocked: "Сообщение недоступно",
-  cancelled: "Предпросмотр отменён",
+  cancelled: "Отменено",
   pending: "В очереди",
   replied: "Ответ получен",
   failed: "Ошибка",
@@ -99,19 +100,41 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
   close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement;
-    const controls = () => [
-      ...container.current.querySelectorAll(
-        'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
-      ),
+    const controls = () =>
+      [
+        ...container.current.querySelectorAll(
+          'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,a[href],[tabindex="0"]',
+        ),
+      ].filter(
+        (item) => item.getClientRects().length && !item.closest("[inert]"),
+      );
+    const background = [
+      ...document.querySelectorAll(".app > aside, .app > main"),
     ];
-    (container.current.querySelector("[autofocus]") || controls()[0])?.focus();
+    background.forEach((item) => {
+      item.inert = true;
+    });
+    (
+      controls().find((item) => item.matches("input,textarea,select")) ||
+      controls()[0] ||
+      container.current
+    )?.focus();
     const listener = (e) => {
-      if (e.key === "Escape") close.current();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close.current();
+      }
       if (e.key === "Tab") {
         const items = controls();
         const first = items[0],
           last = items[items.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        if (!items.length) {
+          e.preventDefault();
+          container.current.focus();
+        } else if (!container.current.contains(document.activeElement)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first)?.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last?.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
@@ -123,9 +146,19 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
     window.addEventListener("keydown", listener);
     return () => {
       window.removeEventListener("keydown", listener);
-      previous?.focus();
+      background.forEach((item) => {
+        item.inert = false;
+      });
+      if (previous?.isConnected) previous.focus();
     };
   }, []);
+  useEffect(() => {
+    if (error) {
+      const alert = container.current?.querySelector('[role="alert"]');
+      alert?.focus();
+      alert?.scrollIntoView({ block: "nearest" });
+    }
+  }, [error]);
   return (
     <div className="veil">
       <section
@@ -133,6 +166,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         className={"modal " + (wide ? "wide" : "")}
       >
         <header>
@@ -145,7 +179,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, error }) {
           </button>
         </header>
         {error && (
-          <div className="alert error" role="alert">
+          <div className="alert error" role="alert" tabIndex={-1}>
             <AlertCircle size={18} />
             <span>{error}</span>
           </div>
@@ -164,8 +198,10 @@ function App() {
   });
   const [page, setPage] = useState("campaigns");
   const [cid, setCid] = useState(null);
+  const currentCampaign = useRef(cid);
+  currentCampaign.current = cid;
   const [detail, setDetail] = useState(null);
-  const [modal, setModal] = useState(null);
+  const [modal, setModalValue] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -173,10 +209,53 @@ function App() {
   const [tab, setTab] = useState("people");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [person, setPerson] = useState(null);
+  const [personSnapshot, setPersonValue] = useState(null);
+  const setModal = (value) => {
+    setError("");
+    setModalValue(value);
+  };
+  const setPerson = (value) => {
+    setError("");
+    setPersonValue(value);
+  };
+  const person =
+    detail?.candidates.find((p) => p.id === personSnapshot?.id) ||
+    personSnapshot;
+  const [suppressConfirm, setSuppressConfirm] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
   const [preview, setPreview] = useState(null);
   const [config, setConfig] = useState("");
-  const automationDrafts = useRef({});
+  const automationDrafts = useRef(null);
+  const [draftPersisted, setDraftPersisted] = useState(true);
+  if (automationDrafts.current === null) {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("booster.automation-drafts.v1") || "{}",
+      );
+      automationDrafts.current =
+        saved && typeof saved === "object" && !Array.isArray(saved)
+          ? saved
+          : {};
+    } catch {
+      automationDrafts.current = {};
+    }
+  }
+  const persistDraft = (id, draft) => {
+    if (draft) automationDrafts.current[id] = draft;
+    else delete automationDrafts.current[id];
+    try {
+      localStorage.setItem(
+        "booster.automation-drafts.v1",
+        JSON.stringify(automationDrafts.current),
+      );
+      setDraftPersisted(true);
+    } catch {
+      setDraftPersisted(false);
+      setError(
+        "Не удалось сохранить черновик на компьютере. Сохраните настройки перед закрытием приложения.",
+      );
+    }
+  };
   const viewKey = JSON.stringify([page, cid, tab]);
   const noticeScope = useRef({ key: viewKey, revision: 0 });
   if (noticeScope.current.key !== viewKey)
@@ -190,8 +269,20 @@ function App() {
   };
   useEffect(() => {
     setNotice("");
+    setError("");
   }, [page, cid, tab]);
+  useEffect(() => {
+    setSuppressConfirm(false);
+  }, [person?.id]);
+  useEffect(() => {
+    if (error && !modal && !person && !preview && !confirmation) {
+      const alert = document.querySelector(".app-alert");
+      alert?.focus();
+      alert?.scrollIntoView({ block: "nearest" });
+    }
+  }, [error, modal, person?.id, preview?.run_id, confirmation]);
   const refresh = useCallback(async () => {
+    const notificationRevision = noticeScope.current.revision;
     if (!api) {
       setLoading(false);
       setError("Откройте Booster Recruiter как приложение.");
@@ -199,10 +290,14 @@ function App() {
     }
     try {
       setState(await api.command("state"));
-      if (cid) setDetail(await api.command("campaign.detail", { id: cid }));
+      if (cid) {
+        const result = await api.command("campaign.detail", { id: cid });
+        if (currentCampaign.current === cid) setDetail(result);
+      }
       setLoading(false);
     } catch (e) {
-      setError(e.message);
+      if (notificationRevision === noticeScope.current.revision)
+        setError(e.message);
       setLoading(false);
     }
   }, [cid]);
@@ -222,38 +317,38 @@ function App() {
       if (success) notify(success, notificationRevision);
       return r;
     } catch (e) {
-      setError(e.message);
+      if (notificationRevision === noticeScope.current.revision)
+        setError(e.message);
       return null;
     } finally {
       setBusy(false);
     }
   };
+  const eligible = (p) => p.outreach_eligible === true;
   const selected =
-    detail?.candidates.filter(
-      (p) =>
-        p.selected &&
-        !p.excluded &&
-        !p.blocked &&
-        !["sent", "unknown", "sending", "replied"].includes(
-          p.delivery[0]?.status,
-        ),
-    ) || [];
+    detail?.candidates.filter((p) => p.selected && eligible(p)) || [];
   const campaign = detail?.campaign;
   const active = ["collecting", "sending", "automating", "checking"].includes(
     campaign?.status,
   );
   const liveRun = detail?.outreach?.runs.find((r) => r.status === "active");
+  const approvedPlan =
+    detail?.outreach?.runs.some((r) =>
+      ["active", "paused"].includes(r.status),
+    ) || detail?.batches.some((b) => b.status === "approved" && b.pending > 0);
+  const confirmPlanChange = () =>
+    !approvedPlan
+      ? Promise.resolve(true)
+      : new Promise((resolve) => {
+          setConfirmation({ resolve });
+        });
   const hasOutreachHistory = detail?.outreach?.runs.some(
     (r) => r.status !== "preview",
   );
   const hasMessageHistory = detail?.candidates.some((p) => p.delivery.length);
   const contactMembers = new Map();
-  for (const r of (detail?.outreach?.runs || [])
-    .filter((r) => r.status !== "preview")
-    .slice()
-    .reverse()) {
-    for (const m of r.members) contactMembers.set(m.candidate_id, m);
-  }
+  for (const p of detail?.candidates || [])
+    if (p.outreach_member) contactMembers.set(p.id, p.outreach_member);
   const account = state.accounts.find((a) => a.id === campaign?.account_id);
   const openInSenderAccount = (url) =>
     act(
@@ -275,53 +370,69 @@ function App() {
       if (await api.export(cid, format))
         notify("Список сохранён.", notificationRevision);
     } catch (e) {
-      setError(e.message);
+      if (notificationRevision === noticeScope.current.revision)
+        setError(e.message);
     }
   };
   const review = async (p, segment, checked = p.selected) => {
-    setDetail((d) => ({
-      ...d,
-      candidates: d.candidates.map((item) =>
-        item.id === p.id ? { ...item, segment, selected: !!checked } : item,
-      ),
-    }));
+    if (p.segment === segment && !!p.selected === !!checked) return true;
+    if (!(await confirmPlanChange())) return false;
     const result = await act("candidate.review", {
       id: p.id,
       segment,
       selected: !!checked,
       excluded: !!p.excluded,
     });
-    if (!result) await refresh();
     return result;
   };
+  const selectVisible = async (checked) => {
+    const ids = people
+      .filter((p) => eligible(p) && !!p.selected !== checked)
+      .map((p) => p.id);
+    if (!ids.length || !(await confirmPlanChange())) return;
+    await act("candidate.select_many", {
+      campaign_id: cid,
+      ids,
+      selected: checked,
+    });
+  };
   const saveAutomation = async (rules, texts, reviewAfterSave = false) => {
+    const changed =
+      JSON.stringify(rules) !== JSON.stringify(detail.outreach.rules) ||
+      texts.open !== campaign.template_open ||
+      texts.neutral !== campaign.template_neutral;
+    if (changed && !(await confirmPlanChange())) return false;
     const notificationRevision = noticeScope.current.revision;
     setError("");
     setBusy(true);
     try {
-      if (JSON.stringify(rules) !== JSON.stringify(detail.outreach.rules))
-        await api.command("campaign.automation", { id: cid, rules });
-      if (
-        texts.open !== campaign.template_open ||
-        texts.neutral !== campaign.template_neutral
-      )
-        await api.command("campaign.templates", {
+      if (changed)
+        await api.command("campaign.save_automation", {
           id: cid,
+          rules,
           template_open: texts.open,
           template_neutral: texts.neutral,
         });
-      delete automationDrafts.current[cid];
-      await refresh();
-      if (reviewAfterSave)
-        setPreview(await api.command("outreach.preview", { id: cid }));
-      else
+      persistDraft(cid, null);
+      if (reviewAfterSave) {
+        const nextPreview = await api.command("outreach.preview", { id: cid });
+        if (
+          notificationRevision === noticeScope.current.revision &&
+          currentCampaign.current === cid
+        )
+          setPreview(nextPreview);
+      } else
         notify(
-          "Настройки и тексты сохранены. Кампания не запущена.",
+          !changed && approvedPlan
+            ? "Текущий план сохранён без изменений."
+            : "Настройки и тексты сохранены. Кампания не запущена.",
           notificationRevision,
         );
+      await refresh();
       return true;
     } catch (e) {
-      setError(e.message);
+      if (notificationRevision === noticeScope.current.revision)
+        setError(e.message);
       return false;
     } finally {
       setBusy(false);
@@ -391,8 +502,8 @@ function App() {
             Локальное приложение
           </span>
         </div>
-        {error && !modal && !person && !preview && (
-          <div className="alert error" role="alert">
+        {error && !modal && !person && !preview && !confirmation && (
+          <div className="alert error app-alert" role="alert" tabIndex={-1}>
             <AlertCircle size={18} />
             <span>{error}</span>
             <button onClick={() => setError("")} aria-label="Скрыть ошибку">
@@ -719,52 +830,55 @@ function App() {
                     <h2>Все кампании</h2>
                     <span>{state.campaigns.length} всего</span>
                   </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Кампания</th>
-                        <th>Отправитель</th>
-                        <th>Профили</th>
-                        <th>Статус</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {state.campaigns.map((c) => (
-                        <tr
-                          className="clickable"
-                          key={c.id}
-                          onClick={() => openCampaign(c.id)}
-                        >
-                          <td>
-                            <button
-                              className="text-button campaign-entry"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openCampaign(c.id);
-                              }}
-                            >
-                              {c.name}
-                            </button>
-                            <small>{c.keywords}</small>
-                          </td>
-                          <td>
-                            {
-                              state.accounts.find((a) => a.id === c.account_id)
-                                ?.label
-                            }
-                          </td>
-                          <td className="number">{c.count}</td>
-                          <td>
-                            <Badge value={c.status} />
-                          </td>
-                          <td>
-                            <ChevronRight size={18} />
-                          </td>
+                  <div className="table-scroll">
+                    <table className="campaign-table">
+                      <thead>
+                        <tr>
+                          <th>Кампания</th>
+                          <th>Отправитель</th>
+                          <th>Профили</th>
+                          <th>Статус</th>
+                          <th />
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {state.campaigns.map((c) => (
+                          <tr
+                            className="clickable"
+                            key={c.id}
+                            onClick={() => openCampaign(c.id)}
+                          >
+                            <td>
+                              <button
+                                className="text-button campaign-entry"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCampaign(c.id);
+                                }}
+                              >
+                                {c.name}
+                              </button>
+                              <small>{c.keywords}</small>
+                            </td>
+                            <td>
+                              {
+                                state.accounts.find(
+                                  (a) => a.id === c.account_id,
+                                )?.label
+                              }
+                            </td>
+                            <td className="number">{c.count}</td>
+                            <td>
+                              <Badge value={c.status} />
+                            </td>
+                            <td>
+                              <ChevronRight size={18} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </>
@@ -808,6 +922,11 @@ function App() {
                       <Pause size={17} />
                       Пауза
                     </Button>
+                  ) : detail.candidates.length >= campaign.max_profiles ? (
+                    <span className="search-complete">
+                      <CheckCircle2 size={17} />
+                      Поиск завершён
+                    </span>
                   ) : (
                     <Button
                       kind={tab === "people" ? "primary" : ""}
@@ -898,9 +1017,9 @@ function App() {
                   key={cid}
                   initialDraft={automationDrafts.current[cid]}
                   onDraftChange={(draft) => {
-                    if (draft) automationDrafts.current[cid] = draft;
-                    else delete automationDrafts.current[cid];
+                    persistDraft(cid, draft);
                   }}
+                  draftPersisted={draftPersisted}
                   data={detail.outreach}
                   campaign={campaign}
                   account={account}
@@ -1095,6 +1214,38 @@ function App() {
                       {selected.length > 0 && `(${selected.length})`}
                     </Button>
                   </div>
+                  {people.length > 0 && (
+                    <div className="selection-toolbar">
+                      <span>
+                        Показано: {people.length} · Доступно для выбора:{" "}
+                        {people.filter(eligible).length}
+                      </span>
+                      <div>
+                        <button
+                          className="text-link"
+                          disabled={
+                            active ||
+                            busy ||
+                            !people.some((p) => eligible(p) && !p.selected)
+                          }
+                          onClick={() => selectVisible(true)}
+                        >
+                          Выбрать доступных
+                        </button>
+                        <button
+                          className="text-link"
+                          disabled={
+                            active ||
+                            busy ||
+                            !people.some((p) => eligible(p) && p.selected)
+                          }
+                          onClick={() => selectVisible(false)}
+                        >
+                          Снять выбор
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {people.length ? (
                     <div className="table-scroll">
                       <table className="people">
@@ -1111,7 +1262,9 @@ function App() {
                           {people.map((p) => (
                             <tr
                               key={p.id}
-                              className={p.selected ? "selected" : ""}
+                              className={
+                                p.selected && eligible(p) ? "selected" : ""
+                              }
                             >
                               <td>
                                 <input
@@ -1119,19 +1272,17 @@ function App() {
                                   aria-label={
                                     "Выбрать " + (p.data.name || p.url)
                                   }
-                                  checked={!!p.selected}
-                                  disabled={
-                                    active ||
-                                    busy ||
-                                    p.segment === "review" ||
-                                    p.blocked ||
-                                    [
-                                      "sent",
-                                      "unknown",
-                                      "sending",
-                                      "replied",
-                                    ].includes(p.delivery[0]?.status)
+                                  checked={!!p.selected && eligible(p)}
+                                  title={
+                                    p.outreach_exclusion ||
+                                    "Выбрать для этой кампании"
                                   }
+                                  aria-describedby={
+                                    !eligible(p)
+                                      ? `eligibility-${p.id}`
+                                      : undefined
+                                  }
+                                  disabled={active || busy || !eligible(p)}
                                   onChange={(e) =>
                                     review(p, p.segment, e.target.checked)
                                   }
@@ -1190,6 +1341,14 @@ function App() {
                                 </select>
                               </td>
                               <td>
+                                {!eligible(p) && (
+                                  <span
+                                    className="sr-only"
+                                    id={`eligibility-${p.id}`}
+                                  >
+                                    {p.outreach_exclusion}
+                                  </span>
+                                )}
                                 {p.blocked ? (
                                   <span className="badge blocked">
                                     Не контактировать
@@ -1291,7 +1450,7 @@ function App() {
           }}
         />
       )}
-      {person && (
+      {person && !confirmation && (
         <Modal
           error={error}
           title={person.data.name || "Профиль кандидата"}
@@ -1329,22 +1488,70 @@ function App() {
               person.data.top_card_text ||
               "Текст недоступен"}
           </pre>
+          <label className="field">
+            Группа сообщения
+            <select
+              value={person.segment}
+              disabled={active || busy}
+              onChange={(e) =>
+                review(
+                  person,
+                  e.target.value,
+                  e.target.value === "review" ? false : person.selected,
+                )
+              }
+            >
+              <option value="review">Нужно проверить</option>
+              <option value="open">Open to Work</option>
+              <option value="neutral">Нейтральное сообщение</option>
+            </select>
+            <small>
+              {person.segment === "review"
+                ? "Проверьте сведения и выберите группу. Затем профиль можно будет включить в кампанию."
+                : !eligible(person)
+                  ? person.outreach_exclusion
+                  : person.selected
+                    ? "Группа сохранена. Профиль выбран для этой кампании."
+                    : "Группа сохранена. Выберите профиль в списке кандидатов, чтобы включить его в кампанию."}
+            </small>
+          </label>
+          {(suppressConfirm || person.blocked) && (
+            <div className="hint warning">
+              {person.blocked
+                ? "Этот профиль исключён из будущих обращений во всех кампаниях и со всех аккаунтов."
+                : "Исключить этот профиль из будущих обращений во всех кампаниях и со всех аккаунтов? Уже отправленные сообщения и приглашения останутся в LinkedIn."}
+            </div>
+          )}
           <div className="modal-footer">
             <Button
               kind="danger"
               onClick={async () => {
+                if (!suppressConfirm) {
+                  setSuppressConfirm(true);
+                  return;
+                }
                 const result = await act(
                   "candidate.suppress",
                   { url: person.url, reason: "Исключён рекрутером" },
-                  "Профиль исключён из будущих отправок.",
+                  "Профиль исключён из будущих обращений во всех кампаниях.",
                 );
                 if (result) setPerson(null);
               }}
               disabled={busy || person.blocked}
             >
-              {person.blocked ? "Контакт исключён" : "Не контактировать"}
+              {person.blocked
+                ? "Контакт исключён"
+                : suppressConfirm
+                  ? "Исключить во всех кампаниях"
+                  : "Не контактировать"}
             </Button>
-            <Button onClick={() => setPerson(null)}>Готово</Button>
+            {suppressConfirm ? (
+              <Button disabled={busy} onClick={() => setSuppressConfirm(false)}>
+                Отмена
+              </Button>
+            ) : (
+              <Button onClick={() => setPerson(null)}>Закрыть</Button>
+            )}
           </div>
         </Modal>
       )}
@@ -1356,17 +1563,13 @@ function App() {
           wide
           onClose={() => setPreview(null)}
         >
-          <div className="hint">
-            Если доступно бесплатное сообщение, программа отправит ваш текст.
-            {preview.rules.allow_invites &&
-              " При необходимости отправит приглашение, а после его принятия — сообщение."}
-            {preview.rules.allow_inmail &&
-              (preview.rules.strategy === "economy" &&
-              preview.rules.allow_invites
-                ? ` Если приглашение не примут за ${preview.rules.wait_days} дн., сможет отправить InMail.`
-                : " Если бесплатное сообщение недоступно, сможет отправить InMail.")}{" "}
-            После ответа кандидата автоматические обращения прекратятся.
-          </div>
+          <div className="hint">{describeOutreach(preview.rules)}</div>
+          {approvedPlan && (
+            <div className="hint warning">
+              Текущий утверждённый план сохранён. Он будет заменён только после
+              нажатия «Утвердить и запустить кампанию».
+            </div>
+          )}
           <div className="message-preview">
             <p>Профиль отправителя: {preview.account.url}</p>
             {preview.rules.allow_inmail && (
@@ -1402,6 +1605,7 @@ function App() {
                 {preview.rules.check_hours} ч. · Наблюдение{" "}
                 {preview.rules.monitor_days} дней.
                 {preview.rules.allow_inmail &&
+                  preview.rules.allow_invites &&
                   preview.rules.strategy === "economy" &&
                   ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}{" "}
                 Общий лимит попыток для этого аккаунта за сутки UTC:{" "}
@@ -1460,6 +1664,45 @@ function App() {
           </div>
         </Modal>
       )}
+      {confirmation && (
+        <Modal
+          title="Изменить утверждённую кампанию?"
+          subtitle="Текущий план будет остановлен"
+          onClose={() => {
+            confirmation.resolve(false);
+            setConfirmation(null);
+          }}
+        >
+          <p>
+            Изменение списка, правил или текстов остановит проверки принятия
+            приглашений и дальнейшую отправку по текущему плану. Уже выполненные
+            действия сохранятся в истории.
+          </p>
+          <p className="confirmation-next">
+            После изменений проверьте новый план и утвердите запуск в разделе
+            «Автоматизация».
+          </p>
+          <div className="modal-footer">
+            <Button
+              onClick={() => {
+                confirmation.resolve(false);
+                setConfirmation(null);
+              }}
+            >
+              Оставить текущий план
+            </Button>
+            <Button
+              kind="primary"
+              onClick={() => {
+                confirmation.resolve(true);
+                setConfirmation(null);
+              }}
+            >
+              Изменить план
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1493,20 +1736,20 @@ function AccountForm({ onClose, onSubmit, busy, error }) {
       onClose={onClose}
     >
       <form
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit(label);
+          if (label.trim() && !busy) onSubmit(label.trim());
         }}
       >
         <label className="field">
           Название аккаунта
           <input
-            autoFocus
             required
             maxLength={100}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Например, Наталья · Recruiting"
+            placeholder="Например, Recruiting · Основной"
           />
         </label>
         <div className="steps">
@@ -1533,6 +1776,8 @@ function AccountForm({ onClose, onSubmit, busy, error }) {
   );
 }
 function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
+  const [attempted, setAttempted] = useState(false);
+  const form = useRef(null);
   const [d, setD] = useState({
     name: "",
     account_id:
@@ -1543,6 +1788,21 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
     template_neutral: "",
   });
   const change = (key, v) => setD({ ...d, [key]: v });
+  const errors = {
+    name: !d.name.trim() ? "Введите название кампании." : "",
+    keywords: !d.keywords.trim()
+      ? "Введите ключевые слова или ссылку на профиль LinkedIn."
+      : "",
+    account_id: !accounts.some((a) => a.id === d.account_id)
+      ? "Выберите аккаунт отправителя."
+      : "",
+    max_profiles:
+      !Number.isInteger(d.max_profiles) ||
+      d.max_profiles < 1 ||
+      d.max_profiles > 100
+        ? "Укажите целое число от 1 до 100."
+        : "",
+  };
   return (
     <Modal
       error={error}
@@ -1551,25 +1811,49 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
       onClose={onClose}
     >
       <form
+        ref={form}
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit(d);
+          setAttempted(true);
+          const invalid = Object.keys(errors).find((key) => errors[key]);
+          if (invalid) {
+            form.current.elements[invalid]?.focus();
+            return;
+          }
+          if (!busy)
+            onSubmit({
+              ...d,
+              name: d.name.trim(),
+              keywords: d.keywords.trim(),
+            });
         }}
       >
         <label className="field">
           Название кампании
           <input
-            autoFocus
+            name="name"
+            aria-invalid={attempted && !!errors.name}
+            aria-describedby={
+              attempted && errors.name ? "campaign-name-error" : undefined
+            }
             required
             value={d.name}
             onChange={(e) => change("name", e.target.value)}
             placeholder="Например, Head of Recruitment · Logistics"
             maxLength={150}
           />
+          {attempted && errors.name && (
+            <small className="field-error" id="campaign-name-error">
+              {errors.name}
+            </small>
+          )}
         </label>
         <label className="field">
           Аккаунт отправителя
           <select
+            name="account_id"
+            aria-invalid={attempted && !!errors.account_id}
             value={d.account_id}
             onChange={(e) => change("account_id", e.target.value)}
           >
@@ -1579,10 +1863,20 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
               </option>
             ))}
           </select>
+          {attempted && errors.account_id && (
+            <small className="field-error">{errors.account_id}</small>
+          )}
         </label>
         <label className="field">
           Ключевые слова или ссылка на профиль
           <textarea
+            name="keywords"
+            aria-invalid={attempted && !!errors.keywords}
+            aria-describedby={
+              attempted && errors.keywords
+                ? "campaign-keywords-error"
+                : undefined
+            }
             required
             rows={3}
             value={d.keywords}
@@ -1590,6 +1884,11 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
             placeholder='Например: "driver recruitment" manager'
             maxLength={1000}
           />
+          {attempted && errors.keywords && (
+            <small className="field-error" id="campaign-keywords-error">
+              {errors.keywords}
+            </small>
+          )}
           <small>
             Укажите роль и отрасль или одну ссылку на профиль LinkedIn. В
             поисковом запросе можно использовать AND, OR и кавычки.
@@ -1598,6 +1897,13 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
         <label className="field">
           Сколько профилей собрать
           <input
+            name="max_profiles"
+            aria-invalid={attempted && !!errors.max_profiles}
+            aria-describedby={
+              attempted && errors.max_profiles
+                ? "campaign-count-error"
+                : undefined
+            }
             type="number"
             required
             min={1}
@@ -1605,6 +1911,11 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
             value={d.max_profiles}
             onChange={(e) => change("max_profiles", Number(e.target.value))}
           />
+          {attempted && errors.max_profiles && (
+            <small className="field-error" id="campaign-count-error">
+              {errors.max_profiles}
+            </small>
+          )}
         </label>
         <div className="modal-footer">
           <Button type="button" onClick={onClose}>

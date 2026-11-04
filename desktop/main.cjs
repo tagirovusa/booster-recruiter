@@ -27,6 +27,65 @@ let win,
   tray,
   exiting = false;
 let desktopPreferences = { background: false, autoStart: false };
+function createApplicationMenu() {
+  const items = [];
+  if (process.platform === "darwin")
+    items.push({
+      label: "Booster Recruiter",
+      submenu: [
+        { role: "about", label: "О Booster Recruiter" },
+        { type: "separator" },
+        { role: "services", label: "Службы" },
+        { type: "separator" },
+        { role: "hide", label: "Скрыть Booster Recruiter" },
+        { role: "hideOthers", label: "Скрыть остальные" },
+        { role: "unhide", label: "Показать все" },
+        { type: "separator" },
+        { role: "quit", label: "Завершить Booster Recruiter" },
+      ],
+    });
+  else
+    items.push({
+      label: "Booster Recruiter",
+      submenu: [
+        { role: "about", label: "О Booster Recruiter" },
+        { type: "separator" },
+        { role: "quit", label: "Выход" },
+      ],
+    });
+  items.push(
+    {
+      label: "Правка",
+      submenu: [
+        { role: "undo", label: "Отменить" },
+        { role: "redo", label: "Повторить" },
+        { type: "separator" },
+        { role: "cut", label: "Вырезать" },
+        { role: "copy", label: "Копировать" },
+        { role: "paste", label: "Вставить" },
+        { role: "selectAll", label: "Выделить всё" },
+      ],
+    },
+    {
+      label: "Окно",
+      submenu: [
+        { role: "minimize", label: "Свернуть" },
+        { role: "zoom", label: "Изменить размер" },
+        { role: "togglefullscreen", label: "Полный экран" },
+        { role: "close", label: "Закрыть окно" },
+      ],
+    },
+  );
+  if (!app.isPackaged)
+    items.push({
+      label: "Разработка",
+      submenu: [
+        { role: "reload", label: "Перезагрузить" },
+        { role: "toggleDevTools", label: "Инструменты разработчика" },
+      ],
+    });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(items));
+}
 function preferencesPath() {
   return path.join(app.getPath("userData"), "desktop-preferences.json");
 }
@@ -75,7 +134,9 @@ const operations = new Set([
   "campaign.collect",
   "campaign.pause",
   "campaign.templates",
+  "campaign.save_automation",
   "candidate.review",
+  "candidate.select_many",
   "candidate.suppress",
   "campaign.preview",
   "batch.approve",
@@ -138,6 +199,8 @@ function trusted(event) {
     throw Error("Недопустимый источник команды.");
 }
 async function start() {
+  app.setName("Booster Recruiter");
+  createApplicationMenu();
   try {
     const p = JSON.parse(fs.readFileSync(preferencesPath(), "utf8"));
     desktopPreferences = {

@@ -74,14 +74,20 @@ def test_contact_history_blocks_duplicates_across_accounts(store, status):
         store.preview(other["id"])
 
 
-def test_cross_batch_claim_blocks_contact_race(store):
+def test_cross_batch_approval_and_claim_block_contact_race(store):
     _, a, _ = prepared(store)
     _, b, _ = prepared(store)
     pa, pb = store.preview(a["id"]), store.preview(b["id"])
     store.approve(pa["batch_id"], pa["digest"])
-    store.approve(pb["batch_id"], pb["digest"])
-    assert store.claim(pa["batch_id"])["url"].endswith("alice-example")
+    with pytest.raises(AppError, match="уже обрабатывается"):
+        store.approve(pb["batch_id"], pb["digest"])
+    # Older saved queues may already both be approved; claim still protects them.
+    with store.db:
+        store.db.execute(
+            "UPDATE batches SET status='approved' WHERE id=?", (pb["batch_id"],)
+        )
     assert store.claim(pb["batch_id"]) == {"skip": True}
+    assert store.claim(pa["batch_id"])["url"].endswith("alice-example")
 
 
 def test_restart_marks_inflight_unknown_without_automatic_retry(tmp_path):

@@ -193,9 +193,11 @@ class OutreachStore:
         return DEFAULT_RULES | (json.loads(rows[0]["rules"]) if rows else {})
 
     def configure(self, cid, value):
-        self.s.ensure_idle(cid)
         rules = validate_rules(value)
-        with self.db:
+        with self.s.atomic():
+            if rules == self.rules(cid):
+                return rules
+            self.s.ensure_idle(cid)
             self.s.invalidate(cid)
             self.db.execute(
                 "INSERT OR REPLACE INTO outreach_settings VALUES(?,?)",
@@ -203,20 +205,30 @@ class OutreachStore:
             )
         return rules
 
-    def invalidate(self, cid):
+    def invalidate(self, cid, *, previews_only=False):
         self.db.execute(
-            "UPDATE outreach_runs SET status='cancelled',detail='Состав или настройки кампании изменились.',updated=? WHERE campaign_id=? AND status IN ('preview','active','paused')",
+            "UPDATE outreach_runs SET status='cancelled',detail='Состав или настройки кампании изменились.',updated=? WHERE campaign_id=? AND "
+            + (
+                "status='preview'"
+                if previews_only
+                else "status IN ('preview','active','paused')"
+            ),
             (now(), cid),
         )
 
     def blocked(self, url, member_id=None, campaign_id=None, account_id=None):
+        return bool(self.block_reason(url, member_id, campaign_id, account_id))
+
+    def block_reason(self, url, member_id=None, campaign_id=None, account_id=None):
         if self.s.rows("SELECT 1 FROM suppression WHERE url=?", (url,)):
-            return True
+            return "Не контактировать: профиль в списке исключений."
         if self.s.rows(
             "SELECT 1 FROM deliveries WHERE url=? AND status IN ('sent','sending','unknown','replied','invited')",
             (url,),
         ):
-            return True
+            return (
+                "Есть прежняя отправка или неподтверждённое действие. Повтор исключён."
+            )
         if member_id:
             owner = self.s.one(
                 "SELECT r.campaign_id,r.account_id FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id WHERE m.id=?",
@@ -236,16 +248,71 @@ class OutreachStore:
                 and action["account_id"] == account_id
             ):
                 continue
-            return True
+            return "Есть прежнее обращение или неподтверждённое действие. Проверьте историю."
+        for row in self.s.rows(
+            "SELECT b.campaign_id,b.account_id FROM deliveries d JOIN batches b ON b.id=d.batch_id "
+            "WHERE d.url=? AND d.status='pending' AND b.status='approved'",
+            (url,),
+        ):
+            if row["campaign_id"] != campaign_id or row["account_id"] != account_id:
+                return "Профиль уже включён в другую утверждённую очередь."
         for row in self.s.rows(
             "SELECT r.campaign_id,r.account_id FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id WHERE m.url=? AND m.id!=? AND r.status IN ('active','paused') AND m.status NOT IN ('excluded','unavailable')",
             (url, member_id or ""),
         ):
             if row["campaign_id"] != campaign_id or row["account_id"] != account_id:
-                return True
-        return False
+                return "Профиль уже включён в другую действующую кампанию."
+        return ""
+
+    def exclusion(self, person, campaign):
+        if person["excluded"]:
+            return "Профиль исключён из кампании."
+        if person["segment"] not in ("open", "neutral"):
+            return "Сначала выберите группу сообщения."
+        return self.block_reason(
+            person["url"], campaign_id=campaign["id"], account_id=campaign["account_id"]
+        )
+
+    def latest_member(self, candidate_id, cid, aid):
+        rows = self.s.rows(
+            "SELECT m.*,r.status AS run_status,"
+            "EXISTS(SELECT 1 FROM outreach_actions a WHERE a.member_id=m.id) AS attempted "
+            "FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id "
+            "WHERE m.candidate_id=? AND r.campaign_id=? AND r.account_id=? "
+            "ORDER BY m.updated DESC,r.created DESC,m.id DESC",
+            (candidate_id, cid, aid),
+        )
+        substantive = [
+            m
+            for m in rows
+            if m["run_status"] != "preview"
+            and (
+                m["attempted"]
+                or m["checked_at"]
+                or m["sent_at"]
+                or m["reply_text"]
+                or m["status"] != "planned"
+                or m["run_status"] in ("active", "paused")
+            )
+        ]
+        # A later unused plan must not hide an actual message or a reply.
+        outcomes = [
+            m
+            for m in substantive
+            if m["sent_at"] or m["reply_text"] or m["status"] == "replied"
+        ]
+        if not (outcomes or substantive):
+            return None
+        member = (outcomes or substantive)[0]
+        member.pop("attempted")
+        member["observation"] = json.loads(member["observation"])
+        return member
 
     def preview(self, cid, recruiter_context=None):
+        with self.s.atomic():
+            return self._preview(cid, recruiter_context)
+
+    def _preview(self, cid, recruiter_context=None):
         self.s.ensure_idle(cid)
         campaign = self.s.campaign(cid)
         account = self.s.account(campaign["account_id"])
@@ -330,8 +397,9 @@ class OutreachStore:
                 [account["id"], account["url"], rules, context, members], sort_keys=True
             ).encode()
         ).hexdigest()
-        with self.db:
-            self.s.invalidate(cid)
+        with self.s.atomic():
+            self.s.ensure_idle(cid)
+            self.s.invalidate(cid, previews_only=True)
             self.db.execute(
                 "INSERT INTO outreach_runs(id,campaign_id,account_id,digest,rules,context,status,created,updated) VALUES(?,?,?,?,?,?,'preview',?,?)",
                 (
@@ -391,21 +459,61 @@ class OutreachStore:
         return row
 
     def approve(self, rid, digest):
-        run = self.run(rid)
-        self.s.ensure_idle(run["campaign_id"])
-        if run["status"] != "preview" or run["digest"] != digest:
-            raise AppError("Предпросмотр устарел. Подготовьте кампанию снова.")
-        if self.s.account(run["account_id"])["status"] != "ready":
-            raise AppError("Сначала подтвердите вход отправителя.")
-        with self.db:
+        with self.s.atomic():
+            run = self.run(rid)
+            self.s.ensure_idle(run["campaign_id"])
+            if run["status"] != "preview" or run["digest"] != digest:
+                raise AppError("Предпросмотр устарел. Подготовьте кампанию снова.")
+            account = self.s.account(run["account_id"])
+            if account["status"] != "ready":
+                raise AppError("Сначала подтвердите вход отправителя.")
+            campaign = self.s.campaign(run["campaign_id"])
+            if (
+                run["rules"] != self.rules(run["campaign_id"])
+                or campaign["account_id"] != run["account_id"]
+            ):
+                raise AppError("Настройки изменились. Подготовьте кампанию снова.")
+            if run["context"] and account["services"].get("recruiter", {}).get(
+                "contract"
+            ) != run["context"].get("contract"):
+                raise AppError(
+                    "Подключение Recruiter изменилось. Обновите предпросмотр."
+                )
             for m in self.members(rid):
-                if self.blocked(m["url"], m["id"]):
+                person = self.s.one(
+                    "SELECT * FROM candidates WHERE id=?", (m["candidate_id"],)
+                )
+                if (
+                    person["campaign_id"] != run["campaign_id"]
+                    or not person["selected"]
+                    or self.exclusion(person, campaign)
+                    or self.blocked(m["url"], m["id"])
+                ):
                     raise AppError(
                         "Один из получателей уже обрабатывается. Обновите предпросмотр."
                     )
+                # The old approved run may have confirmed an invitation after
+                # this preview was created. Continue its wait without resending.
+                prior = self.s.rows(
+                    "SELECT m.invitation_at FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id "
+                    "WHERE r.campaign_id=? AND r.account_id=? AND m.url=? AND m.id!=? "
+                    "AND m.invitation_at IS NOT NULL ORDER BY m.invitation_at LIMIT 1",
+                    (run["campaign_id"], run["account_id"], m["url"], m["id"]),
+                )
+                if prior:
+                    self.db.execute(
+                        "UPDATE outreach_members SET invitation_at=?,status='waiting_acceptance',"
+                        "detail='Приглашение уже отправлено; ожидаем принятия.' WHERE id=?",
+                        (prior[0]["invitation_at"], m["id"]),
+                    )
+            self.s.invalidate(run["campaign_id"])
             self.db.execute(
-                "UPDATE outreach_runs SET status='active',updated=? WHERE id=?",
+                "UPDATE outreach_runs SET status='active',detail='',updated=? WHERE id=?",
                 (now(), rid),
+            )
+            self.db.execute(
+                "UPDATE campaigns SET status='waiting',progress='План утверждён. Ожидаем запуска по расписанию.' WHERE id=?",
+                (run["campaign_id"],),
             )
         self.s.event(
             "outreach_approval",
@@ -544,7 +652,7 @@ class OutreachStore:
             or kind != "inmail"
         ):
             raise AppError("Неверная стоимость InMail.")
-        with self.db:
+        with self.s.atomic():
             m = self.s.one("SELECT * FROM outreach_members WHERE id=?", (mid,))
             r = self.run(m["run_id"])
             if r["status"] != "active" or self.blocked(m["url"], mid):
@@ -561,6 +669,11 @@ class OutreachStore:
                 (mid, kind),
             ):
                 raise AppError("Повторное обращение исключено.")
+            if kind == "invite" and self.s.rows(
+                "SELECT 1 FROM outreach_actions WHERE url=? AND kind='invite' AND status='sent'",
+                (m["url"],),
+            ):
+                raise AppError("Приглашение уже отправлено. Ожидаем принятия контакта.")
             rules = r["rules"]
             if (
                 kind == "invite"

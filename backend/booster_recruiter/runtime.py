@@ -300,10 +300,7 @@ class Runtime:
         eligible = [
             p
             for p in self.store.detail(cid)["candidates"]
-            if p["selected"]
-            and not p["excluded"]
-            and p["segment"] != "review"
-            and not p["blocked"]
+            if p["selected"] and p["outreach_eligible"]
         ]
         if not eligible:
             raise AppError("Выберите получателей без прежних обращений.")

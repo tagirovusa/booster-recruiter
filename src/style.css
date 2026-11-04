@@ -185,6 +185,45 @@ main {
   gap: 24px;
   margin-bottom: 30px;
 }
+.page-heading > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.page-heading > .actions,
+.page-heading > .button {
+  flex-shrink: 0;
+}
+.topbar > span:first-child {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar > span:first-child svg {
+  vertical-align: middle;
+  margin: 0 4px;
+}
+.topbar > .connection {
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+.campaign-entry,
+.account-card,
+.modal h2,
+.message-preview p,
+.message-preview h3 {
+  overflow-wrap: anywhere;
+}
+.search-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #477646;
+  font-size: 13px;
+  min-height: 40px;
+}
 .page-heading p:not(.eyebrow) {
   margin-top: 10px;
   font-size: 14px;
@@ -541,6 +580,10 @@ main {
   width: 100%;
   font-size: 12px;
 }
+.search:focus-within {
+  outline: 3px solid #b5861a;
+  outline-offset: 3px;
+}
 select {
   border: 1px solid #dde1e4;
   border-radius: 7px;
@@ -639,6 +682,24 @@ input[type="checkbox"] {
 .table-scroll {
   overflow: auto;
 }
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 13px 20px;
+  border-bottom: 1px solid #edf0f1;
+  color: #687078;
+  font-size: 12px;
+}
+.selection-toolbar > div {
+  display: flex;
+  gap: 18px;
+}
+.selection-toolbar button {
+  font-size: 12px;
+}
 .table-footer {
   padding: 15px 21px;
   border-top: 1px solid #edf0f1;
@@ -681,6 +742,24 @@ input[type="checkbox"] {
   font-size: 11px;
   color: #89929a;
   font-weight: 500;
+}
+.field .field-error,
+.field-error {
+  color: #a74c44;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.field-feedback {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #687078;
+}
+.field [aria-invalid="true"] {
+  border-color: #bc625a;
 }
 .field textarea {
   resize: vertical;
@@ -749,6 +828,21 @@ input[type="checkbox"] {
 }
 .modal.wide {
   width: 800px;
+}
+.modal .alert {
+  margin: 0 0 20px;
+}
+.modal .confirmation-next {
+  margin-top: 14px;
+}
+.modal .modal-footer {
+  flex-wrap: wrap;
+}
+.app-alert {
+  scroll-margin-top: 16px;
+}
+.alert svg {
+  flex-shrink: 0;
 }
 .modal > header {
   display: flex;
@@ -1341,6 +1435,7 @@ input[type="checkbox"] {
 }
 .plan-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -1349,7 +1444,7 @@ input[type="checkbox"] {
 .save-indicator {
   font-size: 9px;
   color: #6f7a73;
-  white-space: nowrap;
+  white-space: normal;
 }
 .save-indicator.unsaved {
   color: #937318;
@@ -1639,6 +1734,43 @@ input[type="checkbox"] {
 .campaign-entry {
   font-weight: 800;
   text-align: left;
+  max-width: 100%;
+}
+.campaign-table {
+  table-layout: fixed;
+}
+.campaign-table th,
+.campaign-table td {
+  padding: 16px 14px;
+  overflow-wrap: anywhere;
+}
+.campaign-table th:nth-child(2) {
+  width: 22%;
+}
+.campaign-table th:nth-child(3) {
+  width: 96px;
+}
+.campaign-table th {
+  white-space: nowrap;
+}
+.campaign-table th:nth-child(4) {
+  width: 180px;
+}
+.campaign-table th:last-child {
+  width: 36px;
+}
+.campaign-table td:last-child,
+.campaign-table th:last-child {
+  padding-left: 4px;
+  padding-right: 8px;
+}
+.campaign-table td small {
+  max-width: 100%;
+  font-size: 12px;
+  color: #626b73;
+}
+.campaign-table .badge {
+  white-space: normal;
 }
 
 /* Supporting guidance stays readable at the minimum desktop size. */
@@ -1681,4 +1813,30 @@ input[type="checkbox"] {
 }
 .recovery-history {
   margin: 14px 0;
+}
+
+/* Secondary guidance must remain legible on the light workspace surfaces. */
+th,
+.table-footer,
+.field small:not(.field-error),
+.message-group-title small,
+.eyebrow,
+.tabs button:not(.active),
+.topbar,
+.sidebar-bottom small,
+.plan-note,
+.setup-details summary > small {
+  color: #626b73;
+}
+th,
+.table-footer,
+.sidebar-bottom small,
+.field small {
+  font-size: 12px;
+}
+.field-feedback {
+  flex-wrap: wrap;
+}
+.field-feedback .field-error {
+  flex-basis: 100%;
 }

@@ -48,7 +48,10 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("combobox", { name: "Группа Jamie Reed" }),
     ).toHaveValue("neutral");
-    await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).check();
+    await page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }).click();
+    await expect(
+      page.getByRole("checkbox", { name: "Выбрать Alex Morgan" }),
+    ).toBeChecked();
     await page.getByRole("button", { name: "Настроить отправку (1)" }).click();
     await expect(
       page.getByRole("heading", { name: "От знакомства — к разговору" }),
