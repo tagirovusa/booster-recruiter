@@ -23,7 +23,7 @@ async def test_workspace_mcp_tools_only_route_read_draft_and_backup_operations(
     monkeypatch.setattr("urllib.request.urlopen", open_request)
     async with Client(create_server(tmp_path)) as client:
         tools = {t.name: t for t in await client.list_tools()}
-        assert len(tools) == 16
+        assert len(tools) == 17
         assert not any(
             "restore" in t or "approve" == t or "send_message" in t for t in tools
         )
@@ -37,6 +37,7 @@ async def test_workspace_mcp_tools_only_route_read_draft_and_backup_operations(
                 {"template_id": "template", "account_id": "account", "name": "Fresh"},
             ),
             ("create_workspace_backup", {}),
+            ("recheck_attention_item", {"item_id": "review:example"}),
         ]:
             result = await client.call_tool(name, params)
             assert result.structured_content == {"ok": True}
@@ -45,6 +46,7 @@ async def test_workspace_mcp_tools_only_route_read_draft_and_backup_operations(
         "template.list",
         "template.create",
         "backup.create",
+        "workspace.recheck",
     ]
     assert calls[2]["params"] == {
         "id": "template",

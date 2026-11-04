@@ -39,6 +39,7 @@ const states = {
   submitting: "Выполняется",
   unknown: "Нужно проверить результат",
   blocked: "Действие остановлено",
+  satisfied: "Состояние подтверждено",
 };
 const relations = {
   unknown: "Связь ещё не подтверждена",
@@ -329,10 +330,33 @@ function TemplateFeedback({ id, value, limit = 1900, extra = "" }) {
   );
 }
 
-export function DetailMessage({ detail, status, kind }) {
+export function DetailMessage({ detail, status, kind, stopped = false }) {
   const original = String(detail ?? "");
   const text = original.trim();
   if (!text) return null;
+  if (stopped && status !== "unknown" && status !== "submitting")
+    return (
+      <div className="detail-message">
+        <p>
+          План остановлен; дальнейшие действия не выполняются.
+          {/you are already connected with this profile/i.test(text)
+            ? " LinkedIn сообщил, что профиль уже в контактах. Новое приглашение не требуется."
+            : ""}
+        </p>
+        <details className="technical-details">
+          <summary>Подробности прошлого действия</summary>
+          <pre>{original}</pre>
+        </details>
+      </div>
+    );
+  if (/you are already connected with this profile/i.test(text))
+    return (
+      <p className="detail-message">
+        LinkedIn сообщил, что вы уже в контактах. Приглашение не требуется.
+        Нажмите «Проверить автоматически», чтобы обновить состояние без
+        отправки.
+      </p>
+    );
   // Keep readable product guidance intact. Transport envelopes and diagnostics
   // remain available verbatim, but are not the recruiter's primary next step.
   const technical =
@@ -1411,6 +1435,7 @@ export function OutreachHistory({
   onResolve,
   onResume,
   onOpen,
+  onCheck,
 }) {
   const visible = runs.filter((r) => r.status !== "preview");
   if (!visible.length) return null;
@@ -1449,38 +1474,71 @@ export function OutreachHistory({
                 </tr>
               </thead>
               <tbody>
-                {run.members.map((m) => (
-                  <tr key={m.id} id={"member-" + m.id} tabIndex={-1}>
-                    <td>
-                      <button
-                        className="text-link"
-                        onClick={() => onOpen(m.url)}
-                      >
-                        {m.name || m.url}
-                      </button>
-                    </td>
-                    <td>{states[m.status] || m.status}</td>
-                    <td>
-                      {[
-                        "sent",
-                        "waiting_acceptance",
-                        "waiting_budget",
-                        "waiting_credits",
-                        "planned",
-                      ].includes(m.status)
-                        ? run.status === "paused"
-                          ? "После возобновления"
-                          : run.status === "active"
-                            ? date(m.next_check)
-                            : "—"
-                        : "—"}
-                    </td>
-                    <td>
-                      <DetailMessage detail={m.detail} status={m.status} />
-                      {m.reply_text && <blockquote>{m.reply_text}</blockquote>}
-                    </td>
-                  </tr>
-                ))}
+                {run.members.map((m) => {
+                  const uncertain = run.actions.some(
+                    (a) =>
+                      a.member_id === m.id &&
+                      ["unknown", "submitting"].includes(a.status),
+                  );
+                  const stoppedKnown =
+                    ["cancelled", "completed"].includes(run.status) &&
+                    !uncertain &&
+                    m.status === "needs_review";
+                  return (
+                    <tr key={m.id} id={"member-" + m.id} tabIndex={-1}>
+                      <td>
+                        <button
+                          className="text-link"
+                          onClick={() => onOpen(m.url)}
+                        >
+                          {m.name || m.url}
+                        </button>
+                      </td>
+                      <td>
+                        {stoppedKnown
+                          ? "План остановлен"
+                          : states[m.status] || m.status}
+                      </td>
+                      <td>
+                        {[
+                          "sent",
+                          "waiting_acceptance",
+                          "waiting_budget",
+                          "waiting_credits",
+                          "planned",
+                        ].includes(m.status)
+                          ? run.status === "paused"
+                            ? "После возобновления"
+                            : run.status === "active"
+                              ? date(m.next_check)
+                              : "—"
+                          : "—"}
+                      </td>
+                      <td>
+                        <DetailMessage
+                          detail={m.detail}
+                          status={m.status}
+                          stopped={stoppedKnown}
+                        />
+                        {m.status === "needs_review" &&
+                          !stoppedKnown &&
+                          !uncertain &&
+                          onCheck && (
+                            <button
+                              className="button small"
+                              disabled={disabled}
+                              onClick={() => onCheck(m.id)}
+                            >
+                              Проверить автоматически
+                            </button>
+                          )}
+                        {m.reply_text && (
+                          <blockquote>{m.reply_text}</blockquote>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1501,6 +1559,10 @@ export function OutreachHistory({
                   detail={a.detail}
                   status={a.status}
                   kind={a.kind}
+                  stopped={
+                    ["cancelled", "completed"].includes(run.status) &&
+                    a.status === "blocked"
+                  }
                 />
                 {a.kind === "inmail" && <b>Тема: {m?.subject}</b>}
                 <pre>
@@ -1512,6 +1574,24 @@ export function OutreachHistory({
                 </pre>
                 {a.status === "unknown" && (
                   <div className="actions">
+                    {a.kind === "inmail" && (run.context || m?.subject) && (
+                      <p className="hint">
+                        Эту старую отправку InMail нельзя надёжно проверить
+                        автоматически. Откройте переписку в LinkedIn и укажите
+                        результат вручную.
+                      </p>
+                    )}
+                    {onCheck &&
+                      m &&
+                      !(a.kind === "inmail" && (run.context || m.subject)) && (
+                        <button
+                          className="button"
+                          disabled={disabled}
+                          onClick={() => onCheck(m.id)}
+                        >
+                          Проверить автоматически
+                        </button>
+                      )}
                     <button className="button" onClick={() => onOpen(a.url)}>
                       Открыть LinkedIn
                     </button>

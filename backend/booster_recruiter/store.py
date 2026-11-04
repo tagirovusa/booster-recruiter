@@ -156,8 +156,10 @@ class Store:
             raise AppError("Запись не найдена.")
         return rows[0]
 
-    def account(self, aid):
+    def account(self, aid, *, include_deleted=False):
         account = self.one("SELECT * FROM accounts WHERE id=?", (aid,))
+        if account["status"] == "deleted" and not include_deleted:
+            raise AppError("Этот аккаунт удалён. История сохранена в архиве.")
         services = self.rows(
             "SELECT data FROM account_services WHERE account_id=?", (aid,)
         )
@@ -249,14 +251,27 @@ class Store:
         return self.campaign(cid)
 
     def state(self):
+        accounts = [
+            self.account(a["id"], include_deleted=True)
+            for a in self.rows("SELECT id FROM accounts ORDER BY created DESC")
+        ]
+        campaigns = self.rows(
+            "SELECT c.*,(SELECT COUNT(*) FROM candidates p WHERE p.campaign_id=c.id) AS count FROM campaigns c ORDER BY created DESC"
+        )
+        deleted = {a["id"] for a in accounts if a["status"] == "deleted"}
         return {
-            "accounts": [
-                self.account(a["id"])
-                for a in self.rows("SELECT id FROM accounts ORDER BY created DESC")
+            "accounts": [a for a in accounts if a["id"] not in deleted],
+            "archived_accounts": [a for a in accounts if a["id"] in deleted],
+            "campaigns": [
+                c
+                for c in campaigns
+                if c["account_id"] not in deleted and c["status"] != "archived"
             ],
-            "campaigns": self.rows(
-                "SELECT c.*,(SELECT COUNT(*) FROM candidates p WHERE p.campaign_id=c.id) AS count FROM campaigns c ORDER BY created DESC"
-            ),
+            "archived_campaigns": [
+                c
+                for c in campaigns
+                if c["account_id"] in deleted or c["status"] == "archived"
+            ],
             "events": self.rows("SELECT * FROM events ORDER BY id DESC LIMIT 30"),
         }
 
@@ -314,7 +329,11 @@ class Store:
             )
 
     def ensure_idle(self, cid):
-        if self.campaign(cid)["status"] in (
+        campaign = self.campaign(cid)
+        self.account(campaign["account_id"])
+        if campaign["status"] == "archived":
+            raise AppError("Кампания в архиве. Её история доступна только для чтения.")
+        if campaign["status"] in (
             "collecting",
             "sending",
             "automating",
@@ -675,7 +694,9 @@ class Store:
                     contact.get("invitation_at", ""),
                     contact.get("checked_at", ""),
                     contact.get("next_check", ""),
-                    self.account(data["campaign"]["account_id"])["label"],
+                    self.account(data["campaign"]["account_id"], include_deleted=True)[
+                        "label"
+                    ],
                 ]
             )
         if fmt == "csv":

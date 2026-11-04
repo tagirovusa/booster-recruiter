@@ -125,6 +125,11 @@ def create_server(root: Path):
         """Read replies, account login needs and uncertain actions across campaigns."""
         return call("workspace.summary")
 
+    @mcp.tool()
+    def recheck_attention_item(item_id: str) -> dict:
+        """Re-read LinkedIn evidence for one attention item. Never sends, invites or resumes a plan."""
+        return call("workspace.recheck", {"id": item_id})
+
     @mcp.tool(annotations={"readOnlyHint": True})
     def list_campaign_templates() -> dict:
         """Read reusable search, message and schedule templates; no recipients or approvals."""

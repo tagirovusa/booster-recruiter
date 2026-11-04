@@ -8,6 +8,7 @@ from booster_linkedin.linkedin.connection import ActionSignals
 from booster_linkedin.linkedin.connection_actions import ConnectionActions
 from booster_linkedin.linkedin.identifiers import normalize_person_identifier
 from booster_linkedin.linkedin.message_sender import (
+    _MESSAGE_BODY_JS,
     _MESSAGE_COMPOSER_PINNED_JS,
     _MESSAGE_COMPOSER_SUBMIT_JS,
     MessageSender,
@@ -110,6 +111,42 @@ THREAD_JS = r"""({path,urn})=>{
  }
  return {verified:!unresolved,has_reply:incoming,has_outgoing:outgoing,reply_text:replyText,count:items.length,ids:items.map(e=>e.getAttribute('data-event-urn'))};
 }"""
+
+
+DELIVERY_PROOF_JS = (
+    "({path,urn,message,since,subject})=>{"
+    + _MESSAGE_BODY_JS
+    + r"""
+ const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+ const panes=[...document.querySelectorAll('main .msg-thread')].filter(visible);
+ if(panes.length!==1)return {confirmed:false,reason:'pane'};
+ const pane=panes[0];
+ const profile=a=>{try {const u=new URL(a.href);return u.protocol==='https:'&&/(^|\.)linkedin\.com$/.test(u.hostname)?decodeURIComponent(u.pathname).normalize('NFC').replace(/\/$/,'').toLowerCase():null;}catch{return null;}};
+ const expected=[decodeURIComponent(path).normalize('NFC').replace(/\/$/,'').toLowerCase(),'/in/'+urn.toLowerCase()];
+ const headers=[...pane.querySelectorAll('a[href*="/in/"]')].filter(a=>visible(a)&&!a.closest('[data-event-urn]'));
+ if(!headers.length||!headers.every(a=>expected.includes(profile(a))))return {confirmed:false,reason:'recipient'};
+ if(!/^\/messaging\/thread\/(?!new\/)[A-Za-z0-9_=-]+\/$/.test(location.pathname))return {confirmed:false,reason:'thread'};
+ if(subject)return {confirmed:false,reason:'subject'};
+ const attempted=Date.parse(since);if(!Number.isFinite(attempted))return {confirmed:false,reason:'time'};
+ const items=[...pane.querySelectorAll('[data-view-name="message-list-item"][data-event-urn]')].filter(visible);
+ let author=null;const matches=[];
+ for(const item of items){
+  const id=item.getAttribute('data-event-urn')||'';
+  const own=id.match(/^urn:li:msg_message:\(urn:li:fsd_profile:([A-Za-z0-9_-]+),[^)]+\)$/)?.[1];
+  const body=messageBody(item,false);if(!own||!body){author=null;continue;}
+  const text=body.parentElement?.parentElement;
+  const links=[...item.querySelectorAll('a[href*="/in/"]')].filter(a=>!text?.contains(a));
+  if(links.length)author=links.every(a=>profile(a)==='/in/'+own.toLowerCase())?'own':'other';
+  if(author!=='own'||body.innerText!==message)continue;
+  // Only machine-readable exact times establish that an old identical message
+  // cannot stand in for this attempt. Local placeholders and relative labels do not.
+  const times=[...item.querySelectorAll('time[datetime]')].map(t=>t.getAttribute('datetime')).filter(t=>/T.*(?:Z|[+-]\d\d:\d\d)$/.test(t||'')).map(Date.parse);
+  if(times.length!==1||!Number.isFinite(times[0])||times[0]<attempted||times[0]>Date.now()+60000)continue;
+  matches.push(id);
+ }
+ return {confirmed:matches.length===1,event_id:matches.length===1?matches[0]:null,thread_id:location.pathname.match(/\/thread\/([^/]+)/)?.[1]};
+}"""
+)
 
 
 def refusal(message):
@@ -524,6 +561,19 @@ class BrowserOutreach:
 
     async def invite(self, url, note):
         before = await self.observe(url, relationship_only=True)
+        if before.get("identity_verified") is True and before.get("relationship") in {
+            "connected",
+            "pending",
+        }:
+            return {
+                "invited": False,
+                "contact_satisfied": True,
+                "relationship": before["relationship"],
+                "retry_safe": True,
+                "message": "Контакт уже существует."
+                if before["relationship"] == "connected"
+                else "Приглашение уже ожидает принятия.",
+            }
         if not before.get("identity_verified") or not before.get("can_invite"):
             return refusal(
                 "Приглашение недоступно, уже отправлено или контакт уже существует."
@@ -538,8 +588,36 @@ class BrowserOutreach:
         )
         if connector.submit_refusal:
             return result
-        if result.get("status") == "connected":
+        if result.get("status") in {
+            "connected",
+            "already_connected",
+            "accepted",
+            "already_pending",
+        }:
             after = await self.observe(url, relationship_only=True)
+            if (
+                after.get("identity_verified") is True
+                and after.get("relationship") == "connected"
+            ):
+                return {
+                    "invited": False,
+                    "contact_satisfied": True,
+                    "relationship": "connected",
+                    "retry_safe": True,
+                    "message": "Контакт уже существует. Повторное приглашение не требуется.",
+                }
+            if (
+                result.get("status") != "connected"
+                and after.get("identity_verified") is True
+                and after.get("relationship") == "pending"
+            ):
+                return {
+                    "invited": False,
+                    "contact_satisfied": True,
+                    "relationship": "pending",
+                    "retry_safe": True,
+                    "message": "Приглашение уже ожидает принятия.",
+                }
             confirmed = (
                 after.get("identity_verified") is True
                 and after.get("relationship") == "pending"
@@ -590,6 +668,48 @@ class BrowserOutreach:
             self.session, self.navigator, kind, subject or "", pacer=self.pacer
         )
         return await sender.send_message(url, message, confirm_send=True)
+
+    async def verify_delivery(self, url, message, since, thread_id=None, subject=""):
+        observation = await self.observe(url, relationship_only=True)
+        if (
+            observation.get("identity_verified") is not True
+            or self.read_conversation is None
+        ):
+            return {
+                "confirmed": False,
+                "detail": "Профиль или переписка пока не подтверждены. Отправка не повторялась.",
+            }
+        resolution = await self.sender._read_profile_message_target(timeout_ms=8000)
+        target = resolution.target
+        if (
+            not target
+            or normalize_person_identifier(target.profile_path).casefold()
+            != normalize_person_identifier(url).casefold()
+        ):
+            return {
+                "confirmed": False,
+                "detail": "Не подтверждён адресат переписки. Отправка не повторялась.",
+            }
+        await self.read_conversation(
+            {"thread_id": thread_id} if thread_id else {"linkedin_username": url}
+        )
+        result = await self.session.run_on_linkedin(
+            DELIVERY_PROOF_JS,
+            {
+                "path": target.profile_path,
+                "urn": target.profile_urn,
+                "message": message,
+                "since": since,
+                "subject": subject,
+            },
+        )
+        if thread_id and result.get("thread_id") != thread_id:
+            result = {"confirmed": False}
+        if result.get("confirmed") is not True:
+            result["detail"] = (
+                "Автоматическая проверка не нашла однозначного подтверждения: нужны точный текст, отправитель, адресат и время сообщения после попытки. Повтор не выполнялся; проверьте диалог вручную."
+            )
+        return result
 
     async def check_reply(self, url, thread_id, open_conversation):
         observation = await self.observe(url)

@@ -251,6 +251,7 @@ async def check_outreach_browser(page):
         + connection_cases
         + await check_search_browser(page)
         + await check_platform_limit_notices(page)
+        + await check_delivery_recovery(page)
     )
 
 
@@ -577,3 +578,61 @@ async def check_platform_limit_notices(page):
     else:
         raise AssertionError("Platform notice was not surfaced as a limit")
     return len(cases) + 2
+
+
+async def check_delivery_recovery(page):
+    """Read-only recovery cannot confuse an old or incoming identical message."""
+    from datetime import datetime, timedelta, timezone
+
+    from .outreach_browser import DELIVERY_PROOF_JS
+
+    current = datetime.now(timezone.utc)
+    cases = [
+        ("valid", True),
+        ("old", False),
+        ("missing_time", False),
+        ("incoming", False),
+        ("wrong_recipient", False),
+        ("local_id", False),
+        ("wrong_text", False),
+        ("two_panes", False),
+        ("duplicate", False),
+        ("wrong_subject", False),
+        ("future", False),
+    ]
+    for mode, expected in cases:
+        await page.goto("https://www.linkedin.com/messaging/thread/verified-thread/")
+        timestamp = (
+            current - timedelta(seconds=20 if mode == "old" else 2)
+        ).isoformat()
+        if mode == "future":
+            timestamp = (current + timedelta(days=1)).isoformat()
+        await page.set_content(
+            '<main><section class="msg-thread"><a href="/in/test-recipient/">Recipient</a></section></main>'
+        )
+        await page.evaluate(
+            """({mode,timestamp})=>{
+          const pane=document.querySelector('.msg-thread');
+          if(mode==='wrong_recipient')pane.querySelector('a').href='/in/someone-else/';
+          const item=document.createElement('div');item.dataset.viewName='message-list-item';
+          item.dataset.eventUrn=mode==='local_id'?'local-placeholder':'urn:li:msg_message:(urn:li:fsd_profile:ACoATESTSelf,new-server-id)';
+          item.innerHTML='<a href="/in/'+(mode==='incoming'?'ACoATESTRecipient':'ACoATESTSelf')+'/">Author</a><div><div><p>'+(mode==='wrong_text'?'Other message':'Exact message')+'</p></div></div>';
+          if(mode!=='missing_time'){const t=document.createElement('time');t.dateTime=timestamp;item.append(t);}
+          pane.append(item);
+          if(mode==='duplicate'){const other=item.cloneNode(true);other.dataset.eventUrn='urn:li:msg_message:(urn:li:fsd_profile:ACoATESTSelf,another-server-id)';pane.append(other);}
+          if(mode==='two_panes')document.querySelector('main').append(pane.cloneNode(true));
+        }""",
+            {"mode": mode, "timestamp": timestamp},
+        )
+        result = await page.evaluate(
+            DELIVERY_PROOF_JS,
+            {
+                "path": "/in/test-recipient/",
+                "urn": "ACoATESTRecipient",
+                "message": "Exact message",
+                "since": (current - timedelta(seconds=5)).isoformat(),
+                "subject": "Subject" if mode == "wrong_subject" else "",
+            },
+        )
+        assert result["confirmed"] is expected, (mode, result)
+    return len(cases)

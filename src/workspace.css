@@ -168,3 +168,17 @@
     grid-template-columns: 1fr;
   }
 }
+
+.archive-tabs {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 20px;
+  flex-wrap: wrap;
+}
+.account-delete {
+  margin-top: 18px;
+  color: #9c3535;
+}
+.attention-actions {
+  flex-wrap: wrap;
+}

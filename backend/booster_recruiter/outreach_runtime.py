@@ -314,7 +314,35 @@ class OutreachRuntime:
                         if action == "invite"
                         else result.get("sent") is True
                     )
-                    if confirmed:
+                    if (
+                        action == "invite"
+                        and result.get("contact_satisfied") is True
+                        and result.get("relationship") in {"connected", "pending"}
+                    ):
+                        self.repo.finish(
+                            action_id,
+                            "satisfied",
+                            result.get("message", "Связь подтверждена."),
+                        )
+                        relation = result["relationship"]
+                        self.repo.update_member(
+                            member["id"],
+                            relationship=relation,
+                            status="planned"
+                            if relation == "connected"
+                            else "waiting_acceptance",
+                            invitation_at=member["invitation_at"]
+                            if relation == "connected"
+                            else member["invitation_at"] or now(),
+                            checked_at=now(),
+                            next_check=now()
+                            if relation == "connected"
+                            else later(hours=rules["check_hours"]),
+                            detail="Контакт уже существует; проверим сообщение по утверждённому плану."
+                            if relation == "connected"
+                            else "Приглашение уже ожидает принятия; повтор не нужен.",
+                        )
+                    elif confirmed:
                         self.repo.finish(
                             action_id,
                             "sent",

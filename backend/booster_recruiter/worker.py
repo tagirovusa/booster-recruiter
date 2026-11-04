@@ -273,6 +273,7 @@ async def serve(profile: Path, *, visible=False):
                     result = person
                 elif action in (
                     "observe",
+                    "verify_delivery",
                     "invite",
                     "send_free",
                     "send_inmail",
@@ -333,7 +334,9 @@ async def serve(profile: Path, *, visible=False):
                         result = await outreach.open_profile(p["url"])
                     elif action == "observe":
                         result = await outreach.observe(
-                            p["url"], p.get("check_history", False)
+                            p["url"],
+                            p.get("check_history", False),
+                            p.get("relationship_only", False),
                         )
                         if (
                             p.get("recruiter")
@@ -365,6 +368,22 @@ async def serve(profile: Path, *, visible=False):
                             result.update(observed)
                             if observed.get("recruiter_has_history"):
                                 result["has_outgoing"] = True
+                    elif action == "verify_delivery":
+                        if p.get("recruiter") or (p.get("thread_id") or "").startswith(
+                            "recruiter:"
+                        ):
+                            result = {
+                                "confirmed": False,
+                                "detail": "Для этой старой отправки Recruiter нет сохранённого подтверждения. Проверьте переписку вручную; повтор не выполнялся.",
+                            }
+                        else:
+                            result = await outreach.verify_delivery(
+                                p["url"],
+                                p["message"],
+                                p["since"],
+                                p.get("thread_id"),
+                                p.get("subject", ""),
+                            )
                     elif action == "invite":
                         result = await outreach.invite(p["url"], p.get("note", ""))
                     elif action == "check_reply":

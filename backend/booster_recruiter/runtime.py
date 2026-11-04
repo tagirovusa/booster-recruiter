@@ -157,6 +157,9 @@ class Runtime:
         from .outreach_runtime import OutreachRuntime
 
         self.outreach = OutreachRuntime(self)
+        from .attention_recovery import AttentionRecovery
+
+        self.attention = AttentionRecovery(self)
 
     def worker(self, aid):
         self.store.account(aid)

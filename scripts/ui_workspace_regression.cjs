@@ -65,6 +65,10 @@ const { execFileSync } = require("node:child_process");
     await expect(
       page.getByRole("heading", { name: "Ваши кампании" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Требуют внимания" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: /^Требует внимания/ }).click();
     const attention = page.getByRole("region", { name: "Требуют внимания" });
     await expect(
       attention.getByRole("button", { name: /Открыть ответ/ }).first(),
@@ -77,6 +81,7 @@ const { execFileSync } = require("node:child_process");
     await page
       .getByRole("button", { name: "Все кампании", exact: true })
       .click();
+    await page.getByRole("button", { name: /^Требует внимания/ }).click();
     const repliesBefore = await attention
       .getByRole("button", { name: "Прочитано", exact: true })
       .count();
@@ -88,6 +93,7 @@ const { execFileSync } = require("node:child_process");
       attention.getByRole("button", { name: "Прочитано", exact: true }),
     ).toHaveCount(repliesBefore - 1);
     await page.reload();
+    await page.getByRole("button", { name: /^Требует внимания/ }).click();
     await expect(
       attention.getByRole("button", { name: "Прочитано", exact: true }),
     ).toHaveCount(repliesBefore - 1);
@@ -295,6 +301,7 @@ const { execFileSync } = require("node:child_process");
     );
     if (process.env.BOOSTER_UI_ARTIFACT_DIR) {
       fs.mkdirSync(process.env.BOOSTER_UI_ARTIFACT_DIR, { recursive: true });
+      await page.getByRole("button", { name: /^Требует внимания/ }).click();
       await page.screenshot({
         path: path.join(
           process.env.BOOSTER_UI_ARTIFACT_DIR,
@@ -302,6 +309,7 @@ const { execFileSync } = require("node:child_process");
         ),
         fullPage: true,
       });
+      await page.getByRole("button", { name: /^Кампании/ }).click();
       await page
         .getByRole("button", { name: "Новая кампания", exact: true })
         .click();
