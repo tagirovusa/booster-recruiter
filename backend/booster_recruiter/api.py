@@ -40,7 +40,9 @@ def create_app(store, runtime, token):
             if op == "state":
                 result = store.state()
             elif op == "workspace.summary":
-                result = store.workspace.summary()
+                result = runtime.attention.decorate(store.workspace.summary())
+            elif op == "workspace.recheck":
+                result = runtime.attention.start(p["id"])
             elif op == "workspace.acknowledge":
                 result = store.workspace.acknowledge(p["id"])
             elif op == "template.list":
@@ -86,6 +88,18 @@ def create_app(store, runtime, token):
                     runtime.workers.clear()
                     result = store.workspace.restore(p["id"])
                     runtime.pause_flags.clear()
+            elif op == "account.deletion_preview":
+                from .account_removal import deletion_preview
+
+                result = deletion_preview(store, p["id"])
+            elif op == "account.delete":
+                from .account_removal import remove_account
+
+                if p.get("confirm") is not True:
+                    raise AppError(
+                        "Подтвердите удаление аккаунта и его локальной сессии."
+                    )
+                result = await remove_account(store, runtime, p["id"])
             elif op == "account.create":
                 result = store.create_account(p["label"])
             elif op == "account.login":
@@ -120,6 +134,7 @@ def create_app(store, runtime, token):
                 runtime.start_campaign(p["id"], runtime.collect(p["id"]), "collecting")
                 result = {"started": True}
             elif op == "campaign.pause":
+                store.account(store.campaign(p["id"])["account_id"])
                 result = await runtime.pause_campaign(p["id"])
             elif op == "campaign.automation":
                 result = store.outreach.configure(p["id"], p["rules"])
@@ -204,6 +219,10 @@ def create_app(store, runtime, token):
                 result = {"started": True}
             elif op == "delivery.resolve":
                 row = store.one("SELECT * FROM deliveries WHERE id=?", (p["id"],))
+                sender = store.one(
+                    "SELECT account_id FROM batches WHERE id=?", (row["batch_id"],)
+                )
+                store.account(sender["account_id"])
                 if row["status"] != "unknown":
                     raise AppError("Эта отправка не требует ручной проверки.")
                 status = p["status"]

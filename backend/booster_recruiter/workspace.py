@@ -49,7 +49,11 @@ class Workspace:
             m
         ) in self.s.rows("""SELECT m.*,r.campaign_id,r.account_id,r.status AS run_status
                 FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id
-                WHERE m.status IN ('replied','needs_review')"""):
+                JOIN accounts a ON a.id=r.account_id JOIN campaigns c ON c.id=r.campaign_id
+                WHERE a.status!='deleted' AND c.status!='archived' AND (
+                m.status='replied' OR (m.status='needs_review' AND (
+                r.status NOT IN ('cancelled','completed') OR EXISTS(
+                SELECT 1 FROM outreach_actions x WHERE x.member_id=m.id AND x.status IN ('unknown','submitting')))))"""):
             kind = "reply" if m["status"] == "replied" else "review"
             identity = kind + ":" + m["id"]
             if kind == "reply" and self.s.rows(
@@ -78,7 +82,7 @@ class Workspace:
                 )
             )
         for d in self.s.rows("""SELECT d.*,b.campaign_id,b.account_id,p.data FROM deliveries d
-                JOIN batches b ON b.id=d.batch_id JOIN candidates p ON p.id=d.candidate_id WHERE d.status='unknown'"""):
+                JOIN batches b ON b.id=d.batch_id JOIN candidates p ON p.id=d.candidate_id JOIN accounts a ON a.id=b.account_id JOIN campaigns c ON c.id=b.campaign_id WHERE d.status='unknown' AND a.status!='deleted' AND c.status!='archived'"""):
             items.append(
                 dict(
                     id="delivery:" + d["id"],
@@ -264,7 +268,7 @@ class Workspace:
             }
             for sql in (
                 "SELECT url FROM deliveries WHERE status IN ('sent','sending','unknown','replied','invited')",
-                "SELECT url FROM outreach_actions WHERE status IN ('sent','submitting','unknown')",
+                "SELECT url FROM outreach_actions WHERE status IN ('sent','submitting','unknown','satisfied')",
                 "SELECT url FROM outreach_members WHERE invitation_at IS NOT NULL OR sent_at IS NOT NULL",
             ):
                 for r in self.s.rows(sql):
@@ -272,9 +276,17 @@ class Workspace:
                         r["url"],
                         "Защита от повторного контакта после восстановления копии.",
                     )
+            deleted_ids = [
+                r["id"]
+                for r in self.s.rows("SELECT id FROM accounts WHERE status='deleted'")
+            ]
             with stage:
                 stage.execute(
-                    "UPDATE accounts SET status='needs_login',error='Проверьте вход после восстановления резервной копии.'"
+                    "UPDATE accounts SET status='needs_login',error='Проверьте вход после восстановления резервной копии.' WHERE status!='deleted'"
+                )
+                stage.executemany(
+                    "UPDATE accounts SET status='deleted' WHERE id=?",
+                    [(aid,) for aid in deleted_ids],
                 )
                 stage.execute("DELETE FROM account_services")
                 stage.execute(
@@ -301,6 +313,9 @@ class Workspace:
                 stage.executemany(
                     "INSERT OR IGNORE INTO suppression(url,reason,created) VALUES(?,?,?)",
                     [(url, reason, now()) for url, reason in protected.items()],
+                )
+                stage.execute(
+                    "UPDATE campaigns SET status='archived',progress='Аккаунт удалён.' WHERE account_id IN (SELECT id FROM accounts WHERE status='deleted')"
                 )
             self.create_backup("before-restore")
             stage.backup(self.db)

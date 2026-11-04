@@ -52,6 +52,9 @@ const labels = {
   identity_mismatch: "Другой профиль",
   restricted: "Ограничение LinkedIn",
   disconnected: "Отключён",
+  deleted: "Удалён",
+  archived: "В архиве",
+  satisfied: "Состояние подтверждено",
   draft: "Черновик",
   collecting: "Собираем профили",
   sending: "Отправляем сообщения",
@@ -230,6 +233,9 @@ function App() {
   const [focusTarget, setFocusTarget] = useState(null);
   const [attentionNavigation, setAttentionNavigation] = useState(0);
   const [templateName, setTemplateName] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(null);
+  const [checkingItem, setCheckingItem] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState("campaigns");
   const [cid, setCid] = useState(null);
   const currentCampaign = useRef(cid);
@@ -331,7 +337,7 @@ function App() {
   }, []);
   useEffect(() => {
     const unsubscribe = api?.onAttention?.((id) => {
-      setPage("campaigns");
+      setPage("attention");
       setCid(null);
       setDetail(null);
       setModal(null);
@@ -417,6 +423,25 @@ function App() {
       setBusy(false);
     }
   };
+  const recheckAttention = async (id) => {
+    setCheckingItem(id);
+    try {
+      await act(
+        "workspace.recheck",
+        { id },
+        "Проверка запущена без отправки. Результат появится здесь и в истории.",
+      );
+    } finally {
+      setCheckingItem(null);
+    }
+  };
+  const prepareAccountDeletion = async (id) => {
+    const result = await act("account.deletion_preview", { id });
+    if (result) {
+      setDeletingAccount(result);
+      setModal("delete-account");
+    }
+  };
   const eligible = (p) => p.outreach_eligible === true;
   const selected =
     detail?.candidates.filter((p) => p.selected && eligible(p)) || [];
@@ -443,19 +468,31 @@ function App() {
   const contactMembers = new Map();
   for (const p of detail?.candidates || [])
     if (p.outreach_member) contactMembers.set(p.id, p.outreach_member);
-  const account = state.accounts.find((a) => a.id === campaign?.account_id);
+  const allAccounts = [...state.accounts, ...(state.archived_accounts || [])];
+  const account = allAccounts.find((a) => a.id === campaign?.account_id);
+  const archived =
+    campaign?.status === "archived" || account?.status === "deleted";
+  const visibleCampaigns = showArchived
+    ? state.archived_campaigns || []
+    : state.campaigns;
   const openInSenderAccount = (url) =>
-    act(
-      "account.open_profile",
-      { id: campaign.account_id, url },
-      "Профиль открыт в сессии отправителя.",
-    );
+    archived
+      ? api.openProfile(url).catch((e) => setError(e.message))
+      : act(
+          "account.open_profile",
+          { id: campaign.account_id, url },
+          "Профиль открыт в сессии отправителя.",
+        );
   const openCampaign = (id) => {
     setCid(id);
     setDetail(null);
     setDetailError("");
     setPage("campaigns");
-    setTab("people");
+    setTab(
+      (state.archived_campaigns || []).some((c) => c.id === id)
+        ? "history"
+        : "people",
+    );
     setFilter("all");
     setQuery("");
   };
@@ -550,6 +587,7 @@ function App() {
         <nav>
           {[
             [LayoutGrid, "campaigns", "Кампании"],
+            [Inbox, "attention", "Требует внимания"],
             [Users, "accounts", "Аккаунты"],
             [Settings, "settings", "Настройки"],
           ].map(([Icon, id, text]) => (
@@ -564,6 +602,11 @@ function App() {
             >
               <Icon size={19} />
               {text}
+              {id === "attention" &&
+                workspaceSummary &&
+                workspaceSummary.items.length > 0 && (
+                  <span>{workspaceSummary.items.length}</span>
+                )}
               {id === "campaigns" && workspaceLoaded && (
                 <span>{state.campaigns.length}</span>
               )}
@@ -584,9 +627,11 @@ function App() {
             Подбор персонала <ChevronRight size={14} />{" "}
             {page === "campaigns"
               ? "Кампании"
-              : page === "accounts"
-                ? "Аккаунты"
-                : "Настройки"}{" "}
+              : page === "attention"
+                ? "Требует внимания"
+                : page === "accounts"
+                  ? "Аккаунты"
+                  : "Настройки"}{" "}
             {cid && (
               <>
                 <ChevronRight size={14} />
@@ -649,6 +694,52 @@ function App() {
               onRetry={retryLoad}
               retrying={retrying}
             />
+          ) : page === "attention" ? (
+            <>
+              <div className="page-heading">
+                <div>
+                  <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p>
+                  <h1>Требует внимания</h1>
+                  <p>
+                    Ответы и проверки по всем кампаниям. Автоматическая проверка
+                    не отправляет сообщений или приглашений.
+                  </p>
+                </div>
+              </div>
+              <AttentionPanel
+                key={attentionNavigation}
+                campaigns={state.campaigns}
+                accounts={state.accounts}
+                summary={workspaceSummary}
+                error={attentionError}
+                disabled={busy}
+                onSettings={() => {
+                  setPage("settings");
+                  setCid(null);
+                  setDetail(null);
+                }}
+                checkingItem={checkingItem}
+                onCheck={recheckAttention}
+                onRetry={refreshWorkspace}
+                onRead={(id) => act("workspace.acknowledge", { id })}
+                onOpen={(item) => {
+                  if (item.kind === "login") {
+                    setPage("accounts");
+                    setCid(null);
+                    setDetail(null);
+                    setFocusTarget("account-" + item.account_id);
+                  } else {
+                    openCampaign(item.campaign_id);
+                    setTab("history");
+                    setFocusTarget(
+                      item.action_id
+                        ? "action-" + item.action_id
+                        : "member-" + item.member_id,
+                    );
+                  }
+                }}
+              />
+            </>
           ) : page === "accounts" ? (
             <>
               <div className="page-heading">
@@ -801,6 +892,13 @@ function App() {
                             )}
                         </div>
                       )}
+                      <button
+                        className="text-button account-delete"
+                        disabled={busy}
+                        onClick={() => prepareAccountDeletion(a.id)}
+                      >
+                        Удалить аккаунт
+                      </button>
                       {a.status === "ready" && (
                         <button
                           className="text-button muted"
@@ -996,37 +1094,7 @@ function App() {
                     : "Подключить LinkedIn"}
                 </Button>
               </div>
-              <AttentionPanel
-                key={attentionNavigation}
-                campaigns={state.campaigns}
-                accounts={state.accounts}
-                summary={workspaceSummary}
-                error={attentionError}
-                disabled={busy}
-                onSettings={() => {
-                  setPage("settings");
-                  setCid(null);
-                  setDetail(null);
-                }}
-                onRetry={refreshWorkspace}
-                onRead={(id) => act("workspace.acknowledge", { id })}
-                onOpen={(item) => {
-                  if (item.kind === "login") {
-                    setPage("accounts");
-                    setCid(null);
-                    setDetail(null);
-                    setFocusTarget("account-" + item.account_id);
-                  } else {
-                    openCampaign(item.campaign_id);
-                    setTab("history");
-                    setFocusTarget(
-                      item.action_id
-                        ? "action-" + item.action_id
-                        : "member-" + item.member_id,
-                    );
-                  }
-                }}
-              />
+
               {(workspaceSummary?.templates || []).length > 0 && (
                 <div className="workspace-template-shortcut">
                   <Button onClick={() => setModal("template")}>
@@ -1034,6 +1102,22 @@ function App() {
                   </Button>
                 </div>
               )}
+              <div className="archive-tabs" aria-label="Список кампаний">
+                <button
+                  className={"button " + (!showArchived ? "primary" : "")}
+                  aria-pressed={!showArchived}
+                  onClick={() => setShowArchived(false)}
+                >
+                  Активные
+                </button>
+                <button
+                  className={"button " + (showArchived ? "primary" : "")}
+                  aria-pressed={showArchived}
+                  onClick={() => setShowArchived(true)}
+                >
+                  Архив · {(state.archived_campaigns || []).length}
+                </button>
+              </div>
               <div className="stats">
                 <Stat label="Кампании" value={state.campaigns.length} />
                 <Stat
@@ -1047,11 +1131,19 @@ function App() {
                   }
                 />
               </div>
-              {!state.campaigns.length ? (
+              {!visibleCampaigns.length ? (
                 <Empty
                   icon={Search}
-                  title="Найдите людей для вашей следующей вакансии"
-                  text="Задайте ключевые слова и подготовьте сообщения. Программа сохранит найденные профили и поможет проверить их перед отправкой."
+                  title={
+                    showArchived
+                      ? "Архив пока пуст"
+                      : "Найдите людей для вашей следующей вакансии"
+                  }
+                  text={
+                    showArchived
+                      ? "История кампаний удалённых аккаунтов появится здесь."
+                      : "Задайте ключевые слова и подготовьте сообщения. Программа сохранит найденные профили и поможет проверить их перед отправкой."
+                  }
                   action={
                     <Button
                       kind="primary"
@@ -1069,8 +1161,8 @@ function App() {
               ) : (
                 <div className="panel">
                   <div className="panel-title">
-                    <h2>Все кампании</h2>
-                    <span>{state.campaigns.length} всего</span>
+                    <h2>{showArchived ? "Архив кампаний" : "Все кампании"}</h2>
+                    <span>{visibleCampaigns.length} всего</span>
                   </div>
                   <div className="table-scroll">
                     <table className="campaign-table">
@@ -1084,7 +1176,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {state.campaigns.map((c) => (
+                        {visibleCampaigns.map((c) => (
                           <tr
                             className="clickable"
                             key={c.id}
@@ -1104,9 +1196,8 @@ function App() {
                             </td>
                             <td>
                               {
-                                state.accounts.find(
-                                  (a) => a.id === c.account_id,
-                                )?.label
+                                allAccounts.find((a) => a.id === c.account_id)
+                                  ?.label
                               }
                             </td>
                             <td className="number">{c.count}</td>
@@ -1155,7 +1246,7 @@ function App() {
                 </div>
                 <div className="actions">
                   <Button
-                    disabled={active || busy}
+                    disabled={archived || active || busy}
                     onClick={() => {
                       setTemplateName(campaign.name);
                       setModal("save-template");
@@ -1170,7 +1261,11 @@ function App() {
                     <Download size={17} />
                     Excel
                   </Button>
-                  {active || liveRun ? (
+                  {archived ? (
+                    <span className="search-complete">
+                      В архиве · только история
+                    </span>
+                  ) : active || liveRun ? (
                     <Button
                       onClick={() =>
                         act(
@@ -1202,7 +1297,13 @@ function App() {
                   )}
                 </div>
               </div>
-              {account?.status !== "ready" && (
+              {archived && (
+                <div className="hint">
+                  Аккаунт удалён. История и экспорт сохранены; новые отправки из
+                  этой кампании недоступны.
+                </div>
+              )}
+              {!archived && account?.status !== "ready" && (
                 <div className="hint warning">
                   Подключите аккаунт отправителя, чтобы искать кандидатов и
                   запускать кампанию.{" "}
@@ -1262,16 +1363,18 @@ function App() {
                   ["people", "Кандидаты", Users],
                   ["automation", "Автоматизация", Settings],
                   ["history", "История", Inbox],
-                ].map(([id, name, Icon]) => (
-                  <button
-                    key={id}
-                    className={tab === id ? "active" : ""}
-                    onClick={() => setTab(id)}
-                  >
-                    <Icon size={17} />
-                    {name}
-                  </button>
-                ))}
+                ]
+                  .filter(([id]) => !archived || id === "history")
+                  .map(([id, name, Icon]) => (
+                    <button
+                      key={id}
+                      className={tab === id ? "active" : ""}
+                      onClick={() => setTab(id)}
+                    >
+                      <Icon size={17} />
+                      {name}
+                    </button>
+                  ))}
               </div>
               {tab === "automation" ? (
                 <Automation
@@ -1285,7 +1388,7 @@ function App() {
                   campaign={campaign}
                   account={account}
                   selected={selected}
-                  disabled={active || busy}
+                  disabled={archived || active || busy}
                   onSave={saveAutomation}
                   onPeople={() => setTab("people")}
                   onHistory={() => setTab("history")}
@@ -1316,12 +1419,24 @@ function App() {
                   </div>
                   <OutreachHistory
                     runs={detail.outreach.runs}
-                    disabled={active || busy}
+                    disabled={archived || active || busy}
                     onResolve={(id, confirmed) =>
                       act("outreach.resolve", { id, confirmed })
                     }
                     onResume={(id) => act("outreach.resume", { id })}
-                    onOpen={openInSenderAccount}
+                    onOpen={
+                      archived
+                        ? (url) =>
+                            api
+                              .openProfile(url)
+                              .catch((e) => setError(e.message))
+                        : openInSenderAccount
+                    }
+                    onCheck={
+                      archived
+                        ? undefined
+                        : (id) => recheckAttention("review:" + id)
+                    }
                   />
                   {detail.batches
                     .filter((b) => b.status === "approved" && b.pending > 0)
@@ -1405,14 +1520,30 @@ function App() {
                                           ли это сообщение.
                                         </p>
                                         <Button
+                                          disabled={archived || active || busy}
                                           onClick={() =>
-                                            openInSenderAccount(p.url)
+                                            recheckAttention(
+                                              "delivery:" + p.delivery[0].id,
+                                            )
+                                          }
+                                        >
+                                          Проверить автоматически
+                                        </Button>
+                                        <Button
+                                          onClick={() =>
+                                            archived
+                                              ? api
+                                                  .openProfile(p.url)
+                                                  .catch((e) =>
+                                                    setError(e.message),
+                                                  )
+                                              : openInSenderAccount(p.url)
                                           }
                                         >
                                           Открыть LinkedIn
                                         </Button>
                                         <Button
-                                          disabled={active || busy}
+                                          disabled={archived || active || busy}
                                           onClick={() =>
                                             act("delivery.resolve", {
                                               id: p.delivery[0].id,
@@ -1423,7 +1554,7 @@ function App() {
                                           Сообщение есть
                                         </Button>
                                         <Button
-                                          disabled={active || busy}
+                                          disabled={archived || active || busy}
                                           onClick={() =>
                                             act("delivery.resolve", {
                                               id: p.delivery[0].id,
@@ -1593,7 +1724,7 @@ function App() {
                               <td>
                                 <select
                                   value={p.segment}
-                                  disabled={active || busy}
+                                  disabled={archived || active || busy}
                                   aria-label={
                                     "Группа " + (p.data.name || p.url)
                                   }
@@ -1704,6 +1835,65 @@ function App() {
           )}
         </div>
       </main>
+      {modal === "delete-account" && deletingAccount && (
+        <Modal
+          title="Удалить аккаунт из приложения?"
+          subtitle={deletingAccount.label}
+          error={error}
+          onClose={() => {
+            setModal(null);
+            setDeletingAccount(null);
+          }}
+        >
+          <p>
+            Аккаунт исчезнет из списка, его сохранённая сессия LinkedIn будет
+            удалена с этого компьютера. Сам профиль LinkedIn сохранится.
+          </p>
+          <p>
+            Связанных кампаний:{" "}
+            <strong>
+              {deletingAccount.campaign_count ??
+                deletingAccount.campaigns?.length ??
+                0}
+            </strong>
+            . Кампании перейдут в «Архив», их история сохранится, а обработка
+            будет остановлена. Другие аккаунты, включая отдельные сессии того же
+            профиля, останутся.
+          </p>
+          <p className="hint">
+            Новые обращения из сохранённой истории не запускаются автоматически.
+          </p>
+          <div className="modal-footer">
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setModal(null);
+                setDeletingAccount(null);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              kind="primary"
+              disabled={busy}
+              onClick={async () => {
+                const result = await act("account.delete", {
+                  id: deletingAccount.id,
+                  confirm: true,
+                });
+                if (result) {
+                  setModal(null);
+                  setDeletingAccount(null);
+                  setCid(null);
+                  setDetail(null);
+                }
+              }}
+            >
+              Удалить аккаунт и сессию
+            </Button>
+          </div>
+        </Modal>
+      )}
       {modal === "account" && (
         <AccountForm
           error={error}
@@ -1828,6 +2018,11 @@ function App() {
                 . Отсутствие подтверждения не означает, что человек не ищет
                 работу.
               </p>
+              {archived && (
+                <p className="hint">
+                  Архивная запись. Ссылка откроется в обычном браузере.
+                </p>
+              )}
               <Button onClick={() => openInSenderAccount(person.url)}>
                 <ExternalLink size={16} />
                 Открыть LinkedIn
@@ -1844,7 +2039,7 @@ function App() {
             Группа сообщения
             <select
               value={person.segment}
-              disabled={active || busy}
+              disabled={archived || active || busy}
               onChange={(e) =>
                 review(
                   person,
@@ -1858,13 +2053,15 @@ function App() {
               <option value="neutral">Нейтральное сообщение</option>
             </select>
             <small>
-              {person.segment === "review"
-                ? "Проверьте сведения и выберите группу. Затем профиль можно будет включить в кампанию."
-                : !eligible(person)
-                  ? person.outreach_exclusion
-                  : person.selected
-                    ? "Группа сохранена. Профиль выбран для этой кампании."
-                    : "Группа сохранена. Выберите профиль в списке кандидатов, чтобы включить его в кампанию."}
+              {archived
+                ? "Архивная запись доступна только для просмотра."
+                : person.segment === "review"
+                  ? "Проверьте сведения и выберите группу. Затем профиль можно будет включить в кампанию."
+                  : !eligible(person)
+                    ? person.outreach_exclusion
+                    : person.selected
+                      ? "Группа сохранена. Профиль выбран для этой кампании."
+                      : "Группа сохранена. Выберите профиль в списке кандидатов, чтобы включить его в кампанию."}
             </small>
           </label>
           {(suppressConfirm || person.blocked) && (
@@ -1889,7 +2086,7 @@ function App() {
                 );
                 if (result) setPerson(null);
               }}
-              disabled={busy || person.blocked}
+              disabled={archived || busy || person.blocked}
             >
               {person.blocked
                 ? "Контакт исключён"

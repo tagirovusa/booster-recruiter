@@ -13,6 +13,8 @@ export function AttentionPanel({
   disabled,
   onOpen,
   onRead,
+  onCheck,
+  checkingItem,
   onRetry,
   onSettings,
   campaigns = [],
@@ -38,12 +40,6 @@ export function AttentionPanel({
           </button>
         </div>
       )}
-      <div className="panel-title">
-        <div>
-          <h2>Требуют внимания</h2>
-          <p>Ответы и следующие действия по всем кампаниям.</p>
-        </div>
-      </div>
       {error ? (
         <div className="workspace-empty" role="status">
           <p>Не удалось обновить список внимания. Кампании сохранены.</p>
@@ -100,6 +96,21 @@ export function AttentionPanel({
                         .join(" · ")}
                     </small>
                     <p>{item.detail}</p>
+                    {item.check_error && (
+                      <p className="hint warning">{item.check_error}</p>
+                    )}
+                    {item.kind === "review" && item.can_recheck === false && (
+                      <p className="hint">
+                        {item.recheck_unavailable_reason ||
+                          "Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории."}
+                      </p>
+                    )}
+                    {item.kind === "review" && item.can_recheck !== false && (
+                      <small>
+                        Автоматическая проверка только читает LinkedIn и
+                        обновляет статус. Отправок не будет.
+                      </small>
+                    )}
                     {item.updated && (
                       <small>
                         {new Date(item.updated).toLocaleString("ru-RU")}
@@ -107,6 +118,18 @@ export function AttentionPanel({
                     )}
                   </div>
                   <div className="attention-actions">
+                    {item.kind === "review" && item.can_recheck !== false && (
+                      <button
+                        className="button"
+                        disabled={disabled || !!checkingItem || item.checking}
+                        onClick={() => onCheck(item.id)}
+                      >
+                        <RefreshCw size={16} />
+                        {checkingItem === item.id || item.checking
+                          ? "Проверяем…"
+                          : "Проверить автоматически"}
+                      </button>
+                    )}
                     <button
                       className="button"
                       disabled={disabled}
@@ -116,7 +139,9 @@ export function AttentionPanel({
                         ? "Открыть аккаунт"
                         : item.kind === "reply"
                           ? "Открыть ответ"
-                          : "Проверить результат"}
+                          : item.can_recheck === false
+                            ? "Проверить вручную"
+                            : "Подробности"}
                       <ArrowRight size={16} />
                     </button>
                     {item.kind === "reply" && (

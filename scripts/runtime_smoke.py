@@ -80,7 +80,7 @@ async def check():
                         "list_workspace" in tools and "resume_approved_batch" in tools
                     )
                     assert not any("approve" == t or "send_message" in t for t in tools)
-                    assert len(tools) == 16
+                    assert len(tools) == 17
                     assert {
                         "get_workspace_attention",
                         "list_campaign_templates",
@@ -189,7 +189,7 @@ async def check():
                     assert fresh_detail.structured_content["outreach"]["runs"] == []
 
                 print(
-                    "PASS: frozen executable, local authenticated API, 16 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
+                    "PASS: frozen executable, local authenticated API, 17 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
                 )
             finally:
                 process.terminate()

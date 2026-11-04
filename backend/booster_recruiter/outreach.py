@@ -250,12 +250,12 @@ class OutreachStore:
         # A replacement plan may continue this campaign's confirmed invitation,
         # but never another sender's invitation or any uncertain/message action.
         for action in self.s.rows(
-            "SELECT a.*,r.campaign_id FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id JOIN outreach_runs r ON r.id=m.run_id WHERE a.url=? AND a.member_id!=? AND a.status IN ('submitting','unknown','sent')",
+            "SELECT a.*,r.campaign_id FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id JOIN outreach_runs r ON r.id=m.run_id WHERE a.url=? AND a.member_id!=? AND a.status IN ('submitting','unknown','sent','satisfied')",
             (url, member_id or ""),
         ):
             if (
                 action["kind"] == "invite"
-                and action["status"] == "sent"
+                and action["status"] in {"sent", "satisfied"}
                 and action["campaign_id"] == campaign_id
                 and action["account_id"] == account_id
             ):
@@ -680,7 +680,7 @@ class OutreachStore:
             ):
                 raise AppError("Повторное обращение исключено.")
             if kind == "invite" and self.s.rows(
-                "SELECT 1 FROM outreach_actions WHERE url=? AND kind='invite' AND status='sent'",
+                "SELECT 1 FROM outreach_actions WHERE url=? AND kind='invite' AND status IN ('sent','satisfied')",
                 (m["url"],),
             ):
                 raise AppError("Приглашение уже отправлено. Ожидаем принятия контакта.")
@@ -716,13 +716,22 @@ class OutreachStore:
         return [
             row["id"]
             for row in self.s.rows(
-                "SELECT id FROM accounts WHERE url=?", (account["url"],)
+                "SELECT id FROM accounts WHERE url=? AND status!='deleted'",
+                (account["url"],),
             )
         ]
 
     def finish(self, action, status, detail, thread_id=None):
-        if status not in ("sent", "unknown", "blocked"):
+        if status not in ("sent", "unknown", "blocked", "satisfied"):
             raise AppError("Неизвестный результат действия.")
+        if (
+            status == "satisfied"
+            and self.s.one("SELECT kind FROM outreach_actions WHERE id=?", (action,))[
+                "kind"
+            ]
+            != "invite"
+        ):
+            raise AppError("Подтверждение связи применимо только к приглашению.")
         with self.db:
             self.db.execute(
                 "UPDATE outreach_actions SET status=?,detail=?,thread_id=?,updated=? WHERE id=?",
@@ -731,6 +740,7 @@ class OutreachStore:
 
     def resolve(self, action, confirmed):
         row = self.s.one("SELECT * FROM outreach_actions WHERE id=?", (action,))
+        self.s.account(row["account_id"])
         if row["status"] != "unknown" or type(confirmed) is not bool:
             raise AppError("Это действие не требует проверки.")
         self.finish(

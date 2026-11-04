@@ -140,6 +140,9 @@ function createTray() {
 const operations = new Set([
   "state",
   "workspace.summary",
+  "workspace.recheck",
+  "account.deletion_preview",
+  "account.delete",
   "workspace.acknowledge",
   "template.list",
   "template.save",
@@ -225,7 +228,8 @@ function trusted(event) {
 }
 async function start() {
   app.setName("Booster Recruiter");
-  if (process.platform === "win32") app.setAppUserModelId("io.bbooster.recruiter");
+  if (process.platform === "win32")
+    app.setAppUserModelId("io.bbooster.recruiter");
   createApplicationMenu();
   desktopPreferences = createPreferencesStore({
     app,
