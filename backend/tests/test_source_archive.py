@@ -78,7 +78,9 @@ def test_only_committed_source_is_exported_despite_private_untracked_files(
             "booster-recruiter/backend/module.py",
             "booster-recruiter/SOURCE-MANIFEST.json",
         }
-        assert bundle.read("booster-recruiter/backend/module.py") == b"value = 1\n"
+        assert bundle.read("booster-recruiter/backend/module.py") == git(
+            repository, "show", "HEAD:backend/module.py"
+        )
 
 
 @pytest.mark.parametrize("staged", [False, True])
