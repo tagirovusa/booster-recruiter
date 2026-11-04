@@ -239,6 +239,79 @@ export function outreachCounts(run) {
   };
 }
 
+export function campaignNextEvent(run, account, at = Date.now()) {
+  if (!run) return null;
+  if (account?.status !== "ready")
+    return {
+      kind: "account",
+      title:
+        account?.status === "restricted"
+          ? "Действия аккаунта ограничены"
+          : "Требуется подключение аккаунта",
+      text: "Откройте аккаунты и проверьте состояние отправителя. Очередь сохранена.",
+    };
+  if (
+    run.status === "paused" &&
+    (run.actions || []).some((a) => a.status === "submitting")
+  )
+    return {
+      kind: "busy",
+      title: "Завершаем текущее действие",
+      text: "Дождитесь результата. Пауза сохранится после завершения; повторять действие не нужно.",
+    };
+  const uncertain = (run.actions || []).some((a) => a.status === "unknown");
+  if (run.status === "paused")
+    return {
+      kind: uncertain ? "review" : "paused",
+      title: uncertain ? "Проверьте результат в LinkedIn" : "Кампания на паузе",
+      text: uncertain
+        ? "Укажите результат в истории перед продолжением. Повторная отправка заблокирована."
+        : "Автоматические проверки остановлены. Продолжите кампанию, когда причина остановки устранена.",
+    };
+  const members = run.members || [];
+  const waiting = members.filter(
+    (m) => m.status === "waiting_acceptance",
+  ).length;
+  const pending = members.filter((m) =>
+    [
+      "planned",
+      "waiting_acceptance",
+      "waiting_credits",
+      "check_pending",
+      "sent",
+    ].includes(m.status),
+  );
+  const next = pending
+    .map((m) => Date.parse(m.next_check))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)[0];
+  const zone = run.rules?.timezone || "UTC";
+  const schedule =
+    next === undefined
+      ? ""
+      : next <= at
+        ? "Проверка ожидает выполнения в рабочее время."
+        : `Следующая проверка — не раньше ${new Intl.DateTimeFormat("ru-RU", { timeZone: zone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(next)} (${zone}), в рабочие часы кампании.`;
+  return {
+    kind: "scheduled",
+    title: waiting
+      ? `Ожидаем принятия приглашений: ${waiting}`
+      : pending.length
+        ? "План выполняется по расписанию"
+        : "Текущие действия завершены",
+    text: [
+      waiting
+        ? "После принятия отправим утверждённое сообщение, если LinkedIn разрешает связь."
+        : pending.length
+          ? "Проверяем доступную связь и ответы по утверждённому плану."
+          : "Результаты и ответы доступны в истории.",
+      schedule,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
 function TemplateFeedback({ id, value, limit = 1900, extra = "" }) {
   return (
     <span id={id} className="field-feedback">
@@ -677,6 +750,7 @@ export function Automation({
     ["unknown", "submitting"].includes(a.status),
   );
   const counts = outreachCounts(active);
+  const nextEvent = campaignNextEvent(active, account);
   return (
     <div className="automation-workspace">
       {active && (
@@ -684,30 +758,46 @@ export function Automation({
           <div className="automation-live-heading">
             <div>
               <span className="eyebrow">КАМПАНИЯ</span>
-              <h2>{states[active.status]}</h2>
-              <DetailMessage
-                detail={
-                  active.detail ||
-                  (active.status === "paused"
-                    ? "План приостановлен. Проверьте подробности перед возобновлением."
-                    : "Программа проверяет контакты и выполняет утверждённый план.")
-                }
-                status={active.status}
-              />
+              <h2>{nextEvent.title}</h2>
+              <p className="campaign-next-event" role="status">
+                {nextEvent.text}
+              </p>
+              {active.detail && (
+                <DetailMessage detail={active.detail} status={active.status} />
+              )}
             </div>
             <button
               className="button"
-              disabled={disabled && active.status !== "active"}
+              disabled={
+                nextEvent.kind === "busy" ||
+                (disabled && active.status !== "active")
+              }
               onClick={() =>
-                active.status === "active" ? onPause() : onResume(active.id)
+                nextEvent.kind === "account"
+                  ? onAccounts()
+                  : nextEvent.kind === "review"
+                    ? onHistory()
+                    : active.status === "active"
+                      ? onPause()
+                      : onResume(active.id)
               }
             >
-              {active.status === "active" ? (
+              {["account", "review"].includes(nextEvent.kind) ? (
+                <RefreshCw size={16} />
+              ) : active.status === "active" ? (
                 <Pause size={16} />
               ) : (
                 <Play size={16} />
               )}
-              {active.status === "active" ? "Пауза" : "Продолжить"}
+              {nextEvent.kind === "busy"
+                ? "Дождитесь завершения"
+                : nextEvent.kind === "account"
+                  ? "Проверить аккаунт"
+                  : nextEvent.kind === "review"
+                    ? "Проверить отправку"
+                    : active.status === "active"
+                      ? "Пауза"
+                      : "Продолжить"}
             </button>
           </div>
           <div className="automation-results">
@@ -772,11 +862,7 @@ export function Automation({
           <section className="panel setup-panel">
             <header className="setup-heading">
               <span className="eyebrow">НАСТРОЙКА АВТОМАТИЗАЦИИ</span>
-              <h2>От знакомства — к разговору</h2>
-              <p>
-                Выберите подход и задайте тексты. Остальную последовательность
-                выполнит программа.
-              </p>
+              <h2>{step === 0 ? "Как связаться" : "Тексты сообщений"}</h2>
             </header>
             <nav
               className="setup-steps"
@@ -1261,17 +1347,20 @@ export function Automation({
                   </button>
                 </div>
               </div>
-              <ol className="plan-flow">
-                {flow.map((item, i) => (
-                  <li key={i}>
-                    <span>{i + 1}</span>
-                    <div>
-                      <b>{item.title}</b>
-                      <p>{item.text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+              <details className="plan-sequence">
+                <summary>Последовательность действий</summary>
+                <ol className="plan-flow">
+                  {flow.map((item, i) => (
+                    <li key={i}>
+                      <span>{i + 1}</span>
+                      <div>
+                        <b>{item.title}</b>
+                        <p>{item.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </details>
               <div className="plan-meta">
                 <p>
                   <UserRound size={14} />
@@ -1361,7 +1450,7 @@ export function OutreachHistory({
               </thead>
               <tbody>
                 {run.members.map((m) => (
-                  <tr key={m.id}>
+                  <tr key={m.id} id={"member-" + m.id} tabIndex={-1}>
                     <td>
                       <button
                         className="text-link"
@@ -1398,7 +1487,12 @@ export function OutreachHistory({
           {run.actions.map((a) => {
             const m = run.members.find((m) => m.id === a.member_id);
             return (
-              <details className="action-record" key={a.id}>
+              <details
+                className="action-record"
+                key={a.id}
+                id={"action-" + a.id}
+                tabIndex={-1}
+              >
                 <summary>
                   {kindNames[a.kind]} · {m?.name || a.url} · {states[a.status]}{" "}
                   · {date(a.created)}

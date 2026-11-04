@@ -1,0 +1,422 @@
+import React, { useState } from "react";
+import { ArrowRight, Check, Inbox, RefreshCw, Trash2 } from "lucide-react";
+import "./workspace.css";
+
+const kinds = {
+  reply: "Новые ответы",
+  review: "Нужно проверить",
+  login: "Нужен вход",
+};
+export function AttentionPanel({
+  summary,
+  error,
+  disabled,
+  onOpen,
+  onRead,
+  onRetry,
+  onSettings,
+  campaigns = [],
+  accounts = [],
+}) {
+  const [filter, setFilter] = useState("all");
+  const items = (summary?.items || []).filter(
+    (item) => filter === "all" || item.kind === filter,
+  );
+  return (
+    <section
+      className="panel workspace-attention"
+      aria-label="Требуют внимания"
+    >
+      {summary?.backup_error && (
+        <div className="workspace-empty" role="alert">
+          <p>
+            Не удалось создать автоматическую резервную копию. Откройте
+            настройки и сохраните копию вручную.
+          </p>
+          <button className="button" onClick={onSettings}>
+            Открыть настройки
+          </button>
+        </div>
+      )}
+      <div className="panel-title">
+        <div>
+          <h2>Требуют внимания</h2>
+          <p>Ответы и следующие действия по всем кампаниям.</p>
+        </div>
+      </div>
+      {error ? (
+        <div className="workspace-empty" role="status">
+          <p>Не удалось обновить список внимания. Кампании сохранены.</p>
+          <button className="button" onClick={onRetry}>
+            <RefreshCw size={16} />
+            Повторить
+          </button>
+        </div>
+      ) : !summary ? (
+        <p className="workspace-empty">Обновляем список…</p>
+      ) : (
+        <>
+          <div className="attention-filters" aria-label="Фильтр внимания">
+            <button
+              aria-pressed={filter === "all"}
+              className={filter === "all" ? "chosen" : ""}
+              onClick={() => setFilter("all")}
+            >
+              Все <b>{summary.items.length}</b>
+            </button>
+            {Object.entries(kinds).map(([kind, label]) => (
+              <button
+                key={kind}
+                aria-pressed={filter === kind}
+                className={filter === kind ? "chosen" : ""}
+                onClick={() => setFilter(kind)}
+              >
+                {label} <b>{summary.counts[kind] || 0}</b>
+              </button>
+            ))}
+          </div>
+          {!items.length ? (
+            <div className="workspace-empty">
+              <Inbox size={24} />
+              <p>
+                {filter === "all"
+                  ? "Всё в порядке. Новые ответы и действия появятся здесь."
+                  : "В этой группе пока нет действий."}
+              </p>
+            </div>
+          ) : (
+            <ul className="attention-list">
+              {items.map((item) => (
+                <li key={item.id} id={"attention-" + item.id} tabIndex={-1}>
+                  <div className="attention-copy">
+                    <span className="attention-kind">{kinds[item.kind]}</span>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {[
+                        campaigns.find((c) => c.id === item.campaign_id)?.name,
+                        accounts.find((a) => a.id === item.account_id)?.label,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                    <p>{item.detail}</p>
+                    {item.updated && (
+                      <small>
+                        {new Date(item.updated).toLocaleString("ru-RU")}
+                      </small>
+                    )}
+                  </div>
+                  <div className="attention-actions">
+                    <button
+                      className="button"
+                      disabled={disabled}
+                      onClick={() => onOpen(item)}
+                    >
+                      {item.kind === "login"
+                        ? "Открыть аккаунт"
+                        : item.kind === "reply"
+                          ? "Открыть ответ"
+                          : "Проверить результат"}
+                      <ArrowRight size={16} />
+                    </button>
+                    {item.kind === "reply" && (
+                      <button
+                        className="text-button"
+                        disabled={disabled}
+                        onClick={() => onRead(item.id)}
+                      >
+                        <Check size={14} />
+                        Прочитано
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function buildSearch({
+  roles = "",
+  industry = "",
+  phrases = "",
+  excluded = "",
+  all = false,
+}) {
+  const terms = (value) => [
+    ...new Set(
+      value
+        .split(/[\n,;]/)
+        .map((v) => v.trim().replace(/["“”]/g, ""))
+        .filter(Boolean),
+    ),
+  ];
+  const quote = (value) => `"${value}"`;
+  const group = (value, operator) => {
+    const list = terms(value).map(quote);
+    return list.length > 1 ? `(${list.join(` ${operator} `)})` : list[0] || "";
+  };
+  const positive = [
+    group(roles, "OR"),
+    group(industry, "OR"),
+    group(phrases, all ? "AND" : "OR"),
+  ]
+    .filter(Boolean)
+    .join(" AND ");
+  const negative = terms(excluded)
+    .map((term) => `NOT ${quote(term)}`)
+    .join(" AND ");
+  return positive ? [positive, negative].filter(Boolean).join(" AND ") : "";
+}
+
+export function SearchBuilder({ value, onChange, invalid, errorId }) {
+  const [advanced, setAdvanced] = useState(Boolean(value));
+  const [resetPending, setResetPending] = useState(false);
+  const [fields, setFields] = useState({
+    roles: "",
+    industry: "",
+    phrases: "",
+    excluded: "",
+    all: false,
+  });
+  const update = (key, v) => {
+    const next = { ...fields, [key]: v };
+    setFields(next);
+    onChange(buildSearch(next));
+  };
+  return (
+    <section className="search-builder" aria-label="Настройка поиска">
+      <div className="workspace-inline-heading">
+        <strong>Кого ищем?</strong>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            if (advanced && value !== buildSearch(fields))
+              setResetPending(true);
+            else setAdvanced(!advanced);
+          }}
+        >
+          {advanced ? "Простой поиск" : "Запрос или ссылка"}
+        </button>
+      </div>
+      {resetPending && (
+        <div
+          className="template-delete-confirm"
+          role="group"
+          aria-label="Сброс поискового запроса"
+        >
+          <p>
+            Отредактированный запрос нельзя перенести в поля автоматически.
+            Начать простой поиск заново?
+          </p>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              setFields({
+                roles: "",
+                industry: "",
+                phrases: "",
+                excluded: "",
+                all: false,
+              });
+              onChange("");
+              setAdvanced(false);
+              setResetPending(false);
+            }}
+          >
+            Начать заново
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setResetPending(false)}
+          >
+            Сохранить запрос
+          </button>
+        </div>
+      )}
+      {advanced ? (
+        <label className="field">
+          Ключевые слова или ссылка на профиль
+          <textarea
+            name="keywords"
+            aria-label="Ключевые слова или ссылка на профиль"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            rows={3}
+            maxLength={1000}
+            aria-invalid={invalid}
+            aria-describedby={invalid ? errorId : undefined}
+            placeholder='Например: "driver recruitment" manager'
+          />
+          <small>
+            Можно использовать AND, OR, NOT, кавычки или одну ссылку на профиль.
+          </small>
+        </label>
+      ) : (
+        <>
+          <div className="search-builder-grid">
+            {[
+              ["roles", "Должности", "Driver recruiter, recruitment manager"],
+              ["industry", "Отрасль", "Trucking, transportation"],
+              ["phrases", "Ключевые фразы", "Driver retention, CDL drivers"],
+              ["excluded", "Исключить", "Например, internship"],
+            ].map(([key, label, placeholder]) => (
+              <label key={key} className="field">
+                {label}
+                <textarea
+                  rows={2}
+                  aria-label={label}
+                  aria-invalid={invalid && key === "roles"}
+                  aria-describedby={
+                    invalid && key === "roles" ? errorId : undefined
+                  }
+                  value={fields[key]}
+                  placeholder={placeholder}
+                  onChange={(e) => update(key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          <label className="field">
+            Совпадение ключевых фраз
+            <select
+              value={fields.all ? "all" : "any"}
+              onChange={(e) => update("all", e.target.value === "all")}
+            >
+              <option value="any">Хотя бы одна фраза</option>
+              <option value="all">Все фразы</option>
+            </select>
+          </label>
+          <small>
+            Разделяйте варианты запятой или новой строкой. Должности и отрасли
+            ищутся по любому варианту в своей группе.
+          </small>
+          <input type="hidden" name="keywords" value={value} />
+          <div className="search-query-preview">
+            <span>Запрос для LinkedIn</span>
+            <code>{value || "Заполните хотя бы одно поле выше"}</code>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function TemplatePicker({
+  templates,
+  accounts,
+  disabled,
+  onCreate,
+  onDelete,
+}) {
+  const [selected, setSelected] = useState("");
+  const [account, setAccount] = useState(
+    accounts.find((a) => a.status === "ready")?.id || accounts[0]?.id || "",
+  );
+  const [name, setName] = useState("");
+  const valid =
+    templates.some((t) => t.id === selected) &&
+    accounts.some((a) => a.id === account);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  return (
+    <div className="template-picker">
+      <p>
+        Шаблон переносит поиск, тексты и расписание. Кандидатов нужно выбрать
+        заново и подтвердить отправку.
+      </p>
+      <label className="field">
+        Шаблон
+        <select
+          aria-label="Шаблон"
+          value={selected}
+          onChange={(e) => {
+            setSelected(e.target.value);
+            setConfirmDelete(false);
+          }}
+        >
+          <option value="">Выберите шаблон</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        Аккаунт отправителя
+        <select value={account} onChange={(e) => setAccount(e.target.value)}>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        Название новой кампании
+        <input
+          value={name}
+          maxLength={150}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Оставьте пустым, чтобы использовать название шаблона"
+        />
+      </label>
+      <div className="template-footer">
+        <button
+          className="button primary"
+          disabled={disabled || !valid}
+          onClick={() =>
+            onCreate({
+              id: selected,
+              account_id: account,
+              ...(name.trim() ? { name: name.trim() } : {}),
+            })
+          }
+        >
+          Создать черновик
+          <ArrowRight size={16} />
+        </button>
+        {selected && (
+          <button
+            className="text-button"
+            disabled={disabled}
+            onClick={() => setConfirmDelete(!confirmDelete)}
+          >
+            <Trash2 size={14} />
+            Удалить шаблон
+          </button>
+        )}
+      </div>
+      {confirmDelete && (
+        <div className="template-delete-confirm">
+          <p>Удалить этот шаблон? Созданные кампании сохранятся.</p>
+          <button
+            className="button"
+            disabled={disabled}
+            onClick={async () => {
+              if (await onDelete(selected)) {
+                setSelected("");
+                setConfirmDelete(false);
+              }
+            }}
+          >
+            Подтвердить удаление
+          </button>
+          <button
+            className="text-button"
+            onClick={() => setConfirmDelete(false)}
+          >
+            Отмена
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -20,5 +20,11 @@ contextBridge.exposeInMainWorld("booster", {
   export: (campaignId, format) => invoke("export", campaignId, format),
   openProfile: (url) => invoke("open-profile", url),
   mcpConfig: () => invoke("mcp-config"),
+  notificationSettings: (patch) => invoke("notification-settings", patch),
+  onAttention: (callback) => {
+    const handler = (_event, id) => callback(id);
+    ipcRenderer.on("workspace-attention", handler);
+    return () => ipcRenderer.removeListener("workspace-attention", handler);
+  },
   desktopSettings: (patch) => invoke("desktop-settings", patch),
 });

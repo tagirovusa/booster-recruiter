@@ -26,6 +26,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import "./style.css";
+import { AttentionPanel, SearchBuilder, TemplatePicker } from "./Workspace";
+import DataSafety, { NotificationsSettings } from "./DataSafety";
 import {
   Automation,
   ContactState,
@@ -223,6 +225,11 @@ function App() {
     campaigns: [],
     events: [],
   });
+  const [workspaceSummary, setWorkspaceSummary] = useState(null);
+  const [attentionError, setAttentionError] = useState("");
+  const [focusTarget, setFocusTarget] = useState(null);
+  const [attentionNavigation, setAttentionNavigation] = useState(0);
+  const [templateName, setTemplateName] = useState("");
   const [page, setPage] = useState("campaigns");
   const [cid, setCid] = useState(null);
   const currentCampaign = useRef(cid);
@@ -314,6 +321,42 @@ function App() {
       alert?.scrollIntoView({ block: "nearest" });
     }
   }, [error, modal, person?.id, preview?.run_id, confirmation]);
+  const refreshWorkspace = useCallback(async () => {
+    try {
+      setWorkspaceSummary(await api.command("workspace.summary"));
+      setAttentionError("");
+    } catch (e) {
+      setAttentionError(e.message);
+    }
+  }, []);
+  useEffect(() => {
+    const unsubscribe = api?.onAttention?.((id) => {
+      setPage("campaigns");
+      setCid(null);
+      setDetail(null);
+      setModal(null);
+      setPerson(null);
+      setPreview(null);
+      setConfirmation((current) => {
+        current?.resolve?.(false);
+        return null;
+      });
+      setAttentionNavigation((v) => v + 1);
+      setFocusTarget(id ? "attention-" + id : null);
+      refreshWorkspace();
+    });
+    return () => unsubscribe?.();
+  }, [refreshWorkspace]);
+  useEffect(() => {
+    if (!focusTarget) return;
+    const target = document.getElementById(focusTarget);
+    if (target) {
+      if (target.tagName === "DETAILS") target.open = true;
+      target.scrollIntoView({ block: "center" });
+      target.focus({ preventScroll: true });
+      setFocusTarget(null);
+    }
+  }, [focusTarget, detail, page, tab, workspaceSummary]);
   const refresh = useCallback(async () => {
     if (!api) {
       setLoading(false);
@@ -322,6 +365,7 @@ function App() {
     }
     try {
       setState(await api.command("state"));
+      await refreshWorkspace();
       setWorkspaceLoaded(true);
       setWorkspaceError("");
     } catch (e) {
@@ -341,7 +385,7 @@ function App() {
         if (currentCampaign.current === cid) setDetailError(e.message);
       }
     }
-  }, [cid]);
+  }, [cid, refreshWorkspace]);
   const retryLoad = async () => {
     setRetrying(true);
     try {
@@ -635,7 +679,12 @@ function App() {
               ) : (
                 <div className="account-grid">
                   {state.accounts.map((a) => (
-                    <section className="account-card" key={a.id}>
+                    <section
+                      className="account-card"
+                      key={a.id}
+                      id={"account-" + a.id}
+                      tabIndex={-1}
+                    >
                       <div className="row">
                         <div className="avatar">{initials(a.label)}</div>
                         <Badge value={a.status} />
@@ -788,6 +837,21 @@ function App() {
               </div>
               <div className="settings-layout">
                 <DesktopPreferences />
+                <NotificationsSettings />
+                <DataSafety
+                  onRestored={async () => {
+                    setCid(null);
+                    setDetail(null);
+                    setPreview(null);
+                    setPerson(null);
+                    setConfirmation(null);
+                    automationDrafts.current = {};
+                    try {
+                      localStorage.removeItem("booster.automation-drafts.v1");
+                    } catch {}
+                    await refresh();
+                  }}
+                />
                 <div className="settings-help-grid">
                   <section className="panel settings-card">
                     <header className="settings-card-heading">
@@ -932,6 +996,44 @@ function App() {
                     : "Подключить LinkedIn"}
                 </Button>
               </div>
+              <AttentionPanel
+                key={attentionNavigation}
+                campaigns={state.campaigns}
+                accounts={state.accounts}
+                summary={workspaceSummary}
+                error={attentionError}
+                disabled={busy}
+                onSettings={() => {
+                  setPage("settings");
+                  setCid(null);
+                  setDetail(null);
+                }}
+                onRetry={refreshWorkspace}
+                onRead={(id) => act("workspace.acknowledge", { id })}
+                onOpen={(item) => {
+                  if (item.kind === "login") {
+                    setPage("accounts");
+                    setCid(null);
+                    setDetail(null);
+                    setFocusTarget("account-" + item.account_id);
+                  } else {
+                    openCampaign(item.campaign_id);
+                    setTab("history");
+                    setFocusTarget(
+                      item.action_id
+                        ? "action-" + item.action_id
+                        : "member-" + item.member_id,
+                    );
+                  }
+                }}
+              />
+              {(workspaceSummary?.templates || []).length > 0 && (
+                <div className="workspace-template-shortcut">
+                  <Button onClick={() => setModal("template")}>
+                    Создать из шаблона
+                  </Button>
+                </div>
+              )}
               <div className="stats">
                 <Stat label="Кампании" value={state.campaigns.length} />
                 <Stat
@@ -1052,6 +1154,15 @@ function App() {
                   <p>{campaign.keywords}</p>
                 </div>
                 <div className="actions">
+                  <Button
+                    disabled={active || busy}
+                    onClick={() => {
+                      setTemplateName(campaign.name);
+                      setModal("save-template");
+                    }}
+                  >
+                    Сохранить шаблон
+                  </Button>
                   <Button
                     disabled={active || busy}
                     onClick={() => doExport("xlsx")}
@@ -1251,7 +1362,18 @@ function App() {
                             {detail.candidates
                               .filter((p) => p.delivery.length)
                               .map((p) => (
-                                <tr key={p.id}>
+                                <tr
+                                  key={p.id}
+                                  id={
+                                    "action-" +
+                                    (
+                                      p.delivery.find(
+                                        (d) => d.status === "unknown",
+                                      ) || p.delivery[0]
+                                    ).id
+                                  }
+                                  tabIndex={-1}
+                                >
                                   <td>
                                     <button
                                       className="text-button"
@@ -1597,6 +1719,66 @@ function App() {
             }
           }}
         />
+      )}
+      {modal === "template" && (
+        <Modal
+          title="Кампания из шаблона"
+          subtitle="Начните новую кампанию с сохранёнными настройками."
+          error={error}
+          onClose={() => setModal(null)}
+        >
+          <TemplatePicker
+            templates={workspaceSummary?.templates || []}
+            accounts={state.accounts}
+            disabled={busy}
+            onDelete={(id) => act("template.delete", { id })}
+            onCreate={async (params) => {
+              const c = await act("template.create", params);
+              if (c) {
+                setModal(null);
+                openCampaign(c.id);
+              }
+            }}
+          />
+        </Modal>
+      )}
+      {modal === "save-template" && (
+        <Modal
+          title="Сохранить шаблон"
+          subtitle="Сохраняются настройки кампании. Сначала сохраните изменения в автоматизации. Кандидаты и разрешение на отправку не переносятся."
+          error={error}
+          onClose={() => setModal(null)}
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const saved = await act("template.save", {
+                campaign_id: cid,
+                name: templateName.trim(),
+              });
+              if (saved) setModal(null);
+            }}
+          >
+            <label className="field">
+              Название шаблона
+              <input
+                autoFocus
+                required
+                maxLength={150}
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+            </label>
+            <div className="modal-footer">
+              <Button type="button" onClick={() => setModal(null)}>
+                Отмена
+              </Button>
+              <Button kind="primary" disabled={busy || !templateName.trim()}>
+                Сохранить шаблон
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
       {modal === "campaign" && (
         <CampaignForm
@@ -1991,7 +2173,9 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
     name: !d.name.trim() ? "Введите название кампании." : "",
     keywords: !d.keywords.trim()
       ? "Введите ключевые слова или ссылку на профиль LinkedIn."
-      : "",
+      : d.keywords.length > 1000
+        ? "Сократите поисковый запрос до 1000 символов."
+        : "",
     account_id: !accounts.some((a) => a.id === d.account_id)
       ? "Выберите аккаунт отправителя."
       : "",
@@ -2020,6 +2204,13 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
             const field = form.current.elements[invalid];
             field?.focus({ preventScroll: true });
             field?.closest("label")?.scrollIntoView({ block: "nearest" });
+            if (invalid === "keywords" && field?.type === "hidden") {
+              const target = form.current.querySelector(
+                ".search-builder textarea",
+              );
+              target?.focus();
+              target?.scrollIntoView({ block: "nearest" });
+            }
             return;
           }
           if (!busy)
@@ -2068,33 +2259,17 @@ function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
             <small className="field-error">{errors.account_id}</small>
           )}
         </label>
-        <label className="field">
-          Ключевые слова или ссылка на профиль
-          <textarea
-            name="keywords"
-            aria-invalid={attempted && !!errors.keywords}
-            aria-describedby={
-              attempted && errors.keywords
-                ? "campaign-keywords-error"
-                : undefined
-            }
-            required
-            rows={3}
-            value={d.keywords}
-            onChange={(e) => change("keywords", e.target.value)}
-            placeholder='Например: "driver recruitment" manager'
-            maxLength={1000}
-          />
-          {attempted && errors.keywords && (
-            <small className="field-error" id="campaign-keywords-error">
-              {errors.keywords}
-            </small>
-          )}
-          <small>
-            Укажите роль и отрасль или одну ссылку на профиль LinkedIn. В
-            поисковом запросе можно использовать AND, OR и кавычки.
+        <SearchBuilder
+          value={d.keywords}
+          onChange={(value) => change("keywords", value)}
+          invalid={attempted && !!errors.keywords}
+          errorId="campaign-keywords-error"
+        />
+        {attempted && errors.keywords && (
+          <small className="field-error" id="campaign-keywords-error">
+            {errors.keywords}
           </small>
-        </label>
+        )}
         <label className="field">
           Сколько профилей собрать
           <input

@@ -78,7 +78,7 @@ const { execFileSync } = require("node:child_process");
     ).toBeChecked();
     await page.getByRole("button", { name: "Настроить отправку (1)" }).click();
     await expect(
-      page.getByRole("heading", { name: "От знакомства — к разговору" }),
+      page.getByRole("heading", { name: "Как связаться" }),
     ).toBeVisible();
     await expect(
       page.getByLabel("Приглашений", { exact: true }),
@@ -228,7 +228,7 @@ const { execFileSync } = require("node:child_process");
       .getByRole("button", { name: "Настроить автоматизацию", exact: true })
       .click();
     await expect(
-      page.getByRole("heading", { name: "От знакомства — к разговору" }),
+      page.getByRole("heading", { name: "Как связаться" }),
     ).toBeVisible();
     for (const [campaign, outreach, legacy] of [
       ["История · автоматизация", true, false],

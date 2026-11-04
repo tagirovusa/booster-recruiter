@@ -116,6 +116,9 @@ class Store:
         from .outreach import OutreachStore
 
         self.outreach = OutreachStore(self)
+        from .workspace import Workspace
+
+        self.workspace = Workspace(self)
 
     def _migrate_neutral_default(self):
         """Move only old automatic review assignments; keep manual decisions."""

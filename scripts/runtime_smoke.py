@@ -80,7 +80,24 @@ async def check():
                         "list_workspace" in tools and "resume_approved_batch" in tools
                     )
                     assert not any("approve" == t or "send_message" in t for t in tools)
-                    assert len(tools) == 12
+                    assert len(tools) == 16
+                    assert {
+                        "get_workspace_attention",
+                        "list_campaign_templates",
+                        "create_campaign_from_template",
+                        "create_workspace_backup",
+                    } <= tools
+                    assert not any("restore" in name for name in tools)
+                    attention = await client.call_tool("get_workspace_attention", {})
+                    assert attention.structured_content["counts"] == {
+                        "reply": 0,
+                        "login": 0,
+                        "review": 0,
+                    }
+                    templates = await client.call_tool("list_campaign_templates", {})
+                    assert templates.structured_content["templates"] == []
+                    saved_backup = await client.call_tool("create_workspace_backup", {})
+                    assert saved_backup.structured_content["bytes"] > 0
                     assert {
                         "configure_outreach",
                         "check_connections",
@@ -135,8 +152,44 @@ async def check():
                         == "Asia/Tbilisi"
                     )
                     assert detail.structured_content["outreach"]["runs"] == []
+                    save_template = urllib.request.Request(
+                        f"http://127.0.0.1:{connection['port']}/command",
+                        data=json.dumps(
+                            {
+                                "op": "template.save",
+                                "params": {
+                                    "campaign_id": cid,
+                                    "name": "Offline reusable setup",
+                                },
+                            }
+                        ).encode(),
+                        headers={
+                            "Authorization": "Bearer " + connection["token"],
+                            "Content-Type": "application/json",
+                        },
+                    )
+                    reusable = json.load(
+                        urllib.request.urlopen(save_template, timeout=15)
+                    )["result"]
+                    fresh = await client.call_tool(
+                        "create_campaign_from_template",
+                        {
+                            "template_id": reusable["id"],
+                            "account_id": account["id"],
+                            "name": "Fresh offline draft",
+                        },
+                    )
+                    fresh_detail = await client.call_tool(
+                        "get_campaign", {"campaign_id": fresh.structured_content["id"]}
+                    )
+                    assert (
+                        fresh_detail.structured_content["campaign"]["status"] == "draft"
+                    )
+                    assert fresh_detail.structured_content["candidates"] == []
+                    assert fresh_detail.structured_content["outreach"]["runs"] == []
+
                 print(
-                    "PASS: frozen executable, local authenticated API, 12 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
+                    "PASS: frozen executable, local authenticated API, 16 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
                 )
             finally:
                 process.terminate()

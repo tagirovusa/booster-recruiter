@@ -139,7 +139,7 @@ requires-dist = [
 
 [[package]]
 name = "booster-recruiter"
-version = "0.2.11"
+version = "0.2.12"
 source = { editable = "." }
 dependencies = [
     { name = "booster-linkedin-runtime" },

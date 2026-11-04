@@ -2136,3 +2136,105 @@ th,
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Keep the message and the next action in view during campaign setup. */
+.content:has(.automation-workspace) .page-heading.detail {
+  margin-top: 14px;
+  margin-bottom: 18px;
+}
+.content:has(.automation-workspace) .page-heading.detail h1 {
+  font-size: clamp(22px, 2.3vw, 28px);
+}
+.content:has(.automation-workspace) .page-heading.detail p:not(.eyebrow) {
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.content:has(.automation-workspace) .tabs {
+  margin-bottom: 18px;
+}
+.setup-panel {
+  overflow: visible;
+}
+.setup-heading {
+  padding: 17px 22px 12px;
+}
+.setup-heading h2 {
+  margin: 5px 0 0;
+  font-size: 20px;
+}
+.setup-steps {
+  padding-inline: 22px;
+}
+.setup-steps button {
+  padding-bottom: 12px;
+}
+.setup-body {
+  padding: 18px 22px 0;
+  gap: 16px;
+}
+.setup-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin: 0 -22px;
+  padding: 14px 22px;
+  background: #fff;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 -5px 14px rgb(28 32 36 / 5%);
+}
+.setup-validation {
+  margin-bottom: 16px;
+}
+.plan-card {
+  padding: 18px;
+}
+.plan-account {
+  margin: 12px 0;
+}
+.plan-sequence {
+  margin-bottom: 14px;
+}
+.plan-sequence > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  color: #545e65;
+  padding: 7px 0;
+}
+.plan-sequence .plan-flow {
+  padding-top: 10px;
+}
+.campaign-next-event {
+  margin: 8px 0;
+  max-width: 70ch;
+  color: #3c454b;
+}
+.action-record:focus-visible,
+.outreach-history tr:focus-visible {
+  outline: 3px solid #b5861a;
+  outline-offset: 3px;
+}
+@media (max-width: 1100px) {
+  .setup-body {
+    padding: 16px 18px 0;
+  }
+  .setup-heading {
+    padding: 16px 18px 10px;
+  }
+  .setup-steps {
+    padding-inline: 18px;
+  }
+  .setup-footer {
+    margin-inline: -18px;
+    padding-inline: 18px;
+  }
+}
+@media (max-width: 700px) {
+  .setup-footer {
+    gap: 10px;
+  }
+  .setup-footer > div {
+    gap: 9px;
+  }
+}
