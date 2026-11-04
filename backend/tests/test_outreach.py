@@ -268,11 +268,11 @@ async def test_unknown_or_empty_balance_never_spends_credits(store, credits):
     assert store.outreach.members(p["run_id"])[0]["status"] == "waiting_credits"
 
 
-async def test_lost_response_retains_credit_and_blocks_all_channels(store):
+async def test_lost_response_retains_credit_and_blocks_affected_recipient(store):
     _, _, _, p, rt, worker = activate(store, strategy="fast")
     worker.fail = True
     await rt.outreach.process(p["run_id"])
-    assert store.outreach.run(p["run_id"])["status"] == "paused"
+    assert store.outreach.run(p["run_id"])["status"] == "active"
     assert store.rows("SELECT status FROM outreach_actions") == [{"status": "unknown"}]
     store.outreach.status(p["run_id"], "active")
     due(store, p)

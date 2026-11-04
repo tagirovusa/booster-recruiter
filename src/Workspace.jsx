@@ -14,6 +14,7 @@ export function AttentionPanel({
   onOpen,
   onRead,
   onCheck,
+  onRepair,
   checkingItem,
   onRetry,
   onSettings,
@@ -58,7 +59,8 @@ export function AttentionPanel({
               className={filter === "all" ? "chosen" : ""}
               onClick={() => setFilter("all")}
             >
-              Все <b>{summary.items.length}</b>
+              <span>Все</span>
+              <b>{summary.items.length}</b>
             </button>
             {Object.entries(kinds).map(([kind, label]) => (
               <button
@@ -67,7 +69,8 @@ export function AttentionPanel({
                 className={filter === kind ? "chosen" : ""}
                 onClick={() => setFilter(kind)}
               >
-                {label} <b>{summary.counts[kind] || 0}</b>
+                <span>{label}</span>
+                <b>{summary.counts[kind] || 0}</b>
               </button>
             ))}
           </div>
@@ -96,6 +99,20 @@ export function AttentionPanel({
                         .join(" · ")}
                     </small>
                     <p>{item.detail}</p>
+                    {item.repairing && (
+                      <p role="status" className="repair-ready">
+                        Проверяем профиль и отправляем приглашение…
+                      </p>
+                    )}
+                    {item.repair_error && (
+                      <p className="hint warning">{item.repair_error}</p>
+                    )}
+                    {item.repair && (
+                      <p className="repair-ready">
+                        Сейчас доступно новое приглашение. Отправьте его после
+                        проверки получателя и текста.
+                      </p>
+                    )}
                     {item.check_error && (
                       <p className="hint warning">{item.check_error}</p>
                     )}
@@ -105,12 +122,16 @@ export function AttentionPanel({
                           "Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории."}
                       </p>
                     )}
-                    {item.kind === "review" && item.can_recheck !== false && (
-                      <small>
-                        Автоматическая проверка только читает LinkedIn и
-                        обновляет статус. Отправок не будет.
-                      </small>
-                    )}
+                    {item.kind === "review" &&
+                      item.can_recheck !== false &&
+                      !item.repair &&
+                      !item.repairing && (
+                        <small>
+                          Проверка читает состояние LinkedIn. Активный план
+                          продолжит работу по утверждённым правилам; план на
+                          паузе не возобновится.
+                        </small>
+                      )}
                     {item.updated && (
                       <small>
                         {new Date(item.updated).toLocaleString("ru-RU")}
@@ -118,18 +139,37 @@ export function AttentionPanel({
                     )}
                   </div>
                   <div className="attention-actions">
-                    {item.kind === "review" && item.can_recheck !== false && (
+                    {item.repair && (
                       <button
-                        className="button"
-                        disabled={disabled || !!checkingItem || item.checking}
-                        onClick={() => onCheck(item.id)}
+                        className="button primary"
+                        disabled={disabled || item.checking || item.repairing}
+                        onClick={() => onRepair(item)}
                       >
-                        <RefreshCw size={16} />
-                        {checkingItem === item.id || item.checking
-                          ? "Проверяем…"
-                          : "Проверить автоматически"}
+                        {item.repairing
+                          ? "Проверяем и отправляем…"
+                          : "Отправить приглашение"}
                       </button>
                     )}
+                    {item.kind === "review" &&
+                      item.can_recheck !== false &&
+                      !item.repair &&
+                      !item.repairing && (
+                        <button
+                          className="button"
+                          disabled={
+                            disabled ||
+                            !!checkingItem ||
+                            item.checking ||
+                            item.repairing
+                          }
+                          onClick={() => onCheck(item.id)}
+                        >
+                          <RefreshCw size={16} />
+                          {checkingItem === item.id || item.checking
+                            ? "Проверяем…"
+                            : "Проверить автоматически"}
+                        </button>
+                      )}
                     <button
                       className="button"
                       disabled={disabled}

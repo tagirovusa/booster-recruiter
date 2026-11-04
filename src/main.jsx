@@ -235,6 +235,7 @@ function App() {
   const [templateName, setTemplateName] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(null);
   const [checkingItem, setCheckingItem] = useState(null);
+  const [invitationRepair, setInvitationRepair] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState("campaigns");
   const [cid, setCid] = useState(null);
@@ -429,7 +430,7 @@ function App() {
       await act(
         "workspace.recheck",
         { id },
-        "Проверка запущена без отправки. Результат появится здесь и в истории.",
+        "Проверка запущена. Активный план продолжает работу; план на паузе не возобновляется.",
       );
     } finally {
       setCheckingItem(null);
@@ -701,8 +702,8 @@ function App() {
                   <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p>
                   <h1>Требует внимания</h1>
                   <p>
-                    Ответы и проверки по всем кампаниям. Автоматическая проверка
-                    не отправляет сообщений или приглашений.
+                    Ответы и следующие действия по всем кампаниям. Исправляйте
+                    отдельные профили, сохраняя общий план.
                   </p>
                 </div>
               </div>
@@ -720,6 +721,10 @@ function App() {
                 }}
                 checkingItem={checkingItem}
                 onCheck={recheckAttention}
+                onRepair={(item) => {
+                  setInvitationRepair({ id: item.id, ...item.repair });
+                  setModal("retry-invitation");
+                }}
                 onRetry={refreshWorkspace}
                 onRead={(id) => act("workspace.acknowledge", { id })}
                 onOpen={(item) => {
@@ -892,23 +897,28 @@ function App() {
                             )}
                         </div>
                       )}
-                      <button
-                        className="text-button account-delete"
-                        disabled={busy}
-                        onClick={() => prepareAccountDeletion(a.id)}
-                      >
-                        Удалить аккаунт
-                      </button>
-                      {a.status === "ready" && (
-                        <button
-                          className="text-button muted"
-                          onClick={() =>
-                            act("account.disconnect", { id: a.id })
-                          }
-                        >
-                          Отключить сессию
-                        </button>
-                      )}
+                      <div className="account-session-controls">
+                        {a.status === "ready" && (
+                          <button
+                            className="button small"
+                            disabled={busy}
+                            onClick={() =>
+                              act("account.disconnect", { id: a.id })
+                            }
+                          >
+                            Отключить сессию
+                          </button>
+                        )}
+                        <div className="account-removal">
+                          <button
+                            className="text-button account-delete"
+                            disabled={busy}
+                            onClick={() => prepareAccountDeletion(a.id)}
+                          >
+                            Удалить аккаунт
+                          </button>
+                        </div>
+                      </div>
                     </section>
                   ))}
                 </div>
@@ -1419,6 +1429,23 @@ function App() {
                   </div>
                   <OutreachHistory
                     runs={detail.outreach.runs}
+                    repairs={Object.fromEntries(
+                      (workspaceSummary?.items || [])
+                        .filter((i) => i.member_id && i.repair)
+                        .map((i) => [i.member_id, i]),
+                    )}
+                    onRepair={
+                      archived
+                        ? undefined
+                        : (item) => {
+                            setInvitationRepair({
+                              id: item.id,
+                              ...item.repair,
+                            });
+                            setModal("retry-invitation");
+                          }
+                    }
+                    checkDisabled={archived || busy}
                     disabled={archived || active || busy}
                     onResolve={(id, confirmed) =>
                       act("outreach.resolve", { id, confirmed })
@@ -1445,11 +1472,11 @@ function App() {
                         <p>
                           В подтверждённой очереди осталось: {b.pending}.
                           {b.unknown > 0
-                            ? " Сначала проверьте результат последней отправки ниже."
+                            ? " Неподтверждённые отправки отложены для проверки. Очередь продолжится только для остальных получателей."
                             : " Отправитель и тексты сохранены."}
                         </p>
                         <Button
-                          disabled={active || busy || b.unknown > 0}
+                          disabled={active || busy}
                           onClick={() => act("batch.resume", { id: b.id })}
                         >
                           <Play size={16} />
@@ -1835,6 +1862,82 @@ function App() {
           )}
         </div>
       </main>
+      {modal === "retry-invitation" && invitationRepair && (
+        <Modal
+          title="Отправить приглашение?"
+          subtitle={invitationRepair.name}
+          error={error}
+          onClose={() => {
+            setModal(null);
+            setInvitationRepair(null);
+          }}
+        >
+          <div className="repair-confirm-details">
+            <dl>
+              <div>
+                <dt>Получатель</dt>
+                <dd>{invitationRepair.name}</dd>
+                <dd>{invitationRepair.url}</dd>
+              </div>
+              <div>
+                <dt>Отправитель</dt>
+                <dd>
+                  {invitationRepair.account_label ||
+                    state.accounts.find(
+                      (a) => a.id === invitationRepair.account_id,
+                    )?.label}
+                </dd>
+              </div>
+            </dl>
+            <div>
+              <h3>Текст приглашения</h3>
+              <pre>{invitationRepair.note || "Приглашение без заметки"}</pre>
+            </div>
+            <p>
+              Результат старой попытки не подтверждён. Сейчас LinkedIn разрешает
+              новое приглашение; перед отправкой ещё раз проверим профиль и
+              доступность действия.
+            </p>
+            <p className="hint">
+              Запрос касается только этого получателя. После подтверждения
+              LinkedIn его статус обновится в той же кампании. Остальные
+              получатели сохранят свой план.
+            </p>
+          </div>
+          <div className="modal-footer">
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setModal(null);
+                setInvitationRepair(null);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              kind="primary"
+              disabled={busy}
+              onClick={async () => {
+                const result = await act(
+                  "workspace.retry_invitation",
+                  {
+                    id: invitationRepair.id,
+                    digest: invitationRepair.digest,
+                    confirm: true,
+                  },
+                  "Запрос принят. Результат приглашения появится здесь и в кампании.",
+                );
+                if (result) {
+                  setModal(null);
+                  setInvitationRepair(null);
+                }
+              }}
+            >
+              {busy ? "Запускаем…" : "Подтвердить приглашение"}
+            </Button>
+          </div>
+        </Modal>
+      )}
       {modal === "delete-account" && deletingAccount && (
         <Modal
           title="Удалить аккаунт из приложения?"

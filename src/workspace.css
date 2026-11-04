@@ -10,26 +10,56 @@
 }
 .attention-filters {
   display: flex;
+  align-items: stretch;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 24px 18px;
+  gap: 10px;
+  padding: 20px 24px;
 }
 .attention-filters button {
+  appearance: none;
+  margin: 0;
+  min-height: 44px;
   border: 1px solid #e2e4e7;
-  background: white;
+  background: #fff;
   color: inherit;
   border-radius: 8px;
-  padding: 9px 12px;
-  display: flex;
+  padding: 10px 14px;
+  display: inline-flex;
   gap: 10px;
   align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
 }
 .attention-filters button.chosen {
   background: #fff8c9;
   border-color: #d6b600;
 }
+.attention-filters button > span {
+  line-height: 20px;
+}
 .attention-filters b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  margin: 0;
   font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  border-radius: 5px;
+  background: #f3f3f3;
+}
+.attention-filters button.chosen b {
+  background: #fed700;
+  color: #1c2024;
+}
+.repair-ready {
+  color: #313a40 !important;
+  font-weight: 700;
 }
 .attention-list {
   list-style: none;
@@ -175,9 +205,54 @@
   margin: 0 0 20px;
   flex-wrap: wrap;
 }
-.account-delete {
-  margin-top: 18px;
+.account-session-controls {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e3e5e7;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+.account-removal {
+  padding-top: 16px;
+  border-top: 1px solid #eceef0;
+  width: 100%;
+}
+.account-session-controls .account-delete {
+  margin: 0;
+  min-height: 40px;
+  padding: 8px 0;
   color: #9c3535;
+}
+.repair-confirm-details {
+  display: grid;
+  gap: 16px;
+}
+.repair-confirm-details dl {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.repair-confirm-details dt {
+  font-size: 12px;
+  color: #687078;
+  margin-bottom: 4px;
+}
+.repair-confirm-details dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.repair-confirm-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f3f3f3;
+  padding: 16px;
+  margin: 0;
+  border-radius: 8px;
+  font: inherit;
+  line-height: 1.6;
 }
 .attention-actions {
   flex-wrap: wrap;
