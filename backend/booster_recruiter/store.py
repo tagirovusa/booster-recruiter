@@ -343,6 +343,118 @@ class Store:
                 ),
             )
 
+    def update_campaign(self, cid, data):
+        """Rename, change the search size, or fix the search before collection."""
+        campaign = self.campaign(cid)
+        if campaign["status"] == "archived":
+            raise AppError("Кампания в архиве. Сначала верните её из архива.")
+        name = str(data.get("name", campaign["name"])).strip()
+        if not name or len(name) > 150:
+            raise AppError("Укажите название кампании (до 150 символов).")
+        try:
+            limit = int(data.get("max_profiles", campaign["max_profiles"]))
+        except (TypeError, ValueError):
+            limit = 0
+        if not 1 <= limit <= 100:
+            raise AppError("Число профилей — от 1 до 100.")
+        keywords = str(data.get("keywords", campaign["keywords"])).strip()
+        if keywords != campaign["keywords"]:
+            count = self.rows(
+                "SELECT COUNT(*) AS n FROM candidates WHERE campaign_id=?", (cid,)
+            )[0]["n"]
+            if count:
+                raise AppError(
+                    "Поиск уже собрал профили, поэтому запрос изменить нельзя. "
+                    "Создайте новую кампанию с другим запросом."
+                )
+            if not keywords or len(keywords) > 1000:
+                raise AppError("Укажите поисковый запрос (до 1000 символов).")
+        if limit != campaign["max_profiles"] or keywords != campaign["keywords"]:
+            self.ensure_idle(cid)
+        with self.db:
+            self.db.execute(
+                "UPDATE campaigns SET name=?,max_profiles=?,keywords=? WHERE id=?",
+                (name, limit, keywords, cid),
+            )
+        return self.campaign(cid)
+
+    def archive_campaign(self, cid):
+        """Hide a finished or unwanted campaign; its history keeps protecting
+        recipients from a repeated contact."""
+        self.ensure_idle(cid)
+        with self.db:
+            self.db.execute(
+                "UPDATE outreach_runs SET status='paused',detail='Кампания перенесена в архив.',updated=? "
+                "WHERE campaign_id=? AND status='active'",
+                (now(), cid),
+            )
+            self.db.execute(
+                "UPDATE campaigns SET status='archived',progress='Кампания в архиве. История сохранена.' WHERE id=?",
+                (cid,),
+            )
+        return self.campaign(cid)
+
+    def restore_campaign(self, cid):
+        campaign = self.campaign(cid)
+        if campaign["status"] != "archived":
+            return campaign
+        account = self.account(campaign["account_id"], include_deleted=True)
+        if account["status"] == "deleted":
+            raise AppError(
+                "Аккаунт этой кампании удалён. Кампанию можно только просматривать."
+            )
+        self.progress(
+            cid,
+            "ready",
+            "Кампания возвращена из архива. Утверждённый ранее план на паузе.",
+        )
+        return self.campaign(cid)
+
+    def contacted(self, cid):
+        """Whether anything was ever sent or attempted for this campaign."""
+        return bool(
+            self.rows(
+                "SELECT 1 FROM outreach_actions a JOIN outreach_members m ON m.id=a.member_id "
+                "JOIN outreach_runs r ON r.id=m.run_id WHERE r.campaign_id=? LIMIT 1",
+                (cid,),
+            )
+            or self.rows(
+                "SELECT 1 FROM outreach_members m JOIN outreach_runs r ON r.id=m.run_id "
+                "WHERE r.campaign_id=? AND (m.sent_at IS NOT NULL OR m.invitation_at IS NOT NULL) LIMIT 1",
+                (cid,),
+            )
+            or self.rows(
+                "SELECT 1 FROM deliveries d JOIN batches b ON b.id=d.batch_id "
+                "WHERE b.campaign_id=? LIMIT 1",
+                (cid,),
+            )
+        )
+
+    def delete_campaign(self, cid):
+        """Delete only campaigns that never contacted anyone."""
+        campaign = self.campaign(cid)
+        if campaign["status"] != "archived":
+            self.ensure_idle(cid)
+        if self.contacted(cid):
+            raise AppError(
+                "По этой кампании уже были обращения. Её можно только перенести "
+                "в архив — история защищает людей от повторных сообщений."
+            )
+        with self.db:
+            self.db.execute(
+                "DELETE FROM outreach_members WHERE run_id IN (SELECT id FROM outreach_runs WHERE campaign_id=?)",
+                (cid,),
+            )
+            for table in (
+                "outreach_runs",
+                "batches",
+                "candidates",
+                "outreach_settings",
+            ):
+                self.db.execute(f"DELETE FROM {table} WHERE campaign_id=?", (cid,))
+            self.db.execute("DELETE FROM campaigns WHERE id=?", (cid,))
+        return {"deleted": True}
+
     def ensure_idle(self, cid):
         campaign = self.campaign(cid)
         self.account(campaign["account_id"])

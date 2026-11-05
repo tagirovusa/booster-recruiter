@@ -24,6 +24,10 @@ import {
   SlidersHorizontal,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Archive,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import "./style.css";
 import { AttentionPanel, SearchBuilder, TemplatePicker } from "./Workspace";
@@ -250,6 +254,7 @@ function App() {
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const [campaignEdit, setCampaignEdit] = useState(null);
   // Background refresh: newer requests win, polls never overlap, and one
   // failed poll does not flash a warning.
   const refreshSeq = useRef(0);
@@ -1284,6 +1289,51 @@ function App() {
                   <p>{campaign.keywords}</p>
                 </div>
                 <div className="actions">
+                  {campaign.status === "archived" ? (
+                    <>
+                      {account?.status !== "deleted" && (
+                        <Button
+                          disabled={busy}
+                          onClick={() =>
+                            act(
+                              "campaign.restore",
+                              { id: cid },
+                              "Кампания возвращена из архива.",
+                            )
+                          }
+                        >
+                          <RotateCcw size={17} />
+                          Вернуть из архива
+                        </Button>
+                      )}
+                      <Button
+                        disabled={busy}
+                        onClick={() => {
+                          setCampaignEdit({ deleteOnly: true, armed: true });
+                          setModal("edit-campaign");
+                        }}
+                      >
+                        <Trash2 size={17} />
+                        Удалить
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      disabled={busy}
+                      onClick={() => {
+                        setCampaignEdit({
+                          name: campaign.name,
+                          max_profiles: campaign.max_profiles,
+                          keywords: campaign.keywords,
+                          armed: false,
+                        });
+                        setModal("edit-campaign");
+                      }}
+                    >
+                      <Pencil size={17} />
+                      Изменить
+                    </Button>
+                  )}
                   <Button
                     disabled={archived || active || busy}
                     onClick={() => {
@@ -1318,7 +1368,10 @@ function App() {
                       Пауза
                     </Button>
                   ) : detail.candidates.length >= campaign.max_profiles ? (
-                    <span className="search-complete">
+                    <span
+                      className="search-complete"
+                      title="Чтобы найти больше людей, нажмите «Изменить» и увеличьте число профилей."
+                    >
                       <CheckCircle2 size={17} />
                       Поиск завершён
                     </span>
@@ -1338,8 +1391,9 @@ function App() {
               </div>
               {archived && (
                 <div className="hint">
-                  Аккаунт удалён. История и экспорт сохранены; новые отправки из
-                  этой кампании недоступны.
+                  {account?.status === "deleted"
+                    ? "Аккаунт удалён. История и экспорт сохранены; новые отправки из этой кампании недоступны."
+                    : "Кампания в архиве. История и экспорт сохранены. Чтобы продолжить работу, верните её из архива."}
                 </div>
               )}
               {!archived && account?.status !== "ready" && (
@@ -2063,6 +2117,168 @@ function App() {
               }
             }}
           />
+        </Modal>
+      )}
+      {modal === "edit-campaign" && campaignEdit && campaign && (
+        <Modal
+          title={
+            campaignEdit.deleteOnly ? "Удалить кампанию?" : "Изменить кампанию"
+          }
+          subtitle={campaign.name}
+          error={error}
+          onClose={() => setModal(null)}
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (campaignEdit.armed) {
+                const done = await act(
+                  "campaign.delete",
+                  { id: cid, confirm: true },
+                  "Кампания удалена.",
+                );
+                if (done) {
+                  setModal(null);
+                  setCid(null);
+                  setDetail(null);
+                }
+                return;
+              }
+              const saved = await act(
+                "campaign.update",
+                {
+                  id: cid,
+                  name: campaignEdit.name.trim(),
+                  max_profiles: Number(campaignEdit.max_profiles),
+                  keywords: campaignEdit.keywords.trim(),
+                },
+                "Изменения сохранены.",
+              );
+              if (saved) setModal(null);
+            }}
+          >
+            {campaignEdit.armed ? (
+              <p className="modal-copy">
+                Кампания «{campaign.name}» и найденные профили будут удалены
+                навсегда. Если по кампании уже были сообщения, приложение
+                предложит перенести её в архив — так люди не получат повторное
+                обращение.
+              </p>
+            ) : (
+              <>
+                <label className="field">
+                  Название
+                  <input
+                    autoFocus
+                    required
+                    maxLength={150}
+                    value={campaignEdit.name}
+                    onChange={(e) =>
+                      setCampaignEdit({ ...campaignEdit, name: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  Сколько профилей найти (до 100)
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    required
+                    disabled={active}
+                    value={campaignEdit.max_profiles}
+                    onChange={(e) =>
+                      setCampaignEdit({
+                        ...campaignEdit,
+                        max_profiles: e.target.value,
+                      })
+                    }
+                  />
+                </label>
+                {detail.candidates.length ? (
+                  <p className="field-note">
+                    Запрос поиска: {campaign.keywords}. После сбора профилей
+                    запрос не меняется — для другого поиска создайте новую
+                    кампанию.
+                  </p>
+                ) : (
+                  <label className="field">
+                    Запрос поиска
+                    <textarea
+                      required
+                      maxLength={1000}
+                      disabled={active}
+                      value={campaignEdit.keywords}
+                      onChange={(e) =>
+                        setCampaignEdit({
+                          ...campaignEdit,
+                          keywords: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+                <div className="edit-campaign-secondary">
+                  <Button
+                    type="button"
+                    disabled={busy || active}
+                    onClick={async () => {
+                      const done = await act(
+                        "campaign.archive",
+                        { id: cid },
+                        "Кампания перенесена в архив.",
+                      );
+                      if (done) {
+                        setModal(null);
+                        setCid(null);
+                        setDetail(null);
+                      }
+                    }}
+                  >
+                    <Archive size={16} />В архив
+                  </Button>
+                  <Button
+                    type="button"
+                    kind="danger-link"
+                    disabled={busy || active}
+                    onClick={() =>
+                      setCampaignEdit({ ...campaignEdit, armed: true })
+                    }
+                  >
+                    <Trash2 size={16} />
+                    Удалить кампанию
+                  </Button>
+                </div>
+                {active && (
+                  <p className="field-note">
+                    Пока кампания работает, можно изменить только название.
+                    Поставьте её на паузу, чтобы менять поиск или перенести в
+                    архив.
+                  </p>
+                )}
+              </>
+            )}
+            <div className="modal-footer">
+              <Button
+                type="button"
+                onClick={() =>
+                  campaignEdit.armed && !campaignEdit.deleteOnly
+                    ? setCampaignEdit({ ...campaignEdit, armed: false })
+                    : setModal(null)
+                }
+              >
+                {campaignEdit.armed && !campaignEdit.deleteOnly
+                  ? "Назад"
+                  : "Отмена"}
+              </Button>
+              <Button
+                kind={campaignEdit.armed ? "danger" : "primary"}
+                disabled={busy}
+              >
+                {campaignEdit.armed ? "Удалить навсегда" : "Сохранить"}
+              </Button>
+            </div>
+          </form>
         </Modal>
       )}
       {modal === "save-template" && (

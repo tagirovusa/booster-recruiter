@@ -2248,3 +2248,31 @@ th,
   background: #eee;
   color: #626b73;
 }
+
+/* Campaign editing */
+.edit-campaign-secondary {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  border-top: 1px solid #ececec;
+  padding-top: 14px;
+  margin-top: 4px;
+}
+.button.danger-link {
+  border-color: transparent;
+  background: transparent;
+  color: #a12f2f;
+}
+.button.danger-link:hover:not(:disabled) {
+  background: #fbeeee;
+}
+.field-note {
+  margin: 0;
+  color: #5b646d;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.modal-copy {
+  margin: 0;
+  line-height: 1.5;
+}

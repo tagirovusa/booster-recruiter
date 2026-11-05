@@ -136,6 +136,17 @@ def create_app(store, runtime, token):
                 result = store.set_account(aid, "disconnected")
             elif op == "campaign.create":
                 result = store.create_campaign(p)
+            elif op == "campaign.update":
+                result = store.update_campaign(p["id"], p)
+            elif op == "campaign.archive":
+                result = store.archive_campaign(p["id"])
+            elif op == "campaign.restore":
+                result = store.restore_campaign(p["id"])
+            elif op == "campaign.delete":
+                if p.get("confirm") is not True:
+                    raise AppError("Подтвердите удаление кампании.")
+                runtime.pause_flags.discard(p["id"])
+                result = store.delete_campaign(p["id"])
             elif op == "campaign.detail":
                 result = store.detail(p["id"])
             elif op == "campaign.collect":
