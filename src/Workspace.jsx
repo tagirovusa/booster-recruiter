@@ -12,6 +12,7 @@ export function AttentionPanel({
   error,
   disabled,
   onOpen,
+  onReply,
   onRead,
   onCheck,
   onRepair,
@@ -127,9 +128,8 @@ export function AttentionPanel({
                       !item.repair &&
                       !item.repairing && (
                         <small>
-                          Проверка читает состояние LinkedIn. Активный план
-                          продолжит работу по утверждённым правилам; план на
-                          паузе не возобновится.
+                          Приложение посмотрит в LinkedIn, дошло ли сообщение.
+                          Ничего не отправит.
                         </small>
                       )}
                     {item.updated && (
@@ -170,6 +170,15 @@ export function AttentionPanel({
                             : "Уточнить статус"}
                         </button>
                       )}
+                    {item.kind === "reply" && item.url && onReply && (
+                      <button
+                        className="button primary"
+                        disabled={disabled}
+                        onClick={() => onReply(item)}
+                      >
+                        Ответить в LinkedIn
+                      </button>
+                    )}
                     <button
                       className="button"
                       disabled={disabled}
@@ -180,7 +189,7 @@ export function AttentionPanel({
                         : item.kind === "reply"
                           ? "Открыть ответ"
                           : item.can_recheck === false
-                            ? "Открыть в LinkedIn"
+                            ? "Посмотреть историю"
                             : "Подробности"}
                       <ArrowRight size={16} />
                     </button>
@@ -321,7 +330,8 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             placeholder='Например: "driver recruitment" manager'
           />
           <small>
-            Можно использовать AND, OR, NOT, кавычки или одну ссылку на профиль.
+            Можно вставить ссылку на один профиль или готовый поисковый запрос
+            LinkedIn.
           </small>
         </label>
       ) : (
@@ -364,10 +374,10 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             ищутся по любому варианту в своей группе.
           </small>
           <input type="hidden" name="keywords" value={value} />
-          <div className="search-query-preview">
-            <span>Запрос для LinkedIn</span>
+          <details className="search-query-preview">
+            <summary>Показать итоговый запрос</summary>
             <code>{value || "Заполните хотя бы одно поле выше"}</code>
-          </div>
+          </details>
         </>
       )}
     </section>

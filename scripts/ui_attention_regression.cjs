@@ -258,7 +258,7 @@ s.db.close()
     ).toHaveCount(0);
     await expect(
       unsupported.getByRole("button", {
-        name: "Открыть в LinkedIn",
+        name: "Посмотреть историю",
         exact: true,
       }),
     ).toBeVisible();

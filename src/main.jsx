@@ -617,7 +617,7 @@ function App() {
       <aside className="sidebar">
         <img className="brand" src="/brand/logo.svg" alt="Business Booster" />
         <div className="product">
-          RECRUITER <span>WORKSPACE</span>
+          Подбор <span>персонала</span>
         </div>
         <nav>
           {[
@@ -676,10 +676,6 @@ function App() {
               </>
             )}
           </span>
-          <span className="connection">
-            <i />
-            Локальное приложение
-          </span>
         </div>
         {error && !modal && !person && !preview && !confirmation && (
           <div className="alert error app-alert" role="alert" tabIndex={-1}>
@@ -733,7 +729,6 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p>
                   <h1>Требует внимания</h1>
                   <p>
                     Ответы и следующие действия по всем кампаниям. Исправляйте
@@ -761,6 +756,13 @@ function App() {
                 }}
                 onRetry={refreshWorkspace}
                 onRead={(id) => act("workspace.acknowledge", { id })}
+                onReply={(item) =>
+                  act(
+                    "account.open_profile",
+                    { id: item.account_id, url: item.url },
+                    "Профиль кандидата открыт в браузере отправителя. Нажмите «Сообщение», чтобы ответить.",
+                  )
+                }
                 onOpen={(item) => {
                   if (item.kind === "login") {
                     setPage("accounts");
@@ -783,7 +785,6 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <p className="eyebrow">ОТПРАВИТЕЛИ</p>
                   <h1>LinkedIn-аккаунты</h1>
                   <p>
                     Подключите аккаунт один раз. Для каждой кампании выбирайте
@@ -972,7 +973,6 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p>
                   <h1>Настройки и помощь</h1>
                   <p>Основные функции работают без подключения ИИ.</p>
                 </div>
@@ -1081,8 +1081,11 @@ function App() {
                 <details className="panel settings-card settings-disclosure">
                   <summary>
                     <div>
-                      <h2>Подключение ИИ-агента</h2>
-                      <p>Дополнительно · управление через MCP</p>
+                      <h2>Для разработчиков: ИИ-агент</h2>
+                      <p>
+                        Необязательно. Нужно, только если вы подключаете
+                        ИИ-ассистента.
+                      </p>
                     </div>
                     <ChevronRight size={20} aria-hidden="true" />
                   </summary>
@@ -1120,7 +1123,6 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <p className="eyebrow">ПОИСК. КОНТАКТ. РЕЗУЛЬТАТ.</p>
                   <h1>Ваши кампании</h1>
                   <p>
                     От поискового запроса до сохранённого списка кандидатов.
@@ -1284,9 +1286,16 @@ function App() {
               </button>
               <div className="page-heading detail">
                 <div>
-                  <p className="eyebrow">КАМПАНИЯ · {account?.label}</p>
                   <h1>{campaign.name}</h1>
-                  <p>{campaign.keywords}</p>
+                  <p>
+                    {campaign.keywords}
+                    {account?.label && (
+                      <span className="muted-inline">
+                        {" "}
+                        · отправитель: {account.label}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="actions">
                   {campaign.status === "archived" ? (

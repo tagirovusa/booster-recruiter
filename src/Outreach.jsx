@@ -907,7 +907,7 @@ export function Automation({
         <div className="automation-layout">
           <section className="panel setup-panel">
             <header className="setup-heading">
-              <span className="eyebrow">НАСТРОЙКА АВТОМАТИЗАЦИИ</span>
+              <span className="eyebrow">НАСТРОЙКА ОТПРАВКИ</span>
               <h2>{step === 0 ? "Как связаться" : "Тексты сообщений"}</h2>
             </header>
             <nav

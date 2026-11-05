@@ -3,6 +3,9 @@ function createCloseHandler({
   window,
   isQuitting,
   reportFailure,
+  // Optional: async () => "background" | "close" | "cancel". Asked only when
+  // background work is off, so closing never stops campaigns unannounced.
+  confirmStop,
 }) {
   let waiting = false;
   let closeApproved = false;
@@ -17,6 +20,29 @@ function createCloseHandler({
       if (preferences.background) {
         event.preventDefault();
         window.hide();
+        return;
+      }
+      if (!confirmStop) return;
+      event.preventDefault();
+      waiting = true;
+      try {
+        const choice = await confirmStop();
+        if (isQuitting() || window.isDestroyed()) return;
+        if (choice === "background") {
+          await preferences.access({ background: true });
+          window.hide();
+        } else if (choice === "close") {
+          closeApproved = true;
+          try {
+            window.close();
+          } finally {
+            closeApproved = false;
+          }
+        }
+      } catch (error) {
+        if (!isQuitting() && !window.isDestroyed()) await reportFailure(error);
+      } finally {
+        waiting = false;
       }
       return;
     }

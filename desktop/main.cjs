@@ -350,6 +350,39 @@ async function start() {
       preferences: desktopPreferences,
       window: win,
       isQuitting: () => exiting,
+      confirmStop: async () => {
+        let running = [];
+        try {
+          const state = await call("state");
+          running = state.campaigns.filter((c) =>
+            [
+              "collecting",
+              "sending",
+              "automating",
+              "checking",
+              "waiting",
+            ].includes(c.status),
+          );
+        } catch {
+          return "close";
+        }
+        if (!running.length) return "close";
+        const { response } = await dialog.showMessageBox(win, {
+          type: "question",
+          title: "Кампании остановятся",
+          message:
+            running.length === 1
+              ? `Кампания «${running[0].name}» работает. Если закрыть приложение, она остановится.`
+              : `Работают кампании: ${running.length}. Если закрыть приложение, они остановятся.`,
+          detail:
+            "Можно оставить приложение работать в фоне — значок останется в строке меню, а окно откроется по щелчку.",
+          buttons: ["Работать в фоне", "Закрыть и остановить", "Отмена"],
+          defaultId: 0,
+          cancelId: 2,
+          noLink: true,
+        });
+        return ["background", "close", "cancel"][response];
+      },
       reportFailure: async (error) => {
         await dialog.showMessageBox(win, {
           type: "error",

@@ -2276,3 +2276,6 @@ th,
   margin: 0;
   line-height: 1.5;
 }
+.muted-inline {
+  color: #5b646d;
+}
