@@ -1,6 +1,7 @@
 // Real Electron regressions against synthetic local data. Never contacts LinkedIn.
 // BOOSTER_EXECUTABLE exercises the packaged app with the same assertions.
-const { _electron: electron, expect } = require("./patchright_test_driver.cjs").loadPatchright();
+const { _electron: electron, expect } =
+  require("./patchright_test_driver.cjs").loadPatchright();
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -153,9 +154,7 @@ const { execFileSync } = require("node:child_process");
       false,
     );
   const messages = async () => {
-    await page
-      .getByRole("button", { name: "Автоматизация", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Отправка", exact: true }).click();
     await page
       .getByRole("button", { name: "Далее: сообщения", exact: true })
       .click();
@@ -259,7 +258,9 @@ const { execFileSync } = require("node:child_process");
       "Form validation must retain fully visible actions at the minimum window size.",
     );
     await nameField.fill("   ");
-    await page.getByRole("button", { name: "Запрос или ссылка", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Запрос или ссылка", exact: true })
+      .click();
     await page.getByLabel(/^Ключевые слова или ссылка на профиль/).fill("   ");
     await page.getByLabel(/^Сколько профилей собрать/).fill("1.5");
     await page
@@ -305,9 +306,7 @@ const { execFileSync } = require("node:child_process");
     );
     await screenshots("candidates");
 
-    await page
-      .getByRole("button", { name: "Автоматизация", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Отправка", exact: true }).click();
     await page
       .locator("summary")
       .filter({ hasText: "Приглашения в контакты" })
@@ -320,7 +319,10 @@ const { execFileSync } = require("node:child_process");
       .getByRole("button", { name: "Далее: сообщения", exact: true })
       .click();
     await expect(
-      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+      page.getByRole("button", {
+        name: "Посмотреть перед запуском",
+        exact: true,
+      }),
     ).toBeDisabled();
     await expect(page.locator(".setup-validation")).toContainText(
       "Текст приглашения",
@@ -460,9 +462,7 @@ const { execFileSync } = require("node:child_process");
       ).status,
       "paused",
     );
-    await page
-      .getByRole("button", { name: "Автоматизация", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Отправка", exact: true }).click();
     await page
       .getByRole("button", { name: "Изменить настройки кампании", exact: true })
       .click();
@@ -470,10 +470,10 @@ const { execFileSync } = require("node:child_process");
       .getByRole("button", { name: "Далее: сообщения", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     const preview = page.getByRole("dialog", {
-      name: "Проверьте отправку",
+      name: "Перед запуском",
       exact: true,
     });
     await expect(preview).toBeVisible();
@@ -548,7 +548,7 @@ const { execFileSync } = require("node:child_process");
       global.__uiWorkflowDelayPreview = true;
     });
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     await expect
       .poll(() => app.evaluate(() => typeof global.__uiWorkflowReleasePreview))
@@ -569,7 +569,7 @@ const { execFileSync } = require("node:child_process");
       page.getByRole("dialog", { name: "Подключить LinkedIn" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("dialog", { name: "Проверьте отправку" }),
+      page.getByRole("dialog", { name: "Перед запуском" }),
     ).toHaveCount(0);
     await page.keyboard.press("Escape");
     record("late local preview cannot open over another screen or dialog");
@@ -675,7 +675,9 @@ const { execFileSync } = require("node:child_process");
       .click();
     const longName = "W".repeat(150);
     await page.getByLabel(/^Название кампании/).fill(longName);
-    await page.getByRole("button", { name: "Запрос или ссылка", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Запрос или ссылка", exact: true })
+      .click();
     await page
       .getByLabel(/^Ключевые слова или ссылка на профиль/)
       .fill("https://www.linkedin.com/in/" + "auditsynthetic".repeat(35));

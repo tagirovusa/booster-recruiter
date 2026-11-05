@@ -44,7 +44,7 @@ import {
 const api = window.booster;
 const frameLabels = {
   open_to_work: "Open to Work",
-  hiring: "Hiring — нанимает сотрудников",
+  hiring: "Hiring (сам нанимает)",
   none: "Без рамки",
   unknown: "Не определена",
 };
@@ -52,30 +52,30 @@ const labels = {
   new: "Не подключён",
   ready: "Готово",
   needs_login: "Требуется вход",
-  connecting: "Ожидаем вход",
-  identity_mismatch: "Другой профиль",
+  connecting: "Ждём входа",
+  identity_mismatch: "Вошли в другой профиль",
   restricted: "Ограничение LinkedIn",
   disconnected: "Отключён",
   deleted: "Удалён",
   archived: "В архиве",
-  satisfied: "Состояние подтверждено",
+  satisfied: "Проверено",
   draft: "Черновик",
-  collecting: "Собираем профили",
-  sending: "Отправляем сообщения",
+  collecting: "Ищем кандидатов",
+  sending: "Идёт отправка",
   paused: "На паузе",
   open: "Open to Work",
-  neutral: "Нейтральное сообщение",
-  review: "Нужно проверить",
+  neutral: "Обычный текст",
+  review: "Без группы",
   sent: "Отправлено",
-  unknown: "Нужно проверить отправку",
+  unknown: "Неясно, отправлено ли",
   blocked: "Сообщение недоступно",
   cancelled: "Отменено",
   pending: "В очереди",
   replied: "Ответ получен",
   failed: "Ошибка",
-  waiting: "Ожидаем расписания",
-  automating: "Обрабатываем кампанию",
-  checking: "Проверяем контакты",
+  waiting: "Ждёт рабочих часов",
+  automating: "Идёт отправка",
+  checking: "Обновляем статусы",
 };
 const fmt = (d) =>
   new Date(d).toLocaleString("ru-RU", {
@@ -842,7 +842,7 @@ function App() {
                         >
                           <RefreshCw size={16} />
                           {a.status === "ready"
-                            ? "Проверить подключение"
+                            ? "Проверить вход"
                             : a.status === "connecting"
                               ? "Завершите вход в браузере"
                               : a.status === "new"
@@ -906,7 +906,7 @@ function App() {
                             {a.services?.recruiter?.status === "connecting"
                               ? "Проверяем Recruiter…"
                               : a.services?.recruiter?.status === "ready"
-                                ? "Проверить Recruiter"
+                                ? "Обновить Recruiter"
                                 : "Подключить Recruiter"}
                           </Button>
                           {a.services?.recruiter?.status === "ready" &&
@@ -1442,7 +1442,7 @@ function App() {
                     }
                   />
                   <Stat
-                    label="Нужно проверить"
+                    label="Без группы"
                     value={
                       detail.candidates.filter((p) => p.segment === "review")
                         .length
@@ -1454,7 +1454,7 @@ function App() {
               <div className="tabs">
                 {[
                   ["people", "Кандидаты", Users],
-                  ["automation", "Автоматизация", Settings],
+                  ["automation", "Отправка", Settings],
                   ["history", "История", Inbox],
                 ]
                   .filter(([id]) => !archived || id === "history")
@@ -1638,7 +1638,7 @@ function App() {
                                             )
                                           }
                                         >
-                                          Проверить автоматически
+                                          Уточнить статус
                                         </Button>
                                         <Button
                                           onClick={() =>
@@ -1718,8 +1718,8 @@ function App() {
                     >
                       <option value="all">Все группы</option>
                       <option value="open">Open to Work</option>
-                      <option value="neutral">Нейтральное сообщение</option>
-                      <option value="review">Нужно проверить</option>
+                      <option value="neutral">Обычный текст</option>
+                      <option value="review">Без группы</option>
                     </select>
                     <div className="spacer" />
                     <Button
@@ -1849,11 +1849,9 @@ function App() {
                                     )
                                   }
                                 >
-                                  <option value="review">
-                                    Нужно проверить
-                                  </option>
+                                  <option value="review">Без группы</option>
                                   <option value="open">Open to Work</option>
-                                  <option value="neutral">Нейтральное</option>
+                                  <option value="neutral">Обычный текст</option>
                                 </select>
                               </td>
                               <td>
@@ -2397,9 +2395,9 @@ function App() {
                 )
               }
             >
-              <option value="review">Нужно проверить</option>
+              <option value="review">Без группы</option>
               <option value="open">Open to Work</option>
-              <option value="neutral">Нейтральное сообщение</option>
+              <option value="neutral">Обычный текст</option>
             </select>
             <small>
               {archived
@@ -2456,7 +2454,7 @@ function App() {
       {preview && (
         <Modal
           error={error}
-          title="Проверьте отправку"
+          title="Перед запуском"
           subtitle={`${preview.messages.length} ${{ one: "получатель", few: "получателя", many: "получателей", other: "получателя" }[new Intl.PluralRules("ru").select(preview.messages.length)]} · Отправитель: ${preview.account.label}`}
           wide
           onClose={() => setPreview(null)}
@@ -2465,7 +2463,7 @@ function App() {
           {approvedPlan && (
             <div className="hint warning">
               Текущий утверждённый план сохранён. Он будет заменён только после
-              нажатия «Утвердить и запустить кампанию».
+              нажатия «Запустить отправку».
             </div>
           )}
           <div className="message-preview">
@@ -2557,7 +2555,7 @@ function App() {
               }}
             >
               <Play size={16} />
-              Утвердить и запустить кампанию
+              Запустить отправку
             </Button>
           </div>
         </Modal>

@@ -21,26 +21,26 @@ import {
 } from "lucide-react";
 
 const states = {
-  planned: "Готов к обработке",
-  check_pending: "Ожидаем проверки",
+  planned: "В плане",
+  check_pending: "В очереди",
   waiting_acceptance: "Ждём принятия",
   waiting_credits: "Ожидаем кредиты",
-  waiting_budget: "Ожидаем проверки",
-  needs_review: "Нужно проверить",
+  waiting_budget: "В очереди",
+  needs_review: "Требует внимания",
   sent: "Отправлено",
   replied: "Ответ получен",
   excluded: "Исключён",
   unavailable: "Недоступно",
-  finished: "Наблюдение завершено",
-  preview: "Предпросмотр",
+  finished: "Завершено",
+  preview: "Черновик плана",
   active: "Работает по расписанию",
   paused: "На паузе",
   completed: "Завершено",
   cancelled: "Отменено",
-  submitting: "Выполняется",
-  unknown: "Нужно проверить результат",
+  submitting: "Отправляем…",
+  unknown: "Неясно, отправлено ли",
   blocked: "Действие остановлено",
-  satisfied: "Состояние подтверждено",
+  satisfied: "Проверено",
 };
 const relations = {
   unknown: "Связь ещё не подтверждена",
@@ -375,8 +375,7 @@ export function DetailMessage({ detail, status, kind, stopped = false }) {
     return (
       <p className="detail-message">
         LinkedIn сообщил, что вы уже в контактах. Приглашение не требуется.
-        Нажмите «Проверить автоматически», чтобы обновить состояние без
-        отправки.
+        Нажмите «Уточнить статус», чтобы обновить состояние без отправки.
       </p>
     );
   // Keep readable product guidance intact. Transport envelopes and diagnostics
@@ -654,8 +653,7 @@ export function Automation({
       : []),
     ...["open", "neutral"].flatMap((segment) => {
       if (!selected.some((person) => person.segment === segment)) return [];
-      const label =
-        segment === "open" ? "Open to Work" : "Нейтральное сообщение";
+      const label = segment === "open" ? "Open to Work" : "Обычный текст";
       return [
         [label, fieldChecks[segment]],
         ...(rules.allow_inmail
@@ -747,7 +745,7 @@ export function Automation({
   );
   const flow = [
     {
-      title: "Проверить бесплатную связь",
+      title: "Бесплатное сообщение",
       text: rules.allow_inmail
         ? "Обычное сообщение или доступный InMail без списания кредита."
         : "Если можно написать бесплатно — используем ваш текст.",
@@ -755,7 +753,7 @@ export function Automation({
     ...(mode === "fast"
       ? [
           {
-            title: "Проверить платный InMail",
+            title: "Платный InMail",
             text: "Без ожидания приглашения, если есть кредиты подписки.",
           },
         ]
@@ -840,9 +838,9 @@ export function Automation({
               {nextEvent.kind === "busy"
                 ? "Дождитесь завершения"
                 : nextEvent.kind === "account"
-                  ? "Проверить аккаунт"
+                  ? "Открыть аккаунты"
                   : nextEvent.kind === "review"
-                    ? "Проверить отправку"
+                    ? "Посмотреть"
                     : active.status === "active"
                       ? "Пауза"
                       : "Продолжить"}
@@ -896,7 +894,7 @@ export function Automation({
               disabled={disabled}
               onClick={() => onCheckNow(active.id)}
             >
-              <RefreshCw size={16} /> Проверить сейчас и продолжить план
+              <RefreshCw size={16} /> Проверить сейчас
             </button>
           )}
           <button className="text-link" onClick={() => setEditing(!editing)}>
@@ -916,24 +914,22 @@ export function Automation({
               className="setup-steps"
               aria-label="Шаги настройки автоматизации"
             >
-              {["Способ связи", "Сообщения", "Проверка запуска"].map(
-                (label, i) => (
-                  <button
-                    key={label}
-                    className={
-                      step === i ? "current" : step > i ? "complete" : ""
-                    }
-                    aria-current={step === i ? "step" : undefined}
-                    disabled={disabled || (i === 2 && !canReview)}
-                    onClick={() =>
-                      i === 2 ? onSave(rules, texts, true) : setStep(i)
-                    }
-                  >
-                    <span>{step > i ? <Check size={13} /> : i + 1}</span>
-                    {label}
-                  </button>
-                ),
-              )}
+              {["Способ связи", "Тексты", "Запуск"].map((label, i) => (
+                <button
+                  key={label}
+                  className={
+                    step === i ? "current" : step > i ? "complete" : ""
+                  }
+                  aria-current={step === i ? "step" : undefined}
+                  disabled={disabled || (i === 2 && !canReview)}
+                  onClick={() =>
+                    i === 2 ? onSave(rules, texts, true) : setStep(i)
+                  }
+                >
+                  <span>{step > i ? <Check size={13} /> : i + 1}</span>
+                  {label}
+                </button>
+              ))}
             </nav>
             <fieldset disabled={disabled} className="setup-body">
               {step === 0 ? (
@@ -1142,7 +1138,7 @@ export function Automation({
                       </div>
                       <button className="button small" onClick={onCheck}>
                         <RefreshCw size={14} />
-                        Проверить контакты сейчас
+                        Обновить статусы контактов
                       </button>
                     </div>
                   </details>
@@ -1164,7 +1160,7 @@ export function Automation({
                           <strong>
                             {segment === "open"
                               ? "Open to Work"
-                              : "Нейтральное сообщение"}
+                              : "Обычный текст"}
                           </strong>
                           <small>
                             {segment === "open" ? openCount : neutralCount}{" "}
@@ -1269,7 +1265,7 @@ export function Automation({
                               <span>
                                 {s === "open"
                                   ? "InMail · Open to Work"
-                                  : "Нейтральный InMail"}
+                                  : "Обычный InMail"}
                               </span>
                               <textarea
                                 aria-invalid={
@@ -1349,7 +1345,7 @@ export function Automation({
                     </>
                   ) : (
                     <>
-                      {step ? "Проверить запуск" : "Далее: сообщения"}
+                      {step ? "Посмотреть перед запуском" : "Далее: сообщения"}
                       <ArrowRight size={16} />
                     </>
                   )}
@@ -1584,7 +1580,7 @@ export function OutreachHistory({
                               disabled={checkDisabled ?? disabled}
                               onClick={() => onCheck(m.id)}
                             >
-                              Проверить автоматически
+                              Уточнить статус
                             </button>
                           )}
                         {m.reply_text && (
@@ -1653,7 +1649,7 @@ export function OutreachHistory({
                           disabled={checkDisabled ?? disabled}
                           onClick={() => onCheck(m.id)}
                         >
-                          Проверить автоматически
+                          Уточнить статус
                         </button>
                       )}
                     <button className="button" onClick={() => onOpen(a.url)}>

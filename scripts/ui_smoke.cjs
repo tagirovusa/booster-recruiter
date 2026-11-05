@@ -1,4 +1,5 @@
-const { _electron: electron, expect } = require("./patchright_test_driver.cjs").loadPatchright();
+const { _electron: electron, expect } =
+  require("./patchright_test_driver.cjs").loadPatchright();
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -88,10 +89,10 @@ const { execFileSync } = require("node:child_process");
     ).not.toBeVisible();
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     await expect(
-      page.getByRole("dialog", { name: "Проверьте отправку" }),
+      page.getByRole("dialog", { name: "Перед запуском" }),
     ).toBeVisible();
     await expect(
       page.getByText(
@@ -134,7 +135,10 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await expect(
-      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+      page.getByRole("button", {
+        name: "Посмотреть перед запуском",
+        exact: true,
+      }),
     ).toBeDisabled();
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page.getByLabel("Подписка для InMail").selectOption("linkedin");
@@ -161,7 +165,10 @@ const { execFileSync } = require("node:child_process");
     });
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await expect(
-      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+      page.getByRole("button", {
+        name: "Посмотреть перед запуском",
+        exact: true,
+      }),
     ).toBeDisabled();
     await page
       .getByLabel("Тема InMail · Open to Work")
@@ -175,7 +182,7 @@ const { execFileSync } = require("node:child_process");
       fullPage: true,
     });
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     await expect(
       page.getByText("Hi Alex, let us connect.", { exact: true }),

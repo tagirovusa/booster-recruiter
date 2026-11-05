@@ -245,20 +245,20 @@ s.db.close()
     }
     const list = page.getByRole("region", { name: "Требуют внимания" }),
       before = await list
-        .getByRole("button", { name: "Проверить автоматически", exact: true })
+        .getByRole("button", { name: "Уточнить статус", exact: true })
         .count();
     const unsupported = list
       .locator("li")
       .filter({ hasText: "Unsupported InMail fixture" });
     await expect(
       unsupported.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(0);
     await expect(
       unsupported.getByRole("button", {
-        name: "Проверить вручную",
+        name: "Открыть в LinkedIn",
         exact: true,
       }),
     ).toBeVisible();
@@ -270,11 +270,11 @@ s.db.close()
     assert.ok(repairSource, "Fixture must expose a campaign member for repair");
     await list
       .locator('[id="attention-' + repairSource + '"]')
-      .getByRole("button", { name: "Проверить автоматически", exact: true })
+      .getByRole("button", { name: "Уточнить статус", exact: true })
       .click();
     await expect(
       list.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(before - 1);
@@ -386,7 +386,7 @@ s.db.close()
 
     await expect(
       oldAttempt.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -501,7 +501,7 @@ s.db.close()
       .poll(() => app.evaluate(() => global.__archiveExportRequested))
       .toBe(true);
     await expect(
-      page.getByRole("button", { name: "Автоматизация", exact: true }),
+      page.getByRole("button", { name: "Отправка", exact: true }),
     ).toHaveCount(0);
     const archiveProfile = page.locator(".outreach-history .text-link").first();
     if (await archiveProfile.count()) {

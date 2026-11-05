@@ -52,7 +52,7 @@ class AttentionRecovery:
                     repair=self.repairs.public(item["id"]),
                     can_recheck=available,
                     recheck_unavailable_reason=reason,
-                    recheck_label="Проверить автоматически",
+                    recheck_label="Уточнить статус",
                     **self.states.get(item["id"], {}),
                 )
         return summary

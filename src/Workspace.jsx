@@ -167,7 +167,7 @@ export function AttentionPanel({
                           <RefreshCw size={16} />
                           {checkingItem === item.id || item.checking
                             ? "Проверяем…"
-                            : "Проверить автоматически"}
+                            : "Уточнить статус"}
                         </button>
                       )}
                     <button
@@ -180,7 +180,7 @@ export function AttentionPanel({
                         : item.kind === "reply"
                           ? "Открыть ответ"
                           : item.can_recheck === false
-                            ? "Проверить вручную"
+                            ? "Открыть в LinkedIn"
                             : "Подробности"}
                       <ArrowRight size={16} />
                     </button>
