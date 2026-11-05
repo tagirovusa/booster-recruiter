@@ -10,7 +10,7 @@
   accent-color: #fed700;
 }
 .safety-note {
-  color: var(--muted, #64707d);
+  color: var(--muted, var(--text-muted));
   line-height: 1.6;
   font-size: 14px;
   margin: 16px 0;
@@ -32,7 +32,7 @@
 }
 .backup-list small {
   display: block;
-  color: #64707d;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 .restore-confirm {

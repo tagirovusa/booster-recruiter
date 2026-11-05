@@ -183,7 +183,7 @@ export function DataSafety({ onRestored }) {
               Отмена
             </button>
             <button
-              className="button"
+              className="button danger"
               disabled={!!pending}
               onClick={() =>
                 run("backup.restore", { id: selected.id, confirm: true })

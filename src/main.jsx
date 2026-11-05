@@ -1438,7 +1438,7 @@ function App() {
                 </div>
               )}
               {tab === "people" && (
-                <div className="stats">
+                <div className="stats compact">
                   <Stat
                     label="Найдено профилей"
                     value={detail.candidates.length}
@@ -2068,7 +2068,7 @@ function App() {
               Отмена
             </Button>
             <Button
-              kind="primary"
+              kind="danger"
               disabled={busy}
               onClick={async () => {
                 const result = await act("account.delete", {
@@ -2128,9 +2128,7 @@ function App() {
       )}
       {modal === "edit-campaign" && campaignEdit && campaign && (
         <Modal
-          title={
-            campaignEdit.deleteOnly ? "Удалить кампанию?" : "Изменить кампанию"
-          }
+          title={campaignEdit.armed ? "Удалить кампанию?" : "Изменить кампанию"}
           subtitle={campaign.name}
           error={error}
           onClose={() => setModal(null)}
