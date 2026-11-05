@@ -294,6 +294,12 @@
     "homepage": ""
   },
   {
+    "name": "booster-recruiter",
+    "version": "0.2.15",
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "rapidocr-onnxruntime",
     "version": "1.4.4",
     "license": "Apache-2.0",
@@ -534,12 +540,6 @@
     "homepage": ""
   },
   {
-    "name": "booster-recruiter",
-    "version": "0.2.14",
-    "license": "",
-    "homepage": ""
-  },
-  {
     "name": "httpx",
     "version": "0.28.1",
     "license": "BSD-3-Clause",
@@ -609,6 +609,12 @@
     "name": "idna",
     "version": "3.20",
     "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.2.15",
+    "license": "",
     "homepage": ""
   }
 ]
