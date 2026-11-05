@@ -22,12 +22,27 @@ from .store import AppError, Store
 from .user_errors import configure as configure_error_log
 from .user_errors import record, user_text
 
+# Sending, deleting and restoring are confirmed by the recruiter in the
+# desktop window. An agent using the discoverable token (connection.json) can
+# prepare work but never approve it.
+DESKTOP_ONLY = {
+    "outreach.approve",
+    "batch.approve",
+    "workspace.retry_invitation",
+    "backup.restore",
+    "account.delete",
+    "campaign.delete",
+    "shutdown",
+}
 
-def create_app(store, runtime, token):
+
+def create_app(store, runtime, token, desktop_token=None):
     async def command(request: Request):
-        if not hmac.compare_digest(
-            request.headers.get("authorization", ""), "Bearer " + token
-        ):
+        supplied = request.headers.get("authorization", "")
+        desktop = desktop_token is not None and hmac.compare_digest(
+            supplied, "Bearer " + desktop_token
+        )
+        if not desktop and not hmac.compare_digest(supplied, "Bearer " + token):
             return JSONResponse({"error": "Нет доступа."}, status_code=401)
         if request.headers.get("origin"):
             return JSONResponse(
@@ -40,6 +55,13 @@ def create_app(store, runtime, token):
             data = json.loads(raw)
             op = data["op"]
             p = data.get("params", {})
+            if op in DESKTOP_ONLY and desktop_token is not None and not desktop:
+                return JSONResponse(
+                    {
+                        "error": "Это действие подтверждается только в окне Booster Recruiter."
+                    },
+                    status_code=403,
+                )
             if op == "state":
                 result = store.state()
             elif op == "workspace.summary":
@@ -334,6 +356,8 @@ def serve(root: Path):
     except Timeout:
         raise SystemExit("Приложение уже использует эту базу данных.")
     token = secrets.token_urlsafe(32)
+    # Handed only to the desktop shell over stdout; never written to disk.
+    desktop_token = secrets.token_urlsafe(32)
     configure_error_log(root)
     store = Store(root)
     runtime = Runtime(store)
@@ -345,11 +369,16 @@ def serve(root: Path):
     fd = os.open(discovery, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as stream:
         json.dump(connection, stream)
-    print(json.dumps({"ready": True, **connection}), flush=True)
+    print(
+        json.dumps({"ready": True, **connection, "desktop_token": desktop_token}),
+        flush=True,
+    )
     try:
         server = uvicorn.Server(
             uvicorn.Config(
-                create_app(store, runtime, token), log_level="warning", access_log=False
+                create_app(store, runtime, token, desktop_token),
+                log_level="warning",
+                access_log=False,
             )
         )
         asyncio.run(server.serve(sockets=[sock]))

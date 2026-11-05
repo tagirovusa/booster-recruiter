@@ -3,9 +3,12 @@
 import json
 import os
 import re
+import shutil
 import sqlite3
+import tempfile
 from contextlib import closing
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .store import AppError, now, uid
 
@@ -214,6 +217,10 @@ class Workspace:
                 if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise AppError("Не удалось проверить резервную копию.")
             temporary.replace(folder / identity)
+        except OSError as exc:
+            raise AppError(
+                "Не хватает места на диске или нет доступа к папке данных. Освободите место и повторите — текущие данные не изменены."
+            ) from exc
         finally:
             temporary.unlink(missing_ok=True)
         return next(b for b in self.backups() if b["id"] == identity)
@@ -233,6 +240,21 @@ class Workspace:
         for old in daily[7:]:
             (self.backup_directory() / old["id"]).unlink()
 
+    def _upgraded_copy(self, path):
+        """Run the current migrations on a private copy of an older backup."""
+        from .store import Store
+
+        folder = Path(tempfile.mkdtemp(prefix="booster-restore-"))
+        try:
+            shutil.copyfile(path, folder / "workspace.sqlite3")
+            Store(folder).db.close()
+        except (OSError, sqlite3.Error) as exc:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise AppError(
+                "Эта копия сделана в другой версии приложения и не подходит. Выберите более новую копию."
+            ) from exc
+        return folder
+
     def restore(self, identity):
         if not isinstance(identity, str) or identity not in {
             b["id"] for b in self.backups()
@@ -243,6 +265,7 @@ class Workspace:
         # Require the current known schema; no triggers, views or arbitrary SQL.
         source = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
         stage = sqlite3.connect(":memory:")
+        upgraded = None
         try:
             if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise AppError("Резервная копия повреждена.")
@@ -256,7 +279,17 @@ class Workspace:
                 }
 
             if schema(source) != schema(self.db):
-                raise AppError("Копия несовместима с этой версией приложения.")
+                # A copy from an earlier version: upgrade a private duplicate
+                # with the same migrations the app itself runs on start.
+                source.close()
+                upgraded = self._upgraded_copy(path)
+                source = sqlite3.connect(
+                    (upgraded / "workspace.sqlite3").as_uri() + "?mode=ro", uri=True
+                )
+                if schema(source) != schema(self.db):
+                    raise AppError(
+                        "Эта копия сделана в другой версии приложения и не подходит. Выберите более новую копию."
+                    )
             if source.execute("PRAGMA foreign_key_check").fetchall():
                 raise AppError("Связи данных резервной копии повреждены.")
             source.backup(stage)
@@ -326,4 +359,6 @@ class Workspace:
         finally:
             stage.close()
             source.close()
+            if upgraded:
+                shutil.rmtree(upgraded, ignore_errors=True)
         return {"restored": True, "requires_login": True}

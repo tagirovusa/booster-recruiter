@@ -216,7 +216,7 @@ async function call(op, params = {}) {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${connection.token}`,
+          Authorization: `Bearer ${connection.desktop_token || connection.token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ op, params }),
