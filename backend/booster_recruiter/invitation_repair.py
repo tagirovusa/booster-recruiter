@@ -6,49 +6,72 @@ import json
 import secrets
 from datetime import timedelta
 
+from .attention_recovery import pause_after_platform_error
 from .outreach import later, now, utc
-from .platform_limits import (
-    LinkedInAccountRestrictedError,
-    LinkedInChallengeError,
-    LinkedInLimitError,
-)
+from .platform_limits import LinkedInChallengeError, LinkedInLimitError
 from .store import AppError, uid
+
+# app_settings key prefix linking a repair invite to the old unknown invites.
+REPAIR_KEY = "invitation_repair:"
+CONTACT_RELATIONS = {"connected", "pending"}
+
+
+def _action(store, action_id):
+    return store.one("SELECT * FROM outreach_actions WHERE id=?", (action_id,))
+
+
+def _is_confirmed_invite(action, member_id):
+    return (
+        action["member_id"] == member_id
+        and action["kind"] == "invite"
+        and action["status"] in {"sent", "satisfied"}
+    )
+
+
+def _is_replaced_unknown_invite(old, new, member_id):
+    return (
+        old["member_id"] == member_id
+        and old["kind"] == "invite"
+        and old["status"] == "unknown"
+        and old["url"] == new["url"]
+        and old["account_id"] == new["account_id"]
+    )
 
 
 def covered_invitation_actions(store, member_id):
     """Only a confirmed replacement invite can cover its own old invite ledger."""
     covered = {}
     for row in store.rows(
-        "SELECT key,value FROM app_settings WHERE key LIKE 'invitation_repair:%'"
+        "SELECT key,value FROM app_settings WHERE key LIKE ?", (REPAIR_KEY + "%",)
     ):
         try:
             link = json.loads(row["value"])
             if link["member_id"] != member_id:
                 continue
-            new = store.one(
-                "SELECT * FROM outreach_actions WHERE id=?", (link["action_id"],)
-            )
-            if (
-                new["member_id"] != member_id
-                or new["kind"] != "invite"
-                or new["status"] not in {"sent", "satisfied"}
-            ):
+            new = _action(store, link["action_id"])
+            if not _is_confirmed_invite(new, member_id):
                 continue
             for identity in link["previous_actions"]:
-                old = store.one(
-                    "SELECT * FROM outreach_actions WHERE id=?", (identity,)
-                )
-                if (
-                    old["member_id"] == member_id
-                    and old["kind"] == "invite"
-                    and old["status"] == "unknown"
-                    and old["url"] == new["url"]
-                    and old["account_id"] == new["account_id"]
+                if _is_replaced_unknown_invite(
+                    _action(store, identity), new, member_id
                 ):
                     covered[identity] = new["id"]
         except (ValueError, KeyError, TypeError, AppError):
             continue
     return covered
+
+
+def _fingerprint(member, account, run, campaign, actions):
+    snapshot = {
+        "member": member,
+        "account": [account["id"], account["url"], account["status"]],
+        "run": [run["id"], run["digest"], run["status"], run["rules"]],
+        "campaign": [campaign["id"], campaign["revision"], campaign["account_id"]],
+        "actions": actions,
+    }
+    return hashlib.sha256(
+        json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 class InvitationRepair:
@@ -90,6 +113,11 @@ class InvitationRepair:
             "SELECT * FROM outreach_actions WHERE member_id=? ORDER BY created",
             (member_id,),
         )
+        previous = self._unknown_invites(m, r, actions)
+        return m, r, a, previous, _fingerprint(m, a, r, c, actions)
+
+    def _unknown_invites(self, m, r, actions):
+        """IDs of old unknown invites; raises unless only an invite needs repair."""
         if any(
             x["account_id"] != r["account_id"] or x["url"] != m["url"] for x in actions
         ):
@@ -121,25 +149,10 @@ class InvitationRepair:
             x["kind"] == "invite" and x["status"] == "blocked" for x in actions
         ):
             raise AppError("Нет попытки приглашения, которую требуется исправить.")
-        fingerprint = hashlib.sha256(
-            json.dumps(
-                {
-                    "member": m,
-                    "account": [a["id"], a["url"], a["status"]],
-                    "run": [
-                        r["id"],
-                        r["digest"],
-                        r["status"],
-                        r["rules"],
-                    ],
-                    "campaign": [c["id"], c["revision"], c["account_id"]],
-                    "actions": actions,
-                },
-                sort_keys=True,
-                ensure_ascii=False,
-            ).encode()
-        ).hexdigest()
-        return m, r, a, previous, fingerprint
+        return previous
+
+    def fingerprint(self, member_id):
+        return self.context(member_id)[-1]
 
     def offer(self, identity, member_id, observation):
         self.proposals.pop(identity, None)
@@ -150,7 +163,7 @@ class InvitationRepair:
         ):
             return None
         try:
-            m, r, a, old, fingerprint = self.context(member_id)
+            m, _, a, old, fingerprint = self.context(member_id)
         except AppError:
             return None
         proposal = dict(
@@ -177,7 +190,7 @@ class InvitationRepair:
         try:
             valid = (
                 utc() < utc(proposal["public"]["expires_at"])
-                and self.context(proposal["public"]["member_id"])[-1]
+                and self.fingerprint(proposal["public"]["member_id"])
                 == proposal["fingerprint"]
             )
         except AppError:
@@ -203,17 +216,15 @@ class InvitationRepair:
             "SELECT run_id FROM outreach_members WHERE id=?", (public["member_id"],)
         )
         campaign_id = self.store.outreach.run(member["run_id"])["campaign_id"]
-        proposal["pause_generation"] = getattr(self.rt, "pause_generations", {}).get(
-            campaign_id, 0
-        )
+        proposal["pause_generation"] = self.rt.pause_generations.get(campaign_id, 0)
         self.attention.states[identity] = {"repairing": True, "repair_error": ""}
         self.rt.spawn("repair:" + public["member_id"], self.send(identity, proposal))
         return {"started": True}
 
     def check_pause_generation(self, proposal, campaign_id):
-        if getattr(self.rt, "pause_generations", {}).get(
-            campaign_id, 0
-        ) != proposal.get("pause_generation", 0):
+        if self.rt.pause_generations.get(campaign_id, 0) != proposal.get(
+            "pause_generation", 0
+        ):
             raise AppError(
                 "Отправка отменена по запросу паузы. Приглашение не отправлялось."
             )
@@ -242,7 +253,6 @@ class InvitationRepair:
 
     async def send(self, identity, proposal):
         public = proposal["public"]
-        action_id = None
         cid = None
         try:
             async with self.rt.browser_lock:
@@ -273,7 +283,7 @@ class InvitationRepair:
                     },
                 )
                 self.check_pause_generation(proposal, cid)
-                if self.context(m["id"])[-1] != fingerprint:
+                if self.fingerprint(m["id"]) != fingerprint:
                     raise AppError(
                         "Получатель или план изменился. Приглашение не отправлялось."
                     )
@@ -281,31 +291,8 @@ class InvitationRepair:
                     raise AppError(
                         "LinkedIn не подтвердил профиль. Приглашение не отправлялось."
                     )
-                if observation.get("relationship") in {"connected", "pending"}:
-                    old_action = (
-                        self.store.one(
-                            "SELECT * FROM outreach_actions WHERE id=?", (old[-1],)
-                        )
-                        if old
-                        else None
-                    )
-                    if old_action and len(old) > 1:
-                        with self.store.db:
-                            self.store.db.execute(
-                                "INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
-                                (
-                                    "invitation_repair:" + old_action["id"],
-                                    json.dumps(
-                                        {
-                                            "action_id": old_action["id"],
-                                            "member_id": m["id"],
-                                            "previous_actions": old[:-1],
-                                            "connection_verified_at": now(),
-                                        }
-                                    ),
-                                ),
-                            )
-                    self.attention.reconcile_contact(m, r, old_action, observation)
+                if observation.get("relationship") in CONTACT_RELATIONS:
+                    self._reconcile_existing_contact(m, r, old, observation)
                     return
                 if (
                     observation.get("relationship") != "not_connected"
@@ -314,122 +301,13 @@ class InvitationRepair:
                     raise AppError(
                         "LinkedIn сейчас не предлагает приглашение. Ничего не отправлялось."
                     )
-                with self.store.atomic():
-                    self.check_pause_generation(proposal, cid)
-                    if self.context(m["id"])[-1] != fingerprint:
-                        raise AppError(
-                            "Подтверждение устарело. Ничего не отправлялось."
-                        )
-                    action_id = uid()
-                    self.store.db.execute(
-                        "INSERT INTO outreach_actions(id,member_id,account_id,url,kind,status,created,updated) VALUES(?,?,?,?,'invite','submitting',?,?)",
-                        (action_id, m["id"], a["id"], m["url"], now(), now()),
-                    )
-                    link = {
-                        "action_id": action_id,
-                        "member_id": m["id"],
-                        "previous_actions": old,
-                        "authorized_at": now(),
-                        "recipient": m["url"],
-                        "note": m["invitation"],
-                    }
-                    self.store.db.execute(
-                        "INSERT INTO app_settings(key,value) VALUES(?,?)",
-                        (
-                            "invitation_repair:" + action_id,
-                            json.dumps(link, ensure_ascii=False),
-                        ),
-                    )
-                try:
-                    result = await self.rt.worker(a["id"]).call(
-                        "invite", {"url": m["url"], "note": m["invitation"]}
-                    )
-                except BaseException:
-                    self.store.outreach.finish(
-                        action_id,
-                        "unknown",
-                        "Ответ новой подтверждённой попытки потерян. Повтор заблокирован.",
-                    )
-                    self.update_result_member(
-                        m["id"],
-                        status="needs_review",
-                        detail="Не удалось подтвердить новое приглашение. Проверьте результат.",
-                    )
-                    try:
-                        await self.rt.worker(a["id"]).stop()
-                    except Exception:
-                        self.rt.pause_for_challenge(
-                            a["id"],
-                            "Не удалось закрыть браузер после потери ответа. Проверьте вход.",
-                        )
-                    self.rt.workers.pop(a["id"], None)
-                    raise
-                if result.get("invited") is True or (
-                    result.get("contact_satisfied") is True
-                    and result.get("relationship") in {"connected", "pending"}
-                ):
-                    satisfied = result.get("contact_satisfied") is True and result.get(
-                        "relationship"
-                    ) in {"connected", "pending"}
-                    relation = result.get("relationship") if satisfied else "pending"
-                    self.store.outreach.finish(
-                        action_id,
-                        "satisfied" if satisfied else "sent",
-                        result.get("message") or "Новое приглашение подтверждено.",
-                    )
-                    self.update_result_member(
-                        m["id"],
-                        status="planned"
-                        if relation == "connected"
-                        else "waiting_acceptance",
-                        relationship=relation,
-                        invitation_at=m["invitation_at"]
-                        if relation == "connected"
-                        else now(),
-                        checked_at=now(),
-                        next_check=later(hours=r["rules"]["check_hours"]),
-                        detail="Контакт уже существует. Дальше действует утверждённый план."
-                        if relation == "connected"
-                        else "Приглашение подтверждено; ожидаем принятия.",
-                    )
-                else:
-                    self.store.outreach.finish(
-                        action_id,
-                        "blocked" if result.get("retry_safe") is True else "unknown",
-                        result.get("message") or "Результат не подтверждён.",
-                    )
-                    self.update_result_member(
-                        m["id"],
-                        status="needs_review",
-                        detail=result.get("message")
-                        or "Новую попытку не удалось подтвердить.",
-                    )
-                if result.get("account_restricted"):
-                    raise AppError(self.rt.restrict_account(a["id"]))
-                if result.get("auth_required"):
-                    self.rt.pause_for_challenge(
-                        a["id"], result.get("message") or "Проверьте вход LinkedIn."
-                    )
-                    raise LinkedInChallengeError(
-                        result.get("message") or "Проверьте вход LinkedIn."
-                    )
-                if result.get("platform_limited"):
-                    self.rt.pause_sender(
-                        a["id"], result.get("message") or "LinkedIn сообщил о лимите."
-                    )
-                    raise LinkedInLimitError(
-                        result.get("message") or "LinkedIn сообщил о лимите."
-                    )
+                action_id = self._reserve_invite(proposal, cid, m, a, old, fingerprint)
+                result = await self._submit_invite(action_id, m, a["id"])
+                self._record_invite_result(action_id, result, m, r)
+                self._raise_for_platform_signal(result, a["id"])
         except Exception as exc:
             if cid:
-                if isinstance(exc, LinkedInAccountRestrictedError):
-                    self.rt.restrict_account(a["id"])
-                elif isinstance(exc, LinkedInChallengeError):
-                    self.rt.pause_for_challenge(a["id"], self.rt.friendly(exc))
-                elif isinstance(exc, LinkedInLimitError):
-                    self.rt.pause_sender(a["id"], self.rt.friendly(exc))
-                elif self.store.account(a["id"])["status"] != "ready":
-                    self.rt.pause_sender(a["id"], self.rt.friendly(exc))
+                pause_after_platform_error(self.rt, a["id"], exc, self.rt.friendly(exc))
             self.attention.states[identity] = {
                 "repairing": False,
                 "repair_error": self.rt.friendly(exc),
@@ -448,3 +326,121 @@ class InvitationRepair:
                     self.attention.states[identity].get("repair_error")
                     or "Состояние получателя обновлено. Кампания сохранена.",
                 )
+
+    def _reconcile_existing_contact(self, m, r, old, observation):
+        """LinkedIn already shows a contact or pending invite: nothing is sent."""
+        old_action = _action(self.store, old[-1]) if old else None
+        if old_action and len(old) > 1:
+            link = {
+                "action_id": old_action["id"],
+                "member_id": m["id"],
+                "previous_actions": old[:-1],
+                "connection_verified_at": now(),
+            }
+            with self.store.db:
+                self.store.db.execute(
+                    "INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
+                    (REPAIR_KEY + old_action["id"], json.dumps(link)),
+                )
+        self.attention.reconcile_contact(m, r, old_action, observation)
+
+    def _reserve_invite(self, proposal, cid, m, a, old, fingerprint):
+        """Atomically re-check approval and record one submitting invite."""
+        with self.store.atomic():
+            self.check_pause_generation(proposal, cid)
+            if self.fingerprint(m["id"]) != fingerprint:
+                raise AppError("Подтверждение устарело. Ничего не отправлялось.")
+            action_id = uid()
+            self.store.db.execute(
+                "INSERT INTO outreach_actions(id,member_id,account_id,url,kind,status,created,updated) VALUES(?,?,?,?,'invite','submitting',?,?)",
+                (action_id, m["id"], a["id"], m["url"], now(), now()),
+            )
+            link = {
+                "action_id": action_id,
+                "member_id": m["id"],
+                "previous_actions": old,
+                "authorized_at": now(),
+                "recipient": m["url"],
+                "note": m["invitation"],
+            }
+            self.store.db.execute(
+                "INSERT INTO app_settings(key,value) VALUES(?,?)",
+                (REPAIR_KEY + action_id, json.dumps(link, ensure_ascii=False)),
+            )
+        return action_id
+
+    async def _submit_invite(self, action_id, m, aid):
+        """A lost browser response leaves the attempt unknown and never retried."""
+        try:
+            return await self.rt.worker(aid).call(
+                "invite", {"url": m["url"], "note": m["invitation"]}
+            )
+        except BaseException:
+            self.store.outreach.finish(
+                action_id,
+                "unknown",
+                "Ответ новой подтверждённой попытки потерян. Повтор заблокирован.",
+            )
+            self.update_result_member(
+                m["id"],
+                status="needs_review",
+                detail="Не удалось подтвердить новое приглашение. Проверьте результат.",
+            )
+            try:
+                await self.rt.worker(aid).stop()
+            except Exception:
+                self.rt.pause_for_challenge(
+                    aid,
+                    "Не удалось закрыть браузер после потери ответа. Проверьте вход.",
+                )
+            self.rt.workers.pop(aid, None)
+            raise
+
+    def _record_invite_result(self, action_id, result, m, r):
+        satisfied = (
+            result.get("contact_satisfied") is True
+            and result.get("relationship") in CONTACT_RELATIONS
+        )
+        if not (result.get("invited") is True or satisfied):
+            self.store.outreach.finish(
+                action_id,
+                "blocked" if result.get("retry_safe") is True else "unknown",
+                result.get("message") or "Результат не подтверждён.",
+            )
+            self.update_result_member(
+                m["id"],
+                status="needs_review",
+                detail=result.get("message") or "Новую попытку не удалось подтвердить.",
+            )
+            return
+        relation = result.get("relationship") if satisfied else "pending"
+        connected = relation == "connected"
+        self.store.outreach.finish(
+            action_id,
+            "satisfied" if satisfied else "sent",
+            result.get("message") or "Новое приглашение подтверждено.",
+        )
+        self.update_result_member(
+            m["id"],
+            status="planned" if connected else "waiting_acceptance",
+            relationship=relation,
+            invitation_at=m["invitation_at"] if connected else now(),
+            checked_at=now(),
+            next_check=later(hours=r["rules"]["check_hours"]),
+            detail="Контакт уже существует. Дальше действует утверждённый план."
+            if connected
+            else "Приглашение подтверждено; ожидаем принятия.",
+        )
+
+    def _raise_for_platform_signal(self, result, aid):
+        message = result.get("message")
+        if result.get("account_restricted"):
+            raise AppError(self.rt.restrict_account(aid))
+        if result.get("auth_required"):
+            detail = message or "Проверьте вход LinkedIn."
+            self.rt.pause_for_challenge(aid, detail)
+            raise LinkedInChallengeError(detail)
+        if result.get("platform_limited"):
+            detail = message or "LinkedIn сообщил о лимите."
+            self.rt.pause_sender(aid, detail)
+            raise LinkedInLimitError(detail)

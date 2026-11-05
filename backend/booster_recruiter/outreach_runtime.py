@@ -11,6 +11,9 @@ from .platform_limits import (
 )
 from .store import AppError
 
+# Planned outreach action -> browser worker command.
+WORKER_COMMANDS = {"invite": "invite", "message": "send_free", "inmail": "send_inmail"}
+
 
 class OutreachRuntime:
     def __init__(self, runtime):
@@ -272,13 +275,14 @@ class OutreachRuntime:
                             or not within_hours(rules)
                         ):
                             break
+                        credit_cost = (
+                            (0 if observation.get("inmail_free") else 1)
+                            if action == "inmail"
+                            else None
+                        )
                         try:
                             action_id = self.repo.reserve(
-                                member["id"],
-                                action,
-                                credit_cost=(0 if observation.get("inmail_free") else 1)
-                                if action == "inmail"
-                                else None,
+                                member["id"], action, credit_cost=credit_cost
                             )
                         except AppError as exc:
                             self.repo.update_member(
@@ -301,17 +305,10 @@ class OutreachRuntime:
                             params["subject"] = member["subject"]
                             if run["context"]:
                                 params["recruiter"] = run["context"]
-                                params["credit_cost"] = (
-                                    0 if observation.get("inmail_free") else 1
-                                )
+                                params["credit_cost"] = credit_cost
                         try:
                             result = await self.rt.worker(aid).call(
-                                {
-                                    "invite": "invite",
-                                    "message": "send_free",
-                                    "inmail": "send_inmail",
-                                }[action],
-                                params,
+                                WORKER_COMMANDS[action], params
                             )
                         except BaseException:
                             self.repo.finish(

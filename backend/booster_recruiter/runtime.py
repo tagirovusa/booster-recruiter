@@ -18,6 +18,16 @@ from .store import AppError, canonical
 from .user_errors import record, user_text
 
 ACTIVE_STATUSES = {"collecting", "checking", "sending", "automating"}
+PREVIEW_PAUSED = "Предпросмотр приостановлен пользователем."
+
+
+def reply_timeout(action, params):
+    """Seconds to wait for one worker reply; Recruiter reads open extra pages."""
+    if action in {"observe", "check_reply"} and params.get("recruiter"):
+        return 180
+    if action in {"observe", "check_reply", "open_profile"}:
+        return 90
+    return 300
 
 
 def executable_args():
@@ -83,12 +93,7 @@ class Worker:
             try:
                 line = await asyncio.wait_for(
                     self.process.stdout.readline(),
-                    timeout=180
-                    if action in {"observe", "check_reply"}
-                    and (params or {}).get("recruiter")
-                    else 90
-                    if action in {"observe", "check_reply", "open_profile"}
-                    else 300,
+                    timeout=reply_timeout(action, params or {}),
                 )
             except (TimeoutError, asyncio.CancelledError):
                 await self.stop()
@@ -397,7 +402,7 @@ class Runtime:
                 cid, "checking", "Проверяем Recruiter и подпись для предпросмотра…"
             ):
                 if cid in self.pause_flags:
-                    raise AppError("Предпросмотр приостановлен пользователем.")
+                    raise AppError(PREVIEW_PAUSED)
                 identity = await self.verify(campaign["account_id"])
                 context = await self.worker(campaign["account_id"]).call(
                     "recruiter_preview",
@@ -405,14 +410,12 @@ class Runtime:
                 )
                 context["sender_name"] = identity["name"]
             if cid in self.pause_flags:
-                raise AppError("Предпросмотр приостановлен пользователем.")
+                raise AppError(PREVIEW_PAUSED)
             self.store.progress(cid, "ready", "Тексты и подпись Recruiter проверены.")
             return self.store.outreach.preview(cid, recruiter_context=context)
         except BaseException:
             if cid in self.pause_flags:
-                self.store.progress(
-                    cid, "paused", "Предпросмотр приостановлен пользователем."
-                )
+                self.store.progress(cid, "paused", PREVIEW_PAUSED)
             else:
                 self.store.progress(cid, campaign["status"], campaign["progress"])
             raise

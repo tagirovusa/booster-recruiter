@@ -301,15 +301,25 @@ async def serve(profile: Path, *, visible=False):
                         browser.page, read_profile, read_conversation, pacer=pacer
                     )
                     await check_platform_limit(outreach.session)
-                    if action.startswith("recruiter_"):
+
+                    def recruiter_browser():
                         from .recruiter_browser import RecruiterBrowser
 
-                        recruiter = RecruiterBrowser(
+                        return RecruiterBrowser(
                             browser.page,
                             outreach.session,
                             outreach.navigator,
                             pacer=pacer,
                         )
+
+                    def recruiter_thread():
+                        # Saved Recruiter context, or a legacy Recruiter thread.
+                        return p.get("recruiter") or (
+                            p.get("thread_id") or ""
+                        ).startswith("recruiter:")
+
+                    if action.startswith("recruiter_"):
+                        recruiter = recruiter_browser()
                         if action == "recruiter_prepare":
                             result = await recruiter.prepare_manual_texts()
                         else:
@@ -346,14 +356,7 @@ async def serve(profile: Path, *, visible=False):
                                 for k in ("free_message", "has_reply", "has_outgoing")
                             )
                         ):
-                            from .recruiter_browser import RecruiterBrowser
-
-                            recruiter = RecruiterBrowser(
-                                browser.page,
-                                outreach.session,
-                                outreach.navigator,
-                                pacer=pacer,
-                            )
+                            recruiter = recruiter_browser()
                             status = await recruiter.status()
                             if (
                                 status["contract"] != p["recruiter"]["contract"]
@@ -369,9 +372,7 @@ async def serve(profile: Path, *, visible=False):
                             if observed.get("recruiter_has_history"):
                                 result["has_outgoing"] = True
                     elif action == "verify_delivery":
-                        if p.get("recruiter") or (p.get("thread_id") or "").startswith(
-                            "recruiter:"
-                        ):
+                        if recruiter_thread():
                             result = {
                                 "confirmed": False,
                                 "detail": "Для этой старой отправки Recruiter нет сохранённого подтверждения. Проверьте переписку вручную; повтор не выполнялся.",
@@ -387,21 +388,12 @@ async def serve(profile: Path, *, visible=False):
                     elif action == "invite":
                         result = await outreach.invite(p["url"], p.get("note", ""))
                     elif action == "check_reply":
-                        if p.get("recruiter") or (p.get("thread_id") or "").startswith(
-                            "recruiter:"
-                        ):
-                            from .recruiter_browser import RecruiterBrowser
-
+                        if recruiter_thread():
                             if not p.get("recruiter"):
                                 raise RuntimeError(
                                     "Не сохранён контракт переписки Recruiter."
                                 )
-                            result = await RecruiterBrowser(
-                                browser.page,
-                                outreach.session,
-                                outreach.navigator,
-                                pacer=pacer,
-                            ).check_reply(
+                            result = await recruiter_browser().check_reply(
                                 p["url"],
                                 p.get("thread_id"),
                                 p["recruiter"],
@@ -409,36 +401,23 @@ async def serve(profile: Path, *, visible=False):
                                 p.get("subject", ""),
                             )
                         else:
-
-                            async def open_conversation(arguments):
-                                return await call("get_conversation", arguments)
-
                             result = await outreach.check_reply(
-                                p["url"], p.get("thread_id"), open_conversation
+                                p["url"], p.get("thread_id"), read_conversation
                             )
+                    elif action == "send_inmail" and p.get("recruiter"):
+                        result = await recruiter_browser().send(
+                            p["url"],
+                            p["message"],
+                            p["subject"],
+                            p["recruiter"],
+                            p["credit_cost"],
+                        )
                     else:
-                        if action == "send_inmail" and p.get("recruiter"):
-                            from .recruiter_browser import RecruiterBrowser
-
-                            recruiter = RecruiterBrowser(
-                                browser.page,
-                                outreach.session,
-                                outreach.navigator,
-                                pacer=pacer,
-                            )
-                            result = await recruiter.send(
-                                p["url"],
-                                p["message"],
-                                p["subject"],
-                                p["recruiter"],
-                                p["credit_cost"],
-                            )
-                        else:
-                            result = await outreach.send(
-                                p["url"],
-                                p["message"],
-                                p.get("subject") if action == "send_inmail" else None,
-                            )
+                        result = await outreach.send(
+                            p["url"],
+                            p["message"],
+                            p.get("subject") if action == "send_inmail" else None,
+                        )
                 elif action == "send":
                     from .outreach_browser import PacedMessageSender, PacedNavigator
 
