@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { plural } from "./text";
 import {
   UserRoundPlus,
   UserRound,
@@ -614,12 +615,11 @@ export function Automation({
     campaign.template_open,
     campaign.template_neutral,
   ]);
-  const peopleLabel = {
-    one: "кандидат",
-    few: "кандидата",
-    many: "кандидатов",
-    other: "кандидата",
-  }[new Intl.PluralRules("ru").select(selected.length)];
+  const peopleLabel = plural(selected.length, [
+    "кандидат",
+    "кандидата",
+    "кандидатов",
+  ]);
   const openCount = selected.filter((p) => p.segment === "open").length;
   const neutralCount = selected.filter((p) => p.segment === "neutral").length;
   const fieldChecks = {

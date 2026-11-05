@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import "./style.css";
 import { AttentionPanel, SearchBuilder, TemplatePicker } from "./Workspace";
+import { plural } from "./text";
 import DataSafety, { NotificationsSettings } from "./DataSafety";
 import {
   Automation,
@@ -85,9 +86,7 @@ const fmt = (d) =>
     minute: "2-digit",
   });
 const profileWord = (count) =>
-  ({ one: "профиль", few: "профиля", many: "профилей", other: "профиля" })[
-    new Intl.PluralRules("ru").select(count)
-  ];
+  plural(count, ["профиль", "профиля", "профилей"]);
 const initials = (name) =>
   (name || "?")
     .split(" ")
@@ -515,6 +514,11 @@ function App() {
           { id: campaign.account_id, url },
           "Профиль открыт в сессии отправителя.",
         );
+  const goTo = (target) => {
+    setPage(target);
+    setCid(null);
+    setDetail(null);
+  };
   const openCampaign = (id) => {
     setCid(id);
     setDetail(null);
@@ -743,11 +747,7 @@ function App() {
                 summary={workspaceSummary}
                 error={attentionError}
                 disabled={busy}
-                onSettings={() => {
-                  setPage("settings");
-                  setCid(null);
-                  setDetail(null);
-                }}
+                onSettings={() => goTo("settings")}
                 checkingItem={checkingItem}
                 onCheck={recheckAttention}
                 onRepair={(item) => {
@@ -765,9 +765,7 @@ function App() {
                 }
                 onOpen={(item) => {
                   if (item.kind === "login") {
-                    setPage("accounts");
-                    setCid(null);
-                    setDetail(null);
+                    goTo("accounts");
                     setFocusTarget("account-" + item.account_id);
                   } else {
                     openCampaign(item.campaign_id);
@@ -1411,11 +1409,7 @@ function App() {
                   запускать кампанию.{" "}
                   <button
                     className="text-link"
-                    onClick={() => {
-                      setPage("accounts");
-                      setCid(null);
-                      setDetail(null);
-                    }}
+                    onClick={() => goTo("accounts")}
                   >
                     Открыть аккаунты
                   </button>
@@ -1495,11 +1489,7 @@ function App() {
                   onSave={saveAutomation}
                   onPeople={() => setTab("people")}
                   onHistory={() => setTab("history")}
-                  onAccounts={() => {
-                    setPage("accounts");
-                    setCid(null);
-                    setDetail(null);
-                  }}
+                  onAccounts={() => goTo("accounts")}
                   onCheck={() => act("campaign.check", { id: cid })}
                   onResume={(id) => act("outreach.resume", { id })}
                   onCheckNow={(id) => act("outreach.check_now", { id })}
@@ -2462,7 +2452,7 @@ function App() {
         <Modal
           error={error}
           title="Перед запуском"
-          subtitle={`${preview.messages.length} ${{ one: "получатель", few: "получателя", many: "получателей", other: "получателя" }[new Intl.PluralRules("ru").select(preview.messages.length)]} · Отправитель: ${preview.account.label}`}
+          subtitle={`${preview.messages.length} ${plural(preview.messages.length, ["получатель", "получателя", "получателей"])} · Отправитель: ${preview.account.label}`}
           wide
           onClose={() => setPreview(null)}
         >
@@ -2479,16 +2469,11 @@ function App() {
               <p>
                 <strong>
                   Максимальный расход InMail: {preview.maximum_credits}{" "}
-                  {
-                    {
-                      one: "кредит",
-                      few: "кредита",
-                      many: "кредитов",
-                      other: "кредита",
-                    }[
-                      new Intl.PluralRules("ru").select(preview.maximum_credits)
-                    ]
-                  }
+                  {plural(preview.maximum_credits, [
+                    "кредит",
+                    "кредита",
+                    "кредитов",
+                  ])}
                   .
                 </strong>{" "}
                 Только для этих получателей, если бесплатная связь недоступна.

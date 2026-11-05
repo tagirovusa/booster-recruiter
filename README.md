@@ -15,7 +15,8 @@
 
 - [Сборка Windows](docs/WINDOWS.md)
 - [Приёмка и сбор доказательств Windows](docs/WINDOWS-ACCEPTANCE.md)
-- [Руководство рекрутера](docs/USER-GUIDE.md)
+- [Как начать за 5 шагов](docs/QUICK-START.md): для рекрутера
+- [Подробное руководство рекрутера](docs/USER-GUIDE.md)
 - [Архитектура и обслуживание](docs/DEVELOPMENT.md)
 
 ## Возможности
