@@ -6,6 +6,7 @@ from booster_recruiter.account_removal import deletion_preview, remove_account
 from booster_recruiter.api import create_app
 from booster_recruiter.runtime import Runtime
 from booster_recruiter.store import AppError, Store
+from legacy_history import legacy_approve, legacy_claim, legacy_preview
 from test_outreach import plan
 from test_store import prepared
 
@@ -200,9 +201,9 @@ async def test_legacy_ledger_and_suppression_survive_account_removal(tmp_path):
     s = Store(tmp_path)
     try:
         a, c, p = prepared(s)
-        preview = s.preview(c["id"])
-        s.approve(preview["batch_id"], preview["digest"])
-        delivery = s.claim(preview["batch_id"])
+        preview = legacy_preview(s, c["id"])
+        legacy_approve(s, preview["batch_id"], preview["digest"])
+        delivery = legacy_claim(s, preview["batch_id"])
         s.finish(delivery["id"], "sent", "Confirmed")
         s.suppress("https://www.linkedin.com/in/no-contact", "No contact")
         await remove_account(s, Runtime(s), a["id"])

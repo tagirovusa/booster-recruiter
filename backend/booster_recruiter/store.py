@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 import json
 import re
@@ -110,6 +109,17 @@ class Store:
             )
             self.db.execute(
                 "UPDATE campaigns SET status='paused',progress='Работа приостановлена после перезапуска.' WHERE status IN ('collecting','sending')"
+            )
+            # The legacy batch sender is retired. Unsent recipients of an old
+            # queue return to the normal flow; sent history keeps protecting
+            # people from a second message.
+            self.db.execute(
+                "UPDATE deliveries SET status='cancelled',detail='Старая очередь закрыта при обновлении приложения. Отправьте через вкладку «Отправка».',updated=? "
+                "WHERE status='pending' AND batch_id IN (SELECT id FROM batches WHERE status IN ('approved','preview'))",
+                (now(),),
+            )
+            self.db.execute(
+                "UPDATE batches SET status='cancelled' WHERE status IN ('approved','preview')"
             )
             self.db.execute(
                 "UPDATE accounts SET status='needs_login' WHERE status='connecting'"
@@ -637,151 +647,6 @@ class Store:
                 "UPDATE deliveries SET status='cancelled',detail='Не контактировать',updated=? WHERE url=? AND status='pending'",
                 (now(), url),
             )
-
-    def preview(self, cid):
-        with self.atomic():
-            return self._preview(cid)
-
-    def _preview(self, cid):
-        self.ensure_idle(cid)
-        campaign = self.campaign(cid)
-        account = self.account(campaign["account_id"])
-        if account["status"] != "ready":
-            raise AppError("Подключите аккаунт отправителя.")
-        chosen = self.rows(
-            "SELECT * FROM candidates WHERE campaign_id=? AND selected=1 AND excluded=0",
-            (cid,),
-        )
-        messages, skipped = [], []
-        for p in chosen:
-            if p["segment"] == "review":
-                continue
-            if self.outreach.blocked(
-                p["url"], campaign_id=cid, account_id=account["id"]
-            ):
-                skipped.append(p["url"])
-                continue
-            data = json.loads(p["data"])
-            template = campaign[
-                "template_open" if p["segment"] == "open" else "template_neutral"
-            ]
-            messages.append(
-                {
-                    "id": uid(),
-                    "candidate_id": p["id"],
-                    "url": p["url"],
-                    "name": data.get("name", ""),
-                    "message": message_for(template, data),
-                }
-            )
-        if not messages:
-            raise AppError(
-                "Нет выбранных получателей без предыдущих отправок или запрета контакта."
-            )
-        # Preview freezes the exact account, recipients and final messages.
-        digest = hashlib.sha256(
-            json.dumps([campaign["account_id"], messages], sort_keys=True).encode()
-        ).hexdigest()
-        bid = uid()
-        with self.atomic():
-            self.ensure_idle(cid)
-            self.invalidate(cid, previews_only=True)
-            self.db.execute(
-                "INSERT INTO batches VALUES(?,?,?,?,?,?)",
-                (bid, cid, campaign["account_id"], digest, "preview", now()),
-            )
-            for m in messages:
-                self.db.execute(
-                    "INSERT INTO deliveries(id,batch_id,candidate_id,url,message,status,created,updated) VALUES(?,?,?,?,?,'pending',?,?)",
-                    (
-                        m["id"],
-                        bid,
-                        m["candidate_id"],
-                        m["url"],
-                        m["message"],
-                        now(),
-                        now(),
-                    ),
-                )
-        return {
-            "batch_id": bid,
-            "digest": digest,
-            "account": account,
-            "messages": messages,
-            "skipped": skipped,
-        }
-
-    def approve(self, bid, digest):
-        with self.atomic():
-            batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
-            self.ensure_idle(batch["campaign_id"])
-            if batch["status"] != "preview" or batch["digest"] != digest:
-                raise AppError("Предпросмотр устарел. Подготовьте сообщения снова.")
-            if self.account(batch["account_id"])["status"] != "ready":
-                raise AppError("Сначала подтвердите вход отправителя.")
-            for row in self.rows("SELECT * FROM deliveries WHERE batch_id=?", (bid,)):
-                if row["status"] != "pending" or self.outreach.blocked(
-                    row["url"],
-                    campaign_id=batch["campaign_id"],
-                    account_id=batch["account_id"],
-                ):
-                    raise AppError(
-                        "Один из получателей уже обрабатывается. Обновите предпросмотр."
-                    )
-            self.invalidate(batch["campaign_id"])
-            self.db.execute("UPDATE batches SET status='approved' WHERE id=?", (bid,))
-            self.db.execute(
-                "UPDATE deliveries SET status='pending' WHERE batch_id=?", (bid,)
-            )
-            self.db.execute(
-                "UPDATE campaigns SET status='ready',progress='Очередь сообщений подтверждена.' WHERE id=?",
-                (batch["campaign_id"],),
-            )
-        self.event("approval", f"Подтверждена очередь {bid}")
-        return batch
-
-    def claim(self, bid):
-        with self.atomic():
-            rows = self.rows(
-                "SELECT d.* FROM deliveries d JOIN batches b ON b.id=d.batch_id WHERE d.batch_id=? AND d.status='pending' AND b.status='approved' ORDER BY d.created,d.id LIMIT 1",
-                (bid,),
-            )
-            if not rows:
-                return None
-            row = rows[0]
-            batch = self.one("SELECT * FROM batches WHERE id=?", (bid,))
-            campaign = self.campaign(batch["campaign_id"])
-            if self.account(batch["account_id"])["status"] != "ready":
-                raise AppError(
-                    "Подключите аккаунт отправителя перед продолжением очереди."
-                )
-            if (
-                campaign["status"] == "archived"
-                or campaign["account_id"] != batch["account_id"]
-            ):
-                raise AppError("Отправитель очереди изменился или кампания в архиве.")
-            if (
-                self.outreach.blocked(
-                    row["url"],
-                    campaign_id=batch["campaign_id"],
-                    account_id=batch["account_id"],
-                )
-                or self.rows("SELECT url FROM suppression WHERE url=?", (row["url"],))
-                or self.rows(
-                    "SELECT id FROM deliveries WHERE url=? AND id!=? AND status IN ('sending','sent','unknown','replied')",
-                    (row["url"], row["id"]),
-                )
-            ):
-                self.db.execute(
-                    "UPDATE deliveries SET status='cancelled',detail='Повторный контакт исключён',updated=? WHERE id=?",
-                    (now(), row["id"]),
-                )
-                return {"skip": True}
-            self.db.execute(
-                "UPDATE deliveries SET status='sending',updated=? WHERE id=? AND status='pending'",
-                (now(), row["id"]),
-            )
-            return row
 
     def finish(self, did, status, detail="", thread_id=None):
         if status not in ("sent", "unknown", "failed", "blocked", "replied"):

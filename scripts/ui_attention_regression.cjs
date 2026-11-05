@@ -83,18 +83,11 @@ s.db.close()
       global.__repairAttempts = [];
       global.__repairedItems = new Set();
       global.__repairTargets = {};
-      global.__legacyResumeCalls = [];
       ipcMain.removeHandler("command");
       ipcMain.handle("command", async (event, op, p) => {
         if (op === "workspace.recheck") {
           global.__attentionChecks.push(p.id);
           global.__checkedItems.add(p.id);
-          return { started: true };
-        }
-        if (op === "batch.resume") {
-          if (p.id !== "synthetic-pending-batch")
-            throw Error("Unexpected batch");
-          global.__legacyResumeCalls.push(p.id);
           return { started: true };
         }
         if (op === "workspace.retry_invitation") {
@@ -371,18 +364,10 @@ s.db.close()
     await expect(oldAttempt).toContainText(
       "актуальное состояние приглашения или связи",
     );
-    const legacyResume = page.getByRole("button", {
-      name: "Продолжить очередь",
-      exact: true,
-    });
-    await expect(legacyResume).toBeEnabled();
+    // The retired batch sender has no resume control, even for an old queue.
     await expect(
-      page.getByText(/Неподтверждённые отправки отложены для проверки/),
-    ).toBeVisible();
-    await legacyResume.click();
-    assert.deepEqual(await app.evaluate(() => global.__legacyResumeCalls), [
-      "synthetic-pending-batch",
-    ]);
+      page.getByRole("button", { name: "Продолжить очередь", exact: true }),
+    ).toHaveCount(0);
 
     await expect(
       oldAttempt.getByRole("button", {

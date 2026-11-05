@@ -47,7 +47,6 @@ async def test_agent_token_cannot_approve_sending_or_delete(tmp_path):
 
             for op in (
                 "outreach.approve",
-                "batch.approve",
                 "backup.restore",
                 "account.delete",
                 "campaign.delete",

@@ -18,7 +18,7 @@ def store(tmp_path):
     s.db.close()
 
 
-@pytest.mark.parametrize("operation", ["collect", "check", "outreach", "legacy_send"])
+@pytest.mark.parametrize("operation", ["collect", "check", "outreach"])
 @pytest.mark.parametrize("already_waiting", [False, True])
 async def test_queued_pause_completes_before_unrelated_browser_operation(
     store, operation, already_waiting
@@ -32,12 +32,7 @@ async def test_queued_pause_completes_before_unrelated_browser_operation(
         return await original(action, params)
 
     worker.call = call
-    if operation == "legacy_send":
-        batch = store.preview(campaign["id"])
-        store.approve(batch["batch_id"], batch["digest"])
-        work = runtime.send_batch(batch["batch_id"])
-        status = "sending"
-    elif operation == "collect":
+    if operation == "collect":
         work, status = runtime.collect(campaign["id"]), "collecting"
     elif operation == "check":
         work, status = runtime.outreach.check(campaign["id"]), "checking"

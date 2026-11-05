@@ -10,6 +10,7 @@ from booster_recruiter.api import create_app
 from booster_recruiter.outreach import DEFAULT_RULES
 from booster_recruiter.runtime import Runtime
 from booster_recruiter.store import AppError, Store, now
+from legacy_history import legacy_approve, legacy_claim, legacy_preview
 from test_outreach import Worker, activate, plan
 from test_store import prepared
 
@@ -25,8 +26,8 @@ def store(tmp_path):
 def test_preview_preserves_approved_work_until_valid_replacement(store, status):
     _, c, _ = prepared(store)
     if status == "legacy":
-        original = store.preview(c["id"])
-        store.approve(original["batch_id"], original["digest"])
+        original = legacy_preview(store, c["id"])
+        legacy_approve(store, original["batch_id"], original["digest"])
 
         def original_status():
             return store.one(
@@ -58,13 +59,13 @@ def test_preview_preserves_approved_work_until_valid_replacement(store, status):
     assert original_status() == "cancelled"
     assert store.outreach.run(replacement["run_id"])["status"] == "active"
     assert store.rows("SELECT * FROM outreach_actions") == []
-    assert store.claim(original.get("batch_id", "none")) is None
+    assert legacy_claim(store, original.get("batch_id", "none")) is None
 
 
 def test_failed_approval_rolls_back_replacement_and_keeps_legacy_queue(store):
     _, c, _ = prepared(store)
-    legacy = store.preview(c["id"])
-    store.approve(legacy["batch_id"], legacy["digest"])
+    legacy = legacy_preview(store, c["id"])
+    legacy_approve(store, legacy["batch_id"], legacy["digest"])
     preview = store.outreach.preview(c["id"])
     store.db.execute(
         "CREATE TEMP TRIGGER reject_activation BEFORE UPDATE OF status ON outreach_runs WHEN NEW.status='active' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END"
@@ -79,7 +80,8 @@ def test_failed_approval_rolls_back_replacement_and_keeps_legacy_queue(store):
         == "approved"
     )
     assert (
-        store.claim(legacy["batch_id"])["message"] == legacy["messages"][0]["message"]
+        legacy_claim(store, legacy["batch_id"])["message"]
+        == legacy["messages"][0]["message"]
     )
 
 
@@ -102,8 +104,8 @@ def test_rejected_replacement_keeps_existing_run(store, mutation):
 def test_idempotent_edits_preserve_approval_and_progress(store, status):
     _, c, p = prepared(store)
     if status == "legacy":
-        preview = store.preview(c["id"])
-        store.approve(preview["batch_id"], preview["digest"])
+        preview = legacy_preview(store, c["id"])
+        legacy_approve(store, preview["batch_id"], preview["digest"])
     else:
         preview = store.outreach.preview(c["id"])
         store.outreach.approve(preview["run_id"], preview["digest"])

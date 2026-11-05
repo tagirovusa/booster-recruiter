@@ -27,7 +27,6 @@ from .user_errors import record, user_text
 # prepare work but never approve it.
 DESKTOP_ONLY = {
     "outreach.approve",
-    "batch.approve",
     "workspace.retry_invitation",
     "backup.restore",
     "account.delete",
@@ -233,25 +232,6 @@ def create_app(store, runtime, token, desktop_token=None):
             elif op == "candidate.suppress":
                 store.suppress(p["url"], p.get("reason", "Отказ от контакта"))
                 result = {"saved": True}
-            elif op == "campaign.preview":
-                result = store.preview(p["id"])
-            elif op == "batch.approve":
-                batch = store.approve(p["id"], p["digest"])
-                runtime.start_campaign(
-                    batch["campaign_id"], runtime.send_batch(p["id"]), "sending"
-                )
-                result = {"started": True}
-            elif op == "batch.resume":
-                batch = store.one("SELECT * FROM batches WHERE id=?", (p["id"],))
-                store.ensure_idle(batch["campaign_id"])
-                if batch["status"] != "approved":
-                    raise AppError(
-                        "Эта очередь больше не действует. Подготовьте новый предпросмотр."
-                    )
-                runtime.start_campaign(
-                    batch["campaign_id"], runtime.send_batch(p["id"]), "sending"
-                )
-                result = {"started": True}
             elif op == "delivery.resolve":
                 row = store.one("SELECT * FROM deliveries WHERE id=?", (p["id"],))
                 sender = store.one(

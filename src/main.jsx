@@ -954,30 +954,6 @@ function App() {
                           : (id) => recheckAttention("review:" + id)
                       }
                     />
-                    {detail.batches
-                      .filter((b) => b.status === "approved" && b.pending > 0)
-                      .map((b) => (
-                        <div className="toolbar" key={b.id}>
-                          <p>
-                            В подтверждённой очереди осталось: {b.pending}.
-                            {b.unknown > 0
-                              ? " Неподтверждённые отправки отложены для проверки. Очередь продолжится только для остальных получателей."
-                              : " Отправитель и тексты сохранены."}
-                          </p>
-                          <Button
-                            disabled={active || busy}
-                            title={
-                              active
-                                ? "Доступно после паузы или завершения кампании."
-                                : undefined
-                            }
-                            onClick={() => act("batch.resume", { id: b.id })}
-                          >
-                            <Play size={16} />
-                            Продолжить очередь
-                          </Button>
-                        </div>
-                      ))}
                     {hasMessageHistory && (
                       <>
                         {hasOutreachHistory && (

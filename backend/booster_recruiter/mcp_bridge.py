@@ -108,11 +108,6 @@ def create_server(root: Path):
         return call("campaign.export", {"id": campaign_id, "format": format})
 
     @mcp.tool()
-    def resume_approved_batch(batch_id: str) -> dict:
-        """Resume only an already approved, unchanged queue. Unknown sends stop it."""
-        return call("batch.resume", {"id": batch_id})
-
-    @mcp.tool()
     def configure_outreach(campaign_id: str, rules: dict) -> dict:
         """Set draft connection/InMail rules. Cancels any old approval; never sends."""
         return call("campaign.automation", {"id": campaign_id, "rules": rules})
