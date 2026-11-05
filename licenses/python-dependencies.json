@@ -294,12 +294,6 @@
     "homepage": ""
   },
   {
-    "name": "booster-recruiter",
-    "version": "0.3.0",
-    "license": "",
-    "homepage": ""
-  },
-  {
     "name": "rapidocr-onnxruntime",
     "version": "1.4.4",
     "license": "Apache-2.0",
@@ -558,6 +552,12 @@
     "homepage": ""
   },
   {
+    "name": "booster-recruiter",
+    "version": "0.3.0",
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "booster-linkedin-runtime",
     "version": "0.2.8",
     "license": "Apache-2.0",
@@ -609,6 +609,12 @@
     "name": "idna",
     "version": "3.20",
     "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.3.0",
+    "license": "",
     "homepage": ""
   }
 ]
