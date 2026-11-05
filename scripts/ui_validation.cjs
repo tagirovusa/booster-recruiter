@@ -298,10 +298,22 @@ async function main() {
   const transformed = await transformWithOxc(source, "Outreach.jsx", {
     jsx: { runtime: "classic" },
   });
-  const componentCode = transformed.code
-    .replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "")
-    .replace(/export\s*\{[\s\S]*?\};?/g, "")
-    .replace(/\bexport\s+(?=(?:function|const))/g, "");
+  // Shared wording modules are plain constants and functions; inline them so
+  // the sandbox sees the same labels the app imports.
+  const shared = ["src/labels.js", "src/text.js"]
+    .map((file) =>
+      fs
+        .readFileSync(path.join(root, file), "utf8")
+        .replace(/\bexport\s+(?=(?:function|const))/g, ""),
+    )
+    .join("\n");
+  const componentCode =
+    shared +
+    "\n" +
+    transformed.code
+      .replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "")
+      .replace(/export\s*\{[\s\S]*?\};?/g, "")
+      .replace(/\bexport\s+(?=(?:function|const))/g, "");
   const { ContactState, DetailMessage, DesktopPreferences } =
     vm.runInNewContext(
       componentCode + "\n({ContactState, DetailMessage, DesktopPreferences})",

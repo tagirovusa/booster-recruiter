@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { plural } from "./text";
+import { actionKinds, personStates, relations } from "./labels";
+
 import {
   UserRoundPlus,
   UserRound,
@@ -20,42 +22,6 @@ import {
   Play,
   LoaderCircle,
 } from "lucide-react";
-
-const states = {
-  planned: "В плане",
-  check_pending: "В очереди",
-  waiting_acceptance: "Ждём принятия",
-  waiting_credits: "Ожидаем кредиты",
-  waiting_budget: "В очереди",
-  needs_review: "Требует внимания",
-  sent: "Отправлено",
-  replied: "Ответ получен",
-  excluded: "Исключён",
-  unavailable: "Недоступно",
-  finished: "Завершено",
-  preview: "Черновик плана",
-  active: "Работает по расписанию",
-  paused: "На паузе",
-  completed: "Завершено",
-  cancelled: "Отменено",
-  submitting: "Отправляем…",
-  unknown: "Неясно, отправлено ли",
-  blocked: "Действие остановлено",
-  satisfied: "Проверено",
-};
-const relations = {
-  unknown: "Связь ещё не подтверждена",
-  connected: "В контактах · 1-й уровень",
-  pending: "Приглашение ожидает принятия",
-  not_connected: "Нет контакта",
-  incoming: "Входящее приглашение",
-  self: "Собственный профиль",
-};
-const kindNames = {
-  invite: "Приглашение",
-  message: "Обычное сообщение",
-  inmail: "InMail",
-};
 
 const TEMPLATE_FIELDS = new Set(["name", "first_name", "headline", "company"]);
 const characterCount = (value) => [...value].length;
@@ -449,7 +415,7 @@ export function ContactState({ person, member }) {
       ? "План остановлен"
       : "Наблюдение завершено"
     : member
-      ? states[member.status] || member.status
+      ? personStates[member.status] || member.status
       : relations[contact.relationship] || relations.unknown;
   const detail = stopped
     ? member.invitation_at || member.status === "waiting_acceptance"
@@ -1527,7 +1493,7 @@ export function OutreachHistory({
         <div key={run.id} className="outreach-run">
           <div className="toolbar">
             <b>
-              {states[run.status]} · {date(run.created)}
+              {personStates[run.status]} · {date(run.created)}
             </b>
             <span>
               Получателей: {run.members.length}
@@ -1580,7 +1546,7 @@ export function OutreachHistory({
                       <td>
                         {stoppedKnown
                           ? "План остановлен"
-                          : states[m.status] || m.status}
+                          : personStates[m.status] || m.status}
                       </td>
                       <td>
                         {[
@@ -1644,9 +1610,11 @@ export function OutreachHistory({
                 tabIndex={-1}
               >
                 <summary>
-                  {kindNames[a.kind]} · {m?.name || a.url} ·{" "}
-                  {a.repair_replaced_by ? "Старая попытка" : states[a.status]} ·{" "}
-                  {date(a.created)}
+                  {actionKinds[a.kind]} · {m?.name || a.url} ·{" "}
+                  {a.repair_replaced_by
+                    ? "Старая попытка"
+                    : personStates[a.status]}{" "}
+                  · {date(a.created)}
                 </summary>
                 {a.repair_replaced_by ? (
                   <p className="hint">

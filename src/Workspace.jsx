@@ -1,12 +1,8 @@
 import React, { useState } from "react";
 import { ArrowRight, Check, Inbox, RefreshCw, Trash2 } from "lucide-react";
 import "./workspace.css";
+import { attentionKinds } from "./labels";
 
-const kinds = {
-  reply: "Новые ответы",
-  review: "Нужно проверить",
-  login: "Нужен вход",
-};
 export function AttentionPanel({
   summary,
   error,
@@ -63,7 +59,7 @@ export function AttentionPanel({
               <span>Все</span>
               <b>{summary.items.length}</b>
             </button>
-            {Object.entries(kinds).map(([kind, label]) => (
+            {Object.entries(attentionKinds).map(([kind, label]) => (
               <button
                 key={kind}
                 aria-pressed={filter === kind}
@@ -89,7 +85,9 @@ export function AttentionPanel({
               {items.map((item) => (
                 <li key={item.id} id={"attention-" + item.id} tabIndex={-1}>
                   <div className="attention-copy">
-                    <span className="attention-kind">{kinds[item.kind]}</span>
+                    <span className="attention-kind">
+                      {attentionKinds[item.kind]}
+                    </span>
                     <strong>{item.name}</strong>
                     <small>
                       {[

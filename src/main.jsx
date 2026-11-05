@@ -1,34 +1,21 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useContext,
-  createContext,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutGrid,
   Users,
   Settings,
-  Plus,
-  ArrowRight,
   ArrowLeft,
   Search,
   Play,
   Pause,
   Download,
   ExternalLink,
-  Check,
   X,
   ChevronRight,
   MessageSquare,
   ShieldCheck,
-  RefreshCw,
   LoaderCircle,
   Inbox,
-  UserPlus,
-  SlidersHorizontal,
   CheckCircle2,
   AlertCircle,
   Pencil,
@@ -37,206 +24,33 @@ import {
   RotateCcw,
 } from "lucide-react";
 import "./style.css";
-import { AttentionPanel, SearchBuilder, TemplatePicker } from "./Workspace";
+import { AttentionPanel, TemplatePicker } from "./Workspace";
+import { frameLabels } from "./labels";
 import { plural } from "./text";
-import DataSafety, { NotificationsSettings } from "./DataSafety";
+import {
+  Badge,
+  BusyContext,
+  Button,
+  LoadFailure,
+  Modal,
+  Stat,
+  fmt,
+  initials,
+  profileWord,
+} from "./ui";
+import { AccountForm, CampaignForm } from "./forms";
+import SettingsPage from "./pages/SettingsPage";
+import AccountsPage from "./pages/AccountsPage";
+import CampaignsPage from "./pages/CampaignsPage";
 import {
   Automation,
   ContactState,
   OutreachHistory,
-  DesktopPreferences,
   describeOutreach,
   DetailMessage,
 } from "./Outreach";
 
 const api = window.booster;
-const frameLabels = {
-  open_to_work: "Open to Work",
-  hiring: "Hiring (сам нанимает)",
-  none: "Без рамки",
-  unknown: "Не определена",
-};
-const labels = {
-  new: "Не подключён",
-  ready: "Готово",
-  needs_login: "Требуется вход",
-  connecting: "Ждём входа",
-  identity_mismatch: "Вошли в другой профиль",
-  restricted: "Ограничение LinkedIn",
-  disconnected: "Отключён",
-  deleted: "Удалён",
-  archived: "В архиве",
-  satisfied: "Проверено",
-  draft: "Черновик",
-  collecting: "Ищем кандидатов",
-  sending: "Идёт отправка",
-  paused: "На паузе",
-  open: "Open to Work",
-  neutral: "Обычный текст",
-  review: "Без группы",
-  sent: "Отправлено",
-  unknown: "Неясно, отправлено ли",
-  blocked: "Сообщение недоступно",
-  cancelled: "Отменено",
-  pending: "В очереди",
-  replied: "Ответ получен",
-  failed: "Ошибка",
-  waiting: "Ждёт рабочих часов",
-  automating: "Идёт отправка",
-  checking: "Обновляем статусы",
-};
-const fmt = (d) =>
-  new Date(d).toLocaleString("ru-RU", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-const profileWord = (count) =>
-  plural(count, ["профиль", "профиля", "профилей"]);
-const initials = (name) =>
-  (name || "?")
-    .split(" ")
-    .slice(0, 2)
-    .map((s) => s[0])
-    .join("");
-function Badge({ value }) {
-  return <span className={"badge " + value}>{labels[value] || value}</span>;
-}
-// While an action runs, dialogs must not close from Escape; otherwise its
-// result or error lands out of context.
-const BusyContext = createContext(false);
-function Button({ children, kind = "secondary", ...rest }) {
-  return (
-    <button className={"button " + kind} {...rest}>
-      {children}
-    </button>
-  );
-}
-function Modal({
-  title,
-  subtitle,
-  children,
-  onClose,
-  wide = false,
-  error,
-  initialFocus,
-}) {
-  const parts = React.Children.toArray(children);
-  const form = parts.length === 1 && parts[0].type === "form" ? parts[0] : null;
-  const bodyParts = form ? React.Children.toArray(form.props.children) : parts;
-  const footer = bodyParts.find(
-    (child) => child.props?.className === "modal-footer",
-  );
-  const body = (
-    <>
-      <div className="modal-body">
-        {bodyParts.filter((child) => child !== footer)}
-      </div>
-      {footer}
-    </>
-  );
-  const container = useRef(null);
-  const close = useRef(onClose);
-  close.current = onClose;
-  const busyNow = useRef(false);
-  busyNow.current = useContext(BusyContext);
-  useEffect(() => {
-    const previous = document.activeElement;
-    const controls = () =>
-      [
-        ...container.current.querySelectorAll(
-          'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,a[href],[tabindex="0"]',
-        ),
-      ].filter(
-        (item) => item.getClientRects().length && !item.closest("[inert]"),
-      );
-    const background = [
-      ...document.querySelectorAll(".app > aside, .app > main"),
-    ];
-    background.forEach((item) => {
-      item.inert = true;
-    });
-    (
-      (initialFocus && controls().find((item) => item.matches(initialFocus))) ||
-      (form &&
-        controls().find((item) => item.matches("input,textarea,select"))) ||
-      controls()[0] ||
-      container.current
-    )?.focus({ preventScroll: !initialFocus });
-    const listener = (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        if (!busyNow.current) close.current();
-      }
-      if (e.key === "Tab") {
-        const items = controls();
-        const first = items[0],
-          last = items[items.length - 1];
-        if (!items.length) {
-          e.preventDefault();
-          container.current.focus();
-        } else if (!container.current.contains(document.activeElement)) {
-          e.preventDefault();
-          (e.shiftKey ? last : first)?.focus();
-        } else if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    window.addEventListener("keydown", listener);
-    return () => {
-      window.removeEventListener("keydown", listener);
-      background.forEach((item) => {
-        item.inert = false;
-      });
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
-  useEffect(() => {
-    if (error) {
-      const alert = container.current?.querySelector('[role="alert"]');
-      alert?.focus();
-      alert?.scrollIntoView({ block: "nearest" });
-    }
-  }, [error]);
-  return (
-    <div className="veil">
-      <section
-        ref={container}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-        className={"modal " + (wide ? "wide" : "")}
-      >
-        <header>
-          <div>
-            <h2>{title}</h2>
-            {subtitle && <p>{subtitle}</p>}
-          </div>
-          <button className="icon" aria-label="Закрыть" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </header>
-        {error && (
-          <div className="alert error" role="alert" tabIndex={-1}>
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
-        {form
-          ? React.cloneElement(form, { className: "modal-form" }, body)
-          : body}
-      </section>
-    </div>
-  );
-}
-
 function App() {
   const [state, setState] = useState({
     accounts: [],
@@ -294,7 +108,6 @@ function App() {
   const [suppressConfirm, setSuppressConfirm] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [config, setConfig] = useState("");
   const automationDrafts = useRef(null);
   const [draftPersisted, setDraftPersisted] = useState(true);
   if (automationDrafts.current === null) {
@@ -793,500 +606,41 @@ function App() {
                 />
               </>
             ) : page === "accounts" ? (
-              <>
-                <div className="page-heading">
-                  <div>
-                    <h1>LinkedIn-аккаунты</h1>
-                    <p>
-                      Подключите аккаунт один раз. Для каждой кампании выбирайте
-                      нужного отправителя.
-                    </p>
-                  </div>
-                  <Button kind="primary" onClick={() => setModal("account")}>
-                    <Plus size={18} />
-                    Добавить аккаунт
-                  </Button>
-                </div>
-                {!state.accounts.length ? (
-                  <Empty
-                    icon={UserPlus}
-                    title="Начните с подключения LinkedIn"
-                    text="Войдите в своём обычном окне LinkedIn. Пароль и код подтверждения вводятся на стороне LinkedIn."
-                    action={
-                      <Button
-                        kind="primary"
-                        onClick={() => setModal("account")}
-                      >
-                        Подключить аккаунт <ArrowRight size={18} />
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <div className="account-grid">
-                    {state.accounts.map((a) => (
-                      <section
-                        className="account-card"
-                        key={a.id}
-                        id={"account-" + a.id}
-                        tabIndex={-1}
-                      >
-                        <div className="row">
-                          <div className="avatar">{initials(a.label)}</div>
-                          <Badge value={a.status} />
-                        </div>
-                        <h2>{a.label}</h2>
-                        <p>
-                          {a.url
-                            ? a.url.replace("https://www.linkedin.com/in/", "")
-                            : "Вход ещё не выполнен"}
-                        </p>
-                        {a.error && (
-                          <div className="hint warning">{a.error}</div>
-                        )}
-                        {a.status === "restricted" && (
-                          <div className="hint warning">
-                            LinkedIn ограничил действия аккаунта. Откройте
-                            LinkedIn, проверьте уведомления и выполните
-                            требования сервиса. Повторный вход сам по себе не
-                            снимает ограничение.
-                          </div>
-                        )}
-                        <div className="account-actions">
-                          <Button
-                            kind={
-                              a.status === "ready" ? "secondary" : "primary"
-                            }
-                            disabled={busy || a.status === "connecting"}
-                            onClick={() => act("account.login", { id: a.id })}
-                          >
-                            <RefreshCw size={16} />
-                            {a.status === "ready"
-                              ? "Проверить вход"
-                              : a.status === "connecting"
-                                ? "Завершите вход в браузере"
-                                : a.status === "new"
-                                  ? "Войти в LinkedIn"
-                                  : "Проверить вход"}
-                          </Button>
-                          {a.url && (
-                            <button
-                              className="icon"
-                              title="Открыть профиль в обычном браузере"
-                              aria-label={
-                                "Открыть профиль " +
-                                a.label +
-                                " в обычном браузере"
-                              }
-                              onClick={async () => {
-                                try {
-                                  await api.openProfile(a.url);
-                                } catch (e) {
-                                  setError(e.message);
-                                }
-                              }}
-                            >
-                              <ExternalLink size={18} />
-                            </button>
-                          )}
-                        </div>
-                        {a.status === "ready" && (
-                          <div className="recruiter-connection">
-                            <strong>LinkedIn Recruiter</strong>
-                            {a.services?.recruiter?.status === "ready" ? (
-                              <p>
-                                {a.services.recruiter.contract}
-                                <br />
-                                Общий баланс:{" "}
-                                {a.services.recruiter.credits.toLocaleString(
-                                  "ru-RU",
-                                )}{" "}
-                                кредитов
-                              </p>
-                            ) : (
-                              <p>
-                                Дополнительно, если у вас есть подписка
-                                Recruiter.
-                              </p>
-                            )}
-                            {a.services?.recruiter?.error && (
-                              <div className="hint warning">
-                                {a.services.recruiter.error}
-                              </div>
-                            )}
-                            <Button
-                              disabled={
-                                busy ||
-                                a.services?.recruiter?.status === "connecting"
-                              }
-                              onClick={() =>
-                                act("account.recruiter", { id: a.id })
-                              }
-                            >
-                              <RefreshCw size={15} />
-                              {a.services?.recruiter?.status === "connecting"
-                                ? "Проверяем Recruiter…"
-                                : a.services?.recruiter?.status === "ready"
-                                  ? "Обновить Recruiter"
-                                  : "Подключить Recruiter"}
-                            </Button>
-                            {a.services?.recruiter?.status === "ready" &&
-                              !a.services.recruiter.manual_texts && (
-                                <>
-                                  <p>
-                                    LinkedIn автоматически меняет черновики.
-                                    Отключите это, чтобы отправлять ваши точные
-                                    тексты.
-                                  </p>
-                                  <Button
-                                    onClick={() =>
-                                      act("account.recruiter_prepare", {
-                                        id: a.id,
-                                      })
-                                    }
-                                    disabled={busy}
-                                  >
-                                    Использовать мои тексты
-                                  </Button>
-                                </>
-                              )}
-                          </div>
-                        )}
-                        <div className="account-session-controls">
-                          {a.status === "ready" && (
-                            <button
-                              className="button small"
-                              disabled={busy}
-                              onClick={() =>
-                                act("account.disconnect", { id: a.id })
-                              }
-                            >
-                              Отключить сессию
-                            </button>
-                          )}
-                          <div className="account-removal">
-                            <button
-                              className="text-button account-delete"
-                              disabled={busy}
-                              onClick={() => prepareAccountDeletion(a.id)}
-                            >
-                              Удалить аккаунт
-                            </button>
-                          </div>
-                        </div>
-                      </section>
-                    ))}
-                  </div>
-                )}
-                <div className="info-card">
-                  <ShieldCheck />
-                  <div>
-                    <h3>Каждому аккаунту — отдельная сессия</h3>
-                    <p>
-                      Кампания всегда сохраняет своего отправителя. Переключение
-                      аккаунтов не меняет уже подготовленные сообщения.
-                    </p>
-                  </div>
-                </div>
-              </>
+              <AccountsPage
+                accounts={state.accounts}
+                busy={busy}
+                act={act}
+                onAdd={() => setModal("account")}
+                onDelete={prepareAccountDeletion}
+                onError={setError}
+              />
             ) : page === "settings" ? (
-              <>
-                <div className="page-heading">
-                  <div>
-                    <h1>Настройки и помощь</h1>
-                    <p>Основные функции работают без подключения ИИ.</p>
-                  </div>
-                </div>
-                <div className="settings-layout">
-                  <DesktopPreferences />
-                  <NotificationsSettings />
-                  <DataSafety
-                    onRestored={async () => {
-                      setCid(null);
-                      setDetail(null);
-                      setPreview(null);
-                      setPerson(null);
-                      setConfirmation(null);
-                      automationDrafts.current = {};
-                      try {
-                        localStorage.removeItem("booster.automation-drafts.v1");
-                      } catch {}
-                      await refresh();
-                    }}
-                  />
-                  <div className="settings-help-grid">
-                    <section className="panel settings-card">
-                      <header className="settings-card-heading">
-                        <h2>Как начать работу</h2>
-                        <p>От подключения аккаунта до первого результата.</p>
-                      </header>
-                      <ol className="quickstart-list">
-                        <li>
-                          <div>
-                            <strong>Подключите LinkedIn</strong>
-                            <p>
-                              Добавьте отправителя на вкладке «Аккаунты» и
-                              выполните вход.
-                            </p>
-                          </div>
-                        </li>
-                        <li>
-                          <div>
-                            <strong>Создайте кампанию</strong>
-                            <p>
-                              Укажите ключевые слова и число профилей для
-                              поиска.
-                            </p>
-                          </div>
-                        </li>
-                        <li>
-                          <div>
-                            <strong>Выберите кандидатов</strong>
-                            <p>
-                              Проверьте группы сообщений и отметьте нужные
-                              профили.
-                            </p>
-                          </div>
-                        </li>
-                        <li>
-                          <div>
-                            <strong>Проверьте и запустите</strong>
-                            <p>
-                              В «Автоматизации» задайте способ связи и тексты.
-                              Проверьте получателей перед подтверждением.
-                            </p>
-                          </div>
-                        </li>
-                        <li>
-                          <div>
-                            <strong>Сохраните результат</strong>
-                            <p>
-                              Профили и текущие статусы — в CSV или Excel.
-                              Полная история действий — на отдельном листе
-                              Excel.
-                            </p>
-                          </div>
-                        </li>
-                      </ol>
-                    </section>
-                    <section className="panel settings-card">
-                      <header className="settings-card-heading">
-                        <h2>Работа с кампаниями</h2>
-                        <p>Что происходит после подтверждения запуска.</p>
-                      </header>
-                      <div className="settings-help-item">
-                        <h3>Приглашения и сообщения</h3>
-                        <p>
-                          Программа следует выбранному плану связи. После
-                          принятия приглашения отправляет утверждённое
-                          сообщение. Ответ кандидата останавливает дальнейшие
-                          обращения.
-                        </p>
-                      </div>
-                      <div className="settings-help-item">
-                        <h3>Пауза и проверка результата</h3>
-                        <p>
-                          «Пауза» дожидается текущего действия и сохраняет план.
-                          Если результат отправки неизвестен, сначала проверьте
-                          переписку в LinkedIn — повтор может создать дубль.
-                        </p>
-                      </div>
-                      <div className="settings-help-item">
-                        <h3>Что означает рамка</h3>
-                        <p>
-                          Open to Work помогает выбрать текст обращения.
-                          Отсутствие рамки не подтверждает занятость человека
-                          или его нежелание менять работу.
-                        </p>
-                      </div>
-                    </section>
-                  </div>
-                  <details className="panel settings-card settings-disclosure">
-                    <summary>
-                      <div>
-                        <h2>Для разработчиков: ИИ-агент</h2>
-                        <p>
-                          Необязательно. Нужно, только если вы подключаете
-                          ИИ-ассистента.
-                        </p>
-                      </div>
-                      <ChevronRight size={20} aria-hidden="true" />
-                    </summary>
-                    <div className="settings-integration">
-                      <p>
-                        Агент может работать с теми же кампаниями через MCP,
-                        пока приложение работает, в том числе в фоне.
-                        Подтверждение новой рассылки остаётся за вами.
-                      </p>
-                      <Button
-                        onClick={async () => {
-                          try {
-                            setConfig(await api.mcpConfig());
-                          } catch (e) {
-                            setError(e.message);
-                          }
-                        }}
-                      >
-                        Показать настройки подключения
-                      </Button>
-                      {config && (
-                        <textarea
-                          className="code"
-                          readOnly
-                          rows={8}
-                          value={config}
-                          aria-label="Настройки MCP"
-                        />
-                      )}
-                    </div>
-                  </details>
-                </div>
-              </>
+              <SettingsPage
+                onError={setError}
+                onRestored={async () => {
+                  setCid(null);
+                  setDetail(null);
+                  setPreview(null);
+                  setPerson(null);
+                  setConfirmation(null);
+                  automationDrafts.current = {};
+                  try {
+                    localStorage.removeItem("booster.automation-drafts.v1");
+                  } catch {}
+                  await refresh();
+                }}
+              />
             ) : !cid ? (
-              <>
-                <div className="page-heading">
-                  <div>
-                    <h1>Ваши кампании</h1>
-                    <p>
-                      От поискового запроса до сохранённого списка кандидатов.
-                    </p>
-                  </div>
-                  <Button
-                    kind="primary"
-                    onClick={() =>
-                      setModal(state.accounts.length ? "campaign" : "account")
-                    }
-                  >
-                    <Plus size={18} />
-                    {state.accounts.length
-                      ? "Новая кампания"
-                      : "Подключить LinkedIn"}
-                  </Button>
-                </div>
-
-                {(workspaceSummary?.templates || []).length > 0 && (
-                  <div className="workspace-template-shortcut">
-                    <Button onClick={() => setModal("template")}>
-                      Создать из шаблона
-                    </Button>
-                  </div>
-                )}
-                <div className="archive-tabs" aria-label="Список кампаний">
-                  <button
-                    className={"button " + (!showArchived ? "primary" : "")}
-                    aria-pressed={!showArchived}
-                    onClick={() => setShowArchived(false)}
-                  >
-                    Активные
-                  </button>
-                  <button
-                    className={"button " + (showArchived ? "primary" : "")}
-                    aria-pressed={showArchived}
-                    onClick={() => setShowArchived(true)}
-                  >
-                    Архив · {(state.archived_campaigns || []).length}
-                  </button>
-                </div>
-                <div className="stats">
-                  <Stat label="Кампании" value={state.campaigns.length} />
-                  <Stat
-                    label="Сохранённые профили"
-                    value={state.campaigns.reduce((n, c) => n + c.count, 0)}
-                  />
-                  <Stat
-                    label="Готовые аккаунты"
-                    value={
-                      state.accounts.filter((a) => a.status === "ready").length
-                    }
-                  />
-                </div>
-                {!visibleCampaigns.length ? (
-                  <Empty
-                    icon={Search}
-                    title={
-                      showArchived
-                        ? "Архив пока пуст"
-                        : "Найдите людей для вашей следующей вакансии"
-                    }
-                    text={
-                      showArchived
-                        ? "История кампаний удалённых аккаунтов появится здесь."
-                        : "Задайте ключевые слова и подготовьте сообщения. Программа сохранит найденные профили и поможет проверить их перед отправкой."
-                    }
-                    action={
-                      <Button
-                        kind="primary"
-                        onClick={() =>
-                          setModal(
-                            state.accounts.length ? "campaign" : "account",
-                          )
-                        }
-                      >
-                        {state.accounts.length
-                          ? "Создать первую кампанию"
-                          : "Подключить LinkedIn"}
-                        <ArrowRight size={18} />
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <div className="panel">
-                    <div className="panel-title">
-                      <h2>
-                        {showArchived ? "Архив кампаний" : "Все кампании"}
-                      </h2>
-                      <span>{visibleCampaigns.length} всего</span>
-                    </div>
-                    <div className="table-scroll">
-                      <table className="campaign-table">
-                        <thead>
-                          <tr>
-                            <th>Кампания</th>
-                            <th>Отправитель</th>
-                            <th>Профили</th>
-                            <th>Статус</th>
-                            <th />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visibleCampaigns.map((c) => (
-                            <tr
-                              className="clickable"
-                              key={c.id}
-                              onClick={() => openCampaign(c.id)}
-                            >
-                              <td>
-                                <button
-                                  className="text-button campaign-entry"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openCampaign(c.id);
-                                  }}
-                                >
-                                  {c.name}
-                                </button>
-                                <small>{c.keywords}</small>
-                              </td>
-                              <td>
-                                {
-                                  allAccounts.find((a) => a.id === c.account_id)
-                                    ?.label
-                                }
-                              </td>
-                              <td className="number">{c.count}</td>
-                              <td>
-                                <Badge value={c.status} />
-                              </td>
-                              <td>
-                                <ChevronRight size={18} />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
+              <CampaignsPage
+                state={state}
+                accounts={allAccounts}
+                templates={workspaceSummary?.templates || []}
+                showArchived={showArchived}
+                onShowArchived={setShowArchived}
+                campaigns={visibleCampaigns}
+                onOpen={openCampaign}
+                onModal={setModal}
+              />
             ) : !detail && detailError ? (
               <LoadFailure
                 title="Не удалось открыть кампанию"
@@ -2671,253 +2025,6 @@ function App() {
         )}
       </div>
     </BusyContext.Provider>
-  );
-}
-function LoadFailure({ title, text, detail, onRetry, retrying, onBack }) {
-  return (
-    <section className="empty load-failure" role="alert">
-      <div className="empty-icon">
-        <AlertCircle size={30} />
-      </div>
-      <h2>{title}</h2>
-      <p>{text}</p>
-      <div className="load-failure-actions">
-        {onBack && (
-          <Button onClick={onBack}>
-            <ArrowLeft size={16} />
-            Все кампании
-          </Button>
-        )}
-        <Button kind="primary" disabled={retrying} onClick={onRetry}>
-          <RefreshCw size={16} className={retrying ? "spin" : ""} />
-          {retrying ? "Загружаем…" : "Попробовать ещё раз"}
-        </Button>
-      </div>
-      {detail && (
-        <details className="technical-details">
-          <summary>Технические подробности</summary>
-          <pre>{detail}</pre>
-        </details>
-      )}
-    </section>
-  );
-}
-function Empty({ icon: Icon, title, text, action }) {
-  return (
-    <section className="empty">
-      <div className="empty-icon">
-        <Icon size={30} />
-      </div>
-      <h2>{title}</h2>
-      <p>{text}</p>
-      {action}
-    </section>
-  );
-}
-function Stat({ label, value }) {
-  return (
-    <div className="stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-function AccountForm({ onClose, onSubmit, busy, error }) {
-  const [label, setLabel] = useState("");
-  return (
-    <Modal
-      error={error}
-      title="Подключить LinkedIn"
-      subtitle="Отдельная сессия для каждого аккаунта"
-      onClose={onClose}
-    >
-      <form
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (label.trim() && !busy) onSubmit(label.trim());
-        }}
-      >
-        <label className="field">
-          Название аккаунта
-          <input
-            required
-            maxLength={100}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Например, Recruiting · Основной"
-          />
-        </label>
-        <div className="steps">
-          <p>
-            <span>1</span>Откроется окно LinkedIn.
-          </p>
-          <p>
-            <span>2</span>Войдите и подтвердите вход, если потребуется.
-          </p>
-          <p>
-            <span>3</span>Вернитесь в приложение и проверьте подключение.
-          </p>
-        </div>
-        <div className="modal-footer">
-          <Button type="button" onClick={onClose}>
-            Отмена
-          </Button>
-          <Button kind="primary" disabled={busy || !label.trim()}>
-            Открыть вход <ArrowRight size={17} />
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
-  const [attempted, setAttempted] = useState(false);
-  const form = useRef(null);
-  const [d, setD] = useState({
-    name: "",
-    account_id:
-      accounts.find((a) => a.status === "ready")?.id || accounts[0]?.id || "",
-    keywords: "",
-    max_profiles: 20,
-    template_open: "",
-    template_neutral: "",
-  });
-  const change = (key, v) => setD({ ...d, [key]: v });
-  const errors = {
-    name: !d.name.trim() ? "Введите название кампании." : "",
-    keywords: !d.keywords.trim()
-      ? "Введите ключевые слова или ссылку на профиль LinkedIn."
-      : d.keywords.length > 1000
-        ? "Сократите поисковый запрос до 1000 символов."
-        : "",
-    account_id: !accounts.some((a) => a.id === d.account_id)
-      ? "Выберите аккаунт отправителя."
-      : "",
-    max_profiles:
-      !Number.isInteger(d.max_profiles) ||
-      d.max_profiles < 1 ||
-      d.max_profiles > 100
-        ? "Укажите целое число от 1 до 100."
-        : "",
-  };
-  return (
-    <Modal
-      error={error}
-      title="Новая кампания"
-      subtitle="Начните с поиска. Сообщения можно заполнить после сбора профилей."
-      onClose={onClose}
-    >
-      <form
-        ref={form}
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          setAttempted(true);
-          const invalid = Object.keys(errors).find((key) => errors[key]);
-          if (invalid) {
-            const field = form.current.elements[invalid];
-            field?.focus({ preventScroll: true });
-            field?.closest("label")?.scrollIntoView({ block: "nearest" });
-            if (invalid === "keywords" && field?.type === "hidden") {
-              const target = form.current.querySelector(
-                ".search-builder textarea",
-              );
-              target?.focus();
-              target?.scrollIntoView({ block: "nearest" });
-            }
-            return;
-          }
-          if (!busy)
-            onSubmit({
-              ...d,
-              name: d.name.trim(),
-              keywords: d.keywords.trim(),
-            });
-        }}
-      >
-        <label className="field">
-          Название кампании
-          <input
-            name="name"
-            aria-invalid={attempted && !!errors.name}
-            aria-describedby={
-              attempted && errors.name ? "campaign-name-error" : undefined
-            }
-            required
-            value={d.name}
-            onChange={(e) => change("name", e.target.value)}
-            placeholder="Например, Head of Recruitment · Logistics"
-            maxLength={150}
-          />
-          {attempted && errors.name && (
-            <small className="field-error" id="campaign-name-error">
-              {errors.name}
-            </small>
-          )}
-        </label>
-        <label className="field">
-          Аккаунт отправителя
-          <select
-            name="account_id"
-            aria-invalid={attempted && !!errors.account_id}
-            value={d.account_id}
-            onChange={(e) => change("account_id", e.target.value)}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label} · {labels[a.status]}
-              </option>
-            ))}
-          </select>
-          {attempted && errors.account_id && (
-            <small className="field-error">{errors.account_id}</small>
-          )}
-        </label>
-        <SearchBuilder
-          value={d.keywords}
-          onChange={(value) => change("keywords", value)}
-          invalid={attempted && !!errors.keywords}
-          errorId="campaign-keywords-error"
-        />
-        {attempted && errors.keywords && (
-          <small className="field-error" id="campaign-keywords-error">
-            {errors.keywords}
-          </small>
-        )}
-        <label className="field">
-          Сколько профилей собрать
-          <input
-            name="max_profiles"
-            aria-invalid={attempted && !!errors.max_profiles}
-            aria-describedby={
-              attempted && errors.max_profiles
-                ? "campaign-count-error"
-                : undefined
-            }
-            type="number"
-            required
-            min={1}
-            max={100}
-            value={d.max_profiles}
-            onChange={(e) => change("max_profiles", Number(e.target.value))}
-          />
-          {attempted && errors.max_profiles && (
-            <small className="field-error" id="campaign-count-error">
-              {errors.max_profiles}
-            </small>
-          )}
-        </label>
-        <div className="modal-footer">
-          <Button type="button" onClick={onClose}>
-            Отмена
-          </Button>
-          <Button kind="primary" disabled={busy}>
-            Создать кампанию <ArrowRight size={17} />
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 createRoot(document.getElementById("root")).render(<App />);
