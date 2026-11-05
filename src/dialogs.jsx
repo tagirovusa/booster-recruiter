@@ -4,7 +4,7 @@ import React from "react";
 import { Archive, ExternalLink, Play, Trash2 } from "lucide-react";
 import { AccountForm, CampaignForm } from "./forms";
 import { frameLabels } from "./labels";
-import { describeOutreach } from "./Outreach";
+import { describeOutreach } from "./outreach/rules";
 import { plural } from "./text";
 import { Badge, Button, Modal } from "./ui";
 import { TemplatePicker } from "./Workspace";

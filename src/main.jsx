@@ -13,33 +13,13 @@ import {
   AlertCircle,
 } from "lucide-react";
 import "./style.css";
-import { AttentionPanel, TemplatePicker } from "./Workspace";
-import { frameLabels } from "./labels";
-import { plural } from "./text";
-import {
-  Badge,
-  BusyContext,
-  Button,
-  LoadFailure,
-  Modal,
-  Stat,
-  fmt,
-  initials,
-  profileWord,
-} from "./ui";
-import { AccountForm, CampaignForm } from "./forms";
+import { AttentionPanel } from "./Workspace";
+import { BusyContext, Button, LoadFailure } from "./ui";
 import SettingsPage from "./pages/SettingsPage";
 import AccountsPage from "./pages/AccountsPage";
 import CampaignsPage from "./pages/CampaignsPage";
 import CampaignPage from "./pages/CampaignPage";
 import WorkspaceDialogs from "./dialogs";
-import {
-  Automation,
-  ContactState,
-  OutreachHistory,
-  describeOutreach,
-  DetailMessage,
-} from "./Outreach";
 
 const api = window.booster;
 function App() {

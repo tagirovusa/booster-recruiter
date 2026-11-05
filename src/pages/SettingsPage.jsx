@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import DataSafety, { NotificationsSettings } from "../DataSafety";
-import { DesktopPreferences } from "../Outreach";
+import { DesktopPreferences } from "../DesktopPreferences";
 import { Button } from "../ui";
 
 const api = window.booster;

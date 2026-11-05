@@ -4,13 +4,11 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 const source = fs.readFileSync(
-  path.join(__dirname, "../src/Outreach.jsx"),
+  path.join(__dirname, "../src/outreach/rules.js"),
   "utf8",
 );
-const start = source.indexOf("export function campaignNextEvent");
-const end = source.indexOf("function TemplateFeedback", start);
 const next = vm.runInNewContext(
-  source.slice(start, end).replace("export function", "function") +
+  source.replace(/\bexport\s+(?=(?:function|const))/g, "") +
     "\ncampaignNextEvent",
 );
 const ready = { status: "ready" };

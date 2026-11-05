@@ -6,10 +6,16 @@ const vm = require("node:vm");
 const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const source = fs.readFileSync(path.join(root, "src/Outreach.jsx"), "utf8");
-const start = source.indexOf("const TEMPLATE_FIELDS");
-const end = source.indexOf("function TemplateFeedback");
-assert(start >= 0 && end > start, "Template helpers must be present");
+// Pure outreach rules live in one module without imports.
+const source = fs
+  .readFileSync(path.join(root, "src/outreach/rules.js"), "utf8")
+  .replace(/\bexport\s+(?=(?:function|const))/g, "");
+const start = 0;
+const end = source.length;
+assert(
+  source.includes("const TEMPLATE_FIELDS"),
+  "Template helpers must be present",
+);
 // Only tracked application code is evaluated. User text is supplied as data.
 const { validateTemplate, describeOutreach, outreachCounts } =
   vm.runInNewContext(
@@ -295,9 +301,19 @@ async function main() {
   const React = require("react");
   const { renderToStaticMarkup } = require("react-dom/server");
   const { transformWithOxc } = await import("vite");
-  const transformed = await transformWithOxc(source, "Outreach.jsx", {
-    jsx: { runtime: "classic" },
-  });
+  // Components under test, transformed together with the rules they use.
+  const components = ["src/outreach/parts.jsx", "src/DesktopPreferences.jsx"]
+    .map((file) =>
+      fs
+        .readFileSync(path.join(root, file), "utf8")
+        .replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, ""),
+    )
+    .join("\n");
+  const transformed = await transformWithOxc(
+    source + "\n" + components,
+    "Outreach.jsx",
+    { jsx: { runtime: "classic" } },
+  );
   // Shared wording modules are plain constants and functions; inline them so
   // the sandbox sees the same labels the app imports.
   const shared = ["src/labels.js", "src/text.js"]

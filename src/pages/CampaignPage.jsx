@@ -19,12 +19,9 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import {
-  Automation,
-  ContactState,
-  DetailMessage,
-  OutreachHistory,
-} from "../Outreach";
+import { Automation } from "../outreach/Automation";
+import { OutreachHistory } from "../outreach/OutreachHistory";
+import { ContactState, DetailMessage } from "../outreach/parts";
 import { Badge, Button, Stat, fmt, initials, profileWord } from "../ui";
 
 const api = window.booster;
