@@ -23,7 +23,7 @@ async def test_workspace_mcp_tools_only_route_read_draft_and_backup_operations(
     monkeypatch.setattr("urllib.request.urlopen", open_request)
     async with Client(create_server(tmp_path)) as client:
         tools = {t.name: t for t in await client.list_tools()}
-        assert len(tools) == 17
+        assert len(tools) == 16
         assert not any(
             "restore" in t or "approve" == t or "send_message" in t for t in tools
         )

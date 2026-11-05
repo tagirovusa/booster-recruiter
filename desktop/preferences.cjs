@@ -8,11 +8,14 @@ function createPreferencesStore({
   io = fs,
   platform = process.platform,
 }) {
-  let committed = { background: false, autoStart: false };
+  // Campaigns keep working after the window is closed unless the recruiter
+  // explicitly turned this off: closing a window should not silently stop
+  // approved outreach.
+  let committed = { background: true, autoStart: false };
   try {
     const saved = JSON.parse(io.readFileSync(filename, "utf8"));
     committed = {
-      background: saved.background === true,
+      background: saved.background !== false,
       autoStart: saved.autoStart === true,
     };
   } catch {}

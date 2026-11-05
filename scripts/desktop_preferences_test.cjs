@@ -59,8 +59,10 @@ test("source keeps defaults and never queries or changes OS autostart", async (t
   f.app.getLoginItemSettings = f.app.setLoginItemSettings = () => {
     throw Error("No real or mock OS call expected");
   };
+  // Without a saved choice, campaigns keep working after the window closes.
   assert.deepEqual(await f.store.access(), {
-    ...savedDefaults,
+    background: true,
+    autoStart: false,
     packaged: false,
   });
   assert.deepEqual(await f.store.access({ background: true }), {

@@ -83,18 +83,11 @@ s.db.close()
       global.__repairAttempts = [];
       global.__repairedItems = new Set();
       global.__repairTargets = {};
-      global.__legacyResumeCalls = [];
       ipcMain.removeHandler("command");
       ipcMain.handle("command", async (event, op, p) => {
         if (op === "workspace.recheck") {
           global.__attentionChecks.push(p.id);
           global.__checkedItems.add(p.id);
-          return { started: true };
-        }
-        if (op === "batch.resume") {
-          if (p.id !== "synthetic-pending-batch")
-            throw Error("Unexpected batch");
-          global.__legacyResumeCalls.push(p.id);
           return { started: true };
         }
         if (op === "workspace.retry_invitation") {
@@ -245,20 +238,20 @@ s.db.close()
     }
     const list = page.getByRole("region", { name: "Требуют внимания" }),
       before = await list
-        .getByRole("button", { name: "Проверить автоматически", exact: true })
+        .getByRole("button", { name: "Уточнить статус", exact: true })
         .count();
     const unsupported = list
       .locator("li")
       .filter({ hasText: "Unsupported InMail fixture" });
     await expect(
       unsupported.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(0);
     await expect(
       unsupported.getByRole("button", {
-        name: "Проверить вручную",
+        name: "Посмотреть историю",
         exact: true,
       }),
     ).toBeVisible();
@@ -270,11 +263,11 @@ s.db.close()
     assert.ok(repairSource, "Fixture must expose a campaign member for repair");
     await list
       .locator('[id="attention-' + repairSource + '"]')
-      .getByRole("button", { name: "Проверить автоматически", exact: true })
+      .getByRole("button", { name: "Уточнить статус", exact: true })
       .click();
     await expect(
       list.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(before - 1);
@@ -371,22 +364,14 @@ s.db.close()
     await expect(oldAttempt).toContainText(
       "актуальное состояние приглашения или связи",
     );
-    const legacyResume = page.getByRole("button", {
-      name: "Продолжить очередь",
-      exact: true,
-    });
-    await expect(legacyResume).toBeEnabled();
+    // The retired batch sender has no resume control, even for an old queue.
     await expect(
-      page.getByText(/Неподтверждённые отправки отложены для проверки/),
-    ).toBeVisible();
-    await legacyResume.click();
-    assert.deepEqual(await app.evaluate(() => global.__legacyResumeCalls), [
-      "synthetic-pending-batch",
-    ]);
+      page.getByRole("button", { name: "Продолжить очередь", exact: true }),
+    ).toHaveCount(0);
 
     await expect(
       oldAttempt.getByRole("button", {
-        name: "Проверить автоматически",
+        name: "Уточнить статус",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -501,7 +486,7 @@ s.db.close()
       .poll(() => app.evaluate(() => global.__archiveExportRequested))
       .toBe(true);
     await expect(
-      page.getByRole("button", { name: "Автоматизация", exact: true }),
+      page.getByRole("button", { name: "Отправка", exact: true }),
     ).toHaveCount(0);
     const archiveProfile = page.locator(".outreach-history .text-link").first();
     if (await archiveProfile.count()) {

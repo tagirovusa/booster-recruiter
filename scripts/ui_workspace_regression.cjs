@@ -124,6 +124,8 @@ const { execFileSync } = require("node:child_process");
     await page
       .getByLabel("Название кампании", { exact: true })
       .fill("Workspace search fixture");
+    // Refinements stay folded until the recruiter asks for them.
+    await page.locator("details.search-refine summary").click();
     await page.getByLabel("Исключить", { exact: true }).fill("internship");
     await page
       .getByRole("button", { name: "Создать кампанию", exact: true })
@@ -234,11 +236,9 @@ const { execFileSync } = require("node:child_process");
     assert.equal(detail.batches.length, 0);
     assert.equal(detail.campaign.keywords, expected);
     assert.equal(detail.campaign.status, "draft");
+    await page.getByRole("button", { name: "Отправка", exact: true }).click();
     await page
-      .getByRole("button", { name: "Автоматизация", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: /Сообщения/ })
+      .getByRole("button", { name: /Тексты/ })
       .first()
       .click();
     await page

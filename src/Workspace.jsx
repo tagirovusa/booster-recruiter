@@ -1,17 +1,14 @@
 import React, { useState } from "react";
 import { ArrowRight, Check, Inbox, RefreshCw, Trash2 } from "lucide-react";
 import "./workspace.css";
+import { attentionKinds } from "./labels";
 
-const kinds = {
-  reply: "Новые ответы",
-  review: "Нужно проверить",
-  login: "Нужен вход",
-};
 export function AttentionPanel({
   summary,
   error,
   disabled,
   onOpen,
+  onReply,
   onRead,
   onCheck,
   onRepair,
@@ -62,7 +59,7 @@ export function AttentionPanel({
               <span>Все</span>
               <b>{summary.items.length}</b>
             </button>
-            {Object.entries(kinds).map(([kind, label]) => (
+            {Object.entries(attentionKinds).map(([kind, label]) => (
               <button
                 key={kind}
                 aria-pressed={filter === kind}
@@ -88,7 +85,9 @@ export function AttentionPanel({
               {items.map((item) => (
                 <li key={item.id} id={"attention-" + item.id} tabIndex={-1}>
                   <div className="attention-copy">
-                    <span className="attention-kind">{kinds[item.kind]}</span>
+                    <span className="attention-kind">
+                      {attentionKinds[item.kind]}
+                    </span>
                     <strong>{item.name}</strong>
                     <small>
                       {[
@@ -127,9 +126,8 @@ export function AttentionPanel({
                       !item.repair &&
                       !item.repairing && (
                         <small>
-                          Проверка читает состояние LinkedIn. Активный план
-                          продолжит работу по утверждённым правилам; план на
-                          паузе не возобновится.
+                          Приложение посмотрит в LinkedIn, дошло ли сообщение.
+                          Ничего не отправит.
                         </small>
                       )}
                     {item.updated && (
@@ -167,9 +165,18 @@ export function AttentionPanel({
                           <RefreshCw size={16} />
                           {checkingItem === item.id || item.checking
                             ? "Проверяем…"
-                            : "Проверить автоматически"}
+                            : "Уточнить статус"}
                         </button>
                       )}
+                    {item.kind === "reply" && item.url && onReply && (
+                      <button
+                        className="button primary"
+                        disabled={disabled}
+                        onClick={() => onReply(item)}
+                      >
+                        Ответить в LinkedIn
+                      </button>
+                    )}
                     <button
                       className="button"
                       disabled={disabled}
@@ -180,7 +187,7 @@ export function AttentionPanel({
                         : item.kind === "reply"
                           ? "Открыть ответ"
                           : item.can_recheck === false
-                            ? "Проверить вручную"
+                            ? "Посмотреть историю"
                             : "Подробности"}
                       <ArrowRight size={16} />
                     </button>
@@ -241,6 +248,7 @@ export function buildSearch({
 export function SearchBuilder({ value, onChange, invalid, errorId }) {
   const [advanced, setAdvanced] = useState(Boolean(value));
   const [resetPending, setResetPending] = useState(false);
+  const [refineOpen, setRefineOpen] = useState(false);
   const [fields, setFields] = useState({
     roles: "",
     industry: "",
@@ -321,53 +329,81 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             placeholder='Например: "driver recruitment" manager'
           />
           <small>
-            Можно использовать AND, OR, NOT, кавычки или одну ссылку на профиль.
+            Можно вставить ссылку на один профиль или готовый поисковый запрос
+            LinkedIn.
           </small>
         </label>
       ) : (
         <>
-          <div className="search-builder-grid">
-            {[
-              ["roles", "Должности", "Driver recruiter, recruitment manager"],
-              ["industry", "Отрасль", "Trucking, transportation"],
-              ["phrases", "Ключевые фразы", "Driver retention, CDL drivers"],
-              ["excluded", "Исключить", "Например, internship"],
-            ].map(([key, label, placeholder]) => (
-              <label key={key} className="field">
-                {label}
+          <label className="field">
+            Должности
+            <textarea
+              rows={2}
+              aria-label="Должности"
+              aria-invalid={invalid}
+              aria-describedby={invalid ? errorId : undefined}
+              value={fields.roles}
+              placeholder="Например: driver recruiter, recruitment manager"
+              onChange={(e) => update("roles", e.target.value)}
+            />
+            <small>Несколько вариантов — через запятую.</small>
+          </label>
+          <details
+            className="search-refine"
+            open={refineOpen}
+            onToggle={(e) => setRefineOpen(e.currentTarget.open)}
+          >
+            <summary>
+              Уточнить поиск: отрасль, ключевые фразы, исключения
+            </summary>
+            <div className="search-builder-grid">
+              <label className="field">
+                Отрасль
                 <textarea
                   rows={2}
-                  aria-label={label}
-                  aria-invalid={invalid && key === "roles"}
-                  aria-describedby={
-                    invalid && key === "roles" ? errorId : undefined
-                  }
-                  value={fields[key]}
-                  placeholder={placeholder}
-                  onChange={(e) => update(key, e.target.value)}
+                  aria-label="Отрасль"
+                  value={fields.industry}
+                  placeholder="Trucking, transportation"
+                  onChange={(e) => update("industry", e.target.value)}
                 />
               </label>
-            ))}
-          </div>
-          <label className="field">
-            Совпадение ключевых фраз
-            <select
-              value={fields.all ? "all" : "any"}
-              onChange={(e) => update("all", e.target.value === "all")}
-            >
-              <option value="any">Хотя бы одна фраза</option>
-              <option value="all">Все фразы</option>
-            </select>
-          </label>
-          <small>
-            Разделяйте варианты запятой или новой строкой. Должности и отрасли
-            ищутся по любому варианту в своей группе.
-          </small>
+              <label className="field">
+                Ключевые фразы
+                <textarea
+                  rows={2}
+                  aria-label="Ключевые фразы"
+                  value={fields.phrases}
+                  placeholder="Driver retention, CDL drivers"
+                  onChange={(e) => update("phrases", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Исключить
+                <textarea
+                  rows={2}
+                  aria-label="Исключить"
+                  value={fields.excluded}
+                  placeholder="Например, internship"
+                  onChange={(e) => update("excluded", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Совпадение ключевых фраз
+                <select
+                  value={fields.all ? "all" : "any"}
+                  onChange={(e) => update("all", e.target.value === "all")}
+                >
+                  <option value="any">Хотя бы одна фраза</option>
+                  <option value="all">Все фразы</option>
+                </select>
+              </label>
+            </div>
+          </details>
           <input type="hidden" name="keywords" value={value} />
-          <div className="search-query-preview">
-            <span>Запрос для LinkedIn</span>
+          <details className="search-query-preview">
+            <summary>Показать итоговый запрос</summary>
             <code>{value || "Заполните хотя бы одно поле выше"}</code>
-          </div>
+          </details>
         </>
       )}
     </section>

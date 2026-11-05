@@ -5,6 +5,9 @@ from pathlib import Path
 
 from booster_recruiter.store import Store
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend" / "tests"))
+from legacy_history import legacy_approve, legacy_claim, legacy_preview  # noqa: E402
+
 
 def seed(data: Path):
     # Keep this helper away from a real workspace even if run by hand.
@@ -83,9 +86,9 @@ def seed(data: Path):
             cid = item["id"]
             if legacy:
                 person = candidate(cid, "Taylor Parker", cid + "-legacy")
-                plan = store.preview(cid)
-                store.approve(plan["batch_id"], plan["digest"])
-                delivery = store.claim(plan["batch_id"])
+                plan = legacy_preview(store, cid)
+                legacy_approve(store, plan["batch_id"], plan["digest"])
+                delivery = legacy_claim(store, plan["batch_id"])
                 assert delivery and not delivery.get("skip")
                 store.finish(
                     delivery["id"],

@@ -12,6 +12,11 @@ from .store import AppError, canonical
 ORIGIN = "https://www.linkedin.com"
 PREFERENCES = ORIGIN + "/talent/account/v2/ai-preferences"
 USAGE = ORIGIN + "/talent/account/v2/usage-overview"
+TIMEOUT = 15000
+PUBLIC_PROFILE_LINK = "[data-test-personal-info-profile-link]"
+MESSAGES_PANE = "[data-live-test-profile-messages-tab-content]"
+FREE_INMAIL = "FREE_INMAIL"
+PROFILE_URN = r"urn:li:ts_profile:[A-Za-z0-9_-]+"
 VISIBLE_JS = "const visible=e=>!!e&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';"
 CONTRACT_JS = """() => {
  const nodes=[...document.querySelectorAll('[data-test-user-contract-name]')];
@@ -58,6 +63,27 @@ def normalized(text):
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def path_of(url):
+    return urlparse(url).path.rstrip("/")
+
+
+def without_query(url):
+    return url.split("?")[0].rstrip("/")
+
+
+def not_sent(message):
+    """A pre-submit refusal: nothing was clicked, so a later retry is safe."""
+    return {"sent": False, "retry_safe": True, "message": message}
+
+
+async def links_to_public_profile(page, url):
+    public = page.locator(PUBLIC_PROFILE_LINK)
+    return (
+        await public.count() == 1
+        and canonical(await public.get_attribute("href")) == url
+    )
+
+
 class RecruiterBrowser:
     def __init__(self, page, session, navigator, *, pacer=None):
         self.page, self.session, self.navigator = page, session, navigator
@@ -80,7 +106,7 @@ class RecruiterBrowser:
                 "Выберите нужный контракт Recruiter в окне LinkedIn и повторите проверку."
             )
         await self.page.wait_for_selector(
-            "[data-test-user-contract-name]", timeout=15000
+            "[data-test-user-contract-name]", timeout=TIMEOUT
         )
 
     async def contract(self, expected=None):
@@ -97,7 +123,7 @@ class RecruiterBrowser:
         balance = self.page.locator(
             "[data-test-usage-overview-container-inmail-balance]"
         )
-        await balance.wait_for(state="visible", timeout=15000)
+        await balance.wait_for(state="visible", timeout=TIMEOUT)
         raw = (await balance.inner_text()).strip()
         if not re.fullmatch(r"\d[\d,\s\u00a0]*", raw):
             raise AppError("Не удалось прочитать остаток кредитов Recruiter.")
@@ -106,7 +132,7 @@ class RecruiterBrowser:
         await self.contract(contract)
         await self.page.get_by_role(
             "button", name="Edit Enable single message auto-draft", exact=True
-        ).wait_for(timeout=15000)
+        ).wait_for(timeout=TIMEOUT)
         flags = await self.page.evaluate("""() => {
          const keys=['Enable single message auto-draft','Enable touch up auto-draft for 1:1 messages'];
          return keys.map(key=>{const b=document.querySelector('button[aria-label="Edit '+key+'"]');
@@ -151,7 +177,7 @@ class RecruiterBrowser:
         if canonical(self.page.url) != url:
             raise AppError("LinkedIn открыл другой профиль.")
         await self.page.wait_for_selector(
-            'main a[href*="/talent/profile/"]', timeout=15000
+            'main a[href*="/talent/profile/"]', timeout=TIMEOUT
         )
         links = await self.page.evaluate("""() => {
           const heading=[...document.querySelectorAll('main h1,main h2')].find(e=>e.getClientRects().length&&!e.closest('aside'));
@@ -165,18 +191,17 @@ class RecruiterBrowser:
             )
         await self.go(links[0])
         await self.contract(expected_contract)
-        public = self.page.locator("[data-test-personal-info-profile-link]")
-        await public.wait_for(state="attached", timeout=15000)
-        if (
-            await public.count() != 1
-            or canonical(await public.get_attribute("href")) != url
-        ):
-            raise AppError("Профиль Recruiter не совпадает с утверждённым получателем.")
-        profile_url = ORIGIN + urlparse(links[0]).path.rstrip("/")
-        tab = self.page.locator(
-            f'a[data-test-navigation-list-item][href^="{urlparse(profile_url).path}/messages"]'
+        await self.page.locator(PUBLIC_PROFILE_LINK).wait_for(
+            state="attached", timeout=TIMEOUT
         )
-        await tab.first.wait_for(state="visible", timeout=15000)
+        if not await links_to_public_profile(self.page, url):
+            raise AppError("Профиль Recruiter не совпадает с утверждённым получателем.")
+        profile_path = path_of(links[0])
+        profile_url = ORIGIN + profile_path
+        tab = self.page.locator(
+            f'a[data-test-navigation-list-item][href^="{profile_path}/messages"]'
+        )
+        await tab.first.wait_for(state="visible", timeout=TIMEOUT)
         if await tab.count() != 1:
             raise AppError("Не удалось найти историю этого профиля в Recruiter.")
         return {
@@ -193,23 +218,21 @@ class RecruiterBrowser:
             "messages_url": ORIGIN + await tab.get_attribute("href"),
         }
 
-    async def empty_history(self, target, contract):
+    async def open_messages(self, target, contract):
         await self.go(target["messages_url"])
         await self.contract(contract)
-        pane = self.page.locator("[data-live-test-profile-messages-tab-content]")
-        await pane.wait_for(state="visible", timeout=15000)
-        if self.page.url.split("?")[0].rstrip("/") != target["messages_url"].split("?")[
-            0
-        ].rstrip("/"):
+        pane = self.page.locator(MESSAGES_PANE)
+        await pane.wait_for(state="visible", timeout=TIMEOUT)
+        if without_query(self.page.url) != without_query(target["messages_url"]):
             raise AppError("История Recruiter открылась для другого профиля.")
+        return pane
+
+    async def empty_history(self, target, contract):
+        pane = await self.open_messages(target, contract)
         if not target.get("recipient_urn"):
             # The connections link can finish mounting while history loads.
             # This is still the same exact route and public-profile backlink.
-            public = self.page.locator("[data-test-personal-info-profile-link]")
-            if (
-                await public.count() == 1
-                and canonical(await public.get_attribute("href")) == target["url"]
-            ):
+            if await links_to_public_profile(self.page, target["url"]):
                 target["recipient_urn"] = await self.page.evaluate(
                     RECIPIENT_IDENTITY_JS
                 )
@@ -229,7 +252,7 @@ class RecruiterBrowser:
         urn = state.get("recipient", "") or ""
         if (
             not state.get("valid")
-            or not re.fullmatch(r"urn:li:ts_profile:[A-Za-z0-9_-]+", urn)
+            or not re.fullmatch(PROFILE_URN, urn)
             or not normalized(target.get("name"))
             or normalized(state.get("name")) != normalized(target["name"])
         ):
@@ -245,12 +268,10 @@ class RecruiterBrowser:
             reader = RecruiterBrowser(check, session, PageNavigator(session))
             await reader.go(ORIGIN + "/talent/profile/" + urn.rsplit(":", 1)[1])
             await reader.contract(contract)
-            public = check.locator("[data-test-personal-info-profile-link]")
-            await public.wait_for(state="attached", timeout=15000)
-            if (
-                await public.count() != 1
-                or canonical(await public.get_attribute("href")) != target["url"]
-            ):
+            await check.locator(PUBLIC_PROFILE_LINK).wait_for(
+                state="attached", timeout=TIMEOUT
+            )
+            if not await links_to_public_profile(check, target["url"]):
                 raise AppError(
                     "Профиль адресата редактора Recruiter не совпадает с утверждённым получателем."
                 )
@@ -264,7 +285,7 @@ class RecruiterBrowser:
         button = self.page.locator(
             '[data-test-profile-topcard-wrapper] button[data-test-component="message-icon-btn"]'
         )
-        await button.wait_for(state="visible", timeout=15000)
+        await button.wait_for(state="visible", timeout=TIMEOUT)
         if await button.count() != 1:
             raise AppError(
                 "Не найдена однозначная кнопка сообщения в карточке Recruiter."
@@ -321,13 +342,13 @@ class RecruiterBrowser:
             if not match:
                 raise AppError("Не подтверждена стоимость платного InMail.")
             credits = int(re.sub(r"\D", "", match[1]))
-        elif channel != "FREE_INMAIL":
+        elif channel != FREE_INMAIL:
             raise AppError(
                 "Неизвестный способ оплаты Recruiter. Отправка не разрешена."
             )
         return {
             "inmail": True,
-            "inmail_free": composer["channel"] == "FREE_INMAIL",
+            "inmail_free": channel == FREE_INMAIL,
             "recruiter_target": target,
             "recruiter_composer": composer,
             "signature": composer["signature"],
@@ -350,11 +371,7 @@ class RecruiterBrowser:
             raise AppError("Контракт или настройки текста Recruiter изменились.")
         observation = await self.observe(url, context)
         if not observation.get("inmail"):
-            return {
-                "sent": False,
-                "retry_safe": True,
-                "message": observation.get("detail", "InMail недоступен."),
-            }
+            return not_sent(observation.get("detail", "InMail недоступен."))
         state, target = (
             observation["recruiter_composer"],
             observation["recruiter_target"],
@@ -366,7 +383,7 @@ class RecruiterBrowser:
             raise AppError(
                 "Адресат Recruiter не подтверждён для утверждённого профиля."
             )
-        cost = 0 if state["channel"] == "FREE_INMAIL" else 1
+        cost = 0 if state["channel"] == FREE_INMAIL else 1
         if (
             type(credit_cost) is not int
             or credit_cost != cost
@@ -375,18 +392,12 @@ class RecruiterBrowser:
                 and (observation.get("credits") is None or observation["credits"] < 1)
             )
         ):
-            return {
-                "sent": False,
-                "retry_safe": True,
-                "message": "Стоимость или остаток кредитов Recruiter изменились.",
-            }
+            return not_sent("Стоимость или остаток кредитов Recruiter изменились.")
         signature = context.get("signature", "")
         if state["signature"] != signature:
-            return {
-                "sent": False,
-                "retry_safe": True,
-                "message": "Подпись Recruiter изменилась. Заново проверьте текст перед запуском.",
-            }
+            return not_sent(
+                "Подпись Recruiter изменилась. Заново проверьте текст перед запуском."
+            )
         body = message
         if signature:
             suffix = "\n\n" + signature
@@ -417,11 +428,7 @@ class RecruiterBrowser:
             expected,
         )
         if not pinned:
-            return {
-                "sent": False,
-                "retry_safe": True,
-                "message": "Редактор Recruiter занят другим черновиком.",
-            }
+            return not_sent("Редактор Recruiter занят другим черновиком.")
         subject_element = await owner.query_selector(
             "[data-test-compose-subject-input]"
         )
@@ -454,11 +461,9 @@ class RecruiterBrowser:
                 expected,
             )
             if result is not True:
-                return {
-                    "sent": False,
-                    "retry_safe": True,
-                    "message": "Адресат, текст или условия InMail изменились. Отправка отменена.",
-                }
+                return not_sent(
+                    "Адресат, текст или условия InMail изменились. Отправка отменена."
+                )
             submitted = True
             await self.page.wait_for_timeout(2000)
             await check_platform_limit(self.session)
@@ -487,17 +492,10 @@ class RecruiterBrowser:
                     pass
 
     async def history(self, target, context):
-        await self.go(target["messages_url"])
-        await self.contract(context["contract"])
-        pane = self.page.locator("[data-live-test-profile-messages-tab-content]")
-        await pane.wait_for(state="visible", timeout=15000)
-        if self.page.url.split("?")[0].rstrip("/") != target["messages_url"].split("?")[
-            0
-        ].rstrip("/"):
-            raise AppError("История Recruiter открылась для другого профиля.")
+        pane = await self.open_messages(target, context["contract"])
         await pane.locator(
             "[data-test-empty-messages], [data-test-message-threads-list]"
-        ).first.wait_for(state="visible", timeout=15000)
+        ).first.wait_for(state="visible", timeout=TIMEOUT)
         rows = await pane.locator("[data-test-message-threads-list-item]").evaluate_all("""nodes=>nodes.map(e=>({
           href:e.querySelector('a[href]')?.href||'',
           subject:e.querySelector('[data-test-message-thread-item-subject]')?.innerText||'',
@@ -512,8 +510,7 @@ class RecruiterBrowser:
             thread = parse_qs(link.query).get("thread", [])
             if (
                 link.hostname == "www.linkedin.com"
-                and link.path.rstrip("/")
-                == urlparse(target["messages_url"]).path.rstrip("/")
+                and link.path.rstrip("/") == path_of(target["messages_url"])
                 and len(thread) == 1
                 and re.fullmatch(
                     r"urn:li:ts_candidate_message_thread:\(urn:li:ts_contract:\d+,urn:li:ts_hire_identity:\d+,urn:li:ts_prospect_comm_history:\d+\)",
@@ -528,15 +525,13 @@ class RecruiterBrowser:
         await self.go(row["href"])
         await self.contract(context["contract"])
         current = urlparse(self.page.url)
-        if current.path.rstrip("/") != urlparse(target["messages_url"]).path.rstrip(
-            "/"
-        ) or parse_qs(current.query).get("thread", []) != [
-            row["thread_id"].removeprefix("recruiter:")
-        ]:
+        if current.path.rstrip("/") != path_of(target["messages_url"]) or parse_qs(
+            current.query
+        ).get("thread", []) != [row["thread_id"].removeprefix("recruiter:")]:
             raise AppError("Recruiter открыл другую переписку.")
         rail = self.page.locator("[data-test-right-rail]")
         await rail.locator("[data-test-message-list] > li").first.wait_for(
-            state="visible", timeout=15000
+            state="visible", timeout=TIMEOUT
         )
         title = await rail.locator("[data-test-right-rail-header]").inner_text()
         if normalized(title) != normalized(row["subject"]):

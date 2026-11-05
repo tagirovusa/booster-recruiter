@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import socket
+import traceback
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -18,13 +19,29 @@ from starlette.routing import Route
 from .browser_engine import browser_engine_info
 from .runtime import Runtime
 from .store import AppError, Store
+from .user_errors import configure as configure_error_log
+from .user_errors import record, user_text
+
+# Sending, deleting and restoring are confirmed by the recruiter in the
+# desktop window. An agent using the discoverable token (connection.json) can
+# prepare work but never approve it.
+DESKTOP_ONLY = {
+    "outreach.approve",
+    "workspace.retry_invitation",
+    "backup.restore",
+    "account.delete",
+    "campaign.delete",
+    "shutdown",
+}
 
 
-def create_app(store, runtime, token):
+def create_app(store, runtime, token, desktop_token=None):
     async def command(request: Request):
-        if not hmac.compare_digest(
-            request.headers.get("authorization", ""), "Bearer " + token
-        ):
+        supplied = request.headers.get("authorization", "")
+        desktop = desktop_token is not None and hmac.compare_digest(
+            supplied, "Bearer " + desktop_token
+        )
+        if not desktop and not hmac.compare_digest(supplied, "Bearer " + token):
             return JSONResponse({"error": "Нет доступа."}, status_code=401)
         if request.headers.get("origin"):
             return JSONResponse(
@@ -37,6 +54,13 @@ def create_app(store, runtime, token):
             data = json.loads(raw)
             op = data["op"]
             p = data.get("params", {})
+            if op in DESKTOP_ONLY and desktop_token is not None and not desktop:
+                return JSONResponse(
+                    {
+                        "error": "Это действие подтверждается только в окне Booster Recruiter."
+                    },
+                    status_code=403,
+                )
             if op == "state":
                 result = store.state()
             elif op == "workspace.summary":
@@ -108,12 +132,14 @@ def create_app(store, runtime, token):
                 result = store.create_account(p["label"])
             elif op == "account.login":
                 store.account(p["id"])
+                runtime.ensure_browser_free()
                 runtime.spawn("login:" + p["id"], runtime.login(p["id"]))
                 result = {"started": True}
             elif op == "account.open_profile":
                 result = await runtime.open_profile(p["id"], p["url"])
             elif op in ("account.recruiter", "account.recruiter_prepare"):
                 store.account(p["id"])
+                runtime.ensure_browser_free()
                 runtime.spawn(
                     "recruiter:" + p["id"],
                     runtime.recruiter(p["id"], prepare=op.endswith("_prepare")),
@@ -131,6 +157,17 @@ def create_app(store, runtime, token):
                 result = store.set_account(aid, "disconnected")
             elif op == "campaign.create":
                 result = store.create_campaign(p)
+            elif op == "campaign.update":
+                result = store.update_campaign(p["id"], p)
+            elif op == "campaign.archive":
+                result = store.archive_campaign(p["id"])
+            elif op == "campaign.restore":
+                result = store.restore_campaign(p["id"])
+            elif op == "campaign.delete":
+                if p.get("confirm") is not True:
+                    raise AppError("Подтвердите удаление кампании.")
+                runtime.pause_flags.discard(p["id"])
+                result = store.delete_campaign(p["id"])
             elif op == "campaign.detail":
                 result = store.detail(p["id"])
             elif op == "campaign.collect":
@@ -195,25 +232,6 @@ def create_app(store, runtime, token):
             elif op == "candidate.suppress":
                 store.suppress(p["url"], p.get("reason", "Отказ от контакта"))
                 result = {"saved": True}
-            elif op == "campaign.preview":
-                result = store.preview(p["id"])
-            elif op == "batch.approve":
-                batch = store.approve(p["id"], p["digest"])
-                runtime.start_campaign(
-                    batch["campaign_id"], runtime.send_batch(p["id"]), "sending"
-                )
-                result = {"started": True}
-            elif op == "batch.resume":
-                batch = store.one("SELECT * FROM batches WHERE id=?", (p["id"],))
-                store.ensure_idle(batch["campaign_id"])
-                if batch["status"] != "approved":
-                    raise AppError(
-                        "Эта очередь больше не действует. Подготовьте новый предпросмотр."
-                    )
-                runtime.start_campaign(
-                    batch["campaign_id"], runtime.send_batch(p["id"]), "sending"
-                )
-                result = {"started": True}
             elif op == "delivery.resolve":
                 row = store.one("SELECT * FROM deliveries WHERE id=?", (p["id"],))
                 sender = store.one(
@@ -257,9 +275,24 @@ def create_app(store, runtime, token):
             else:
                 raise AppError("Неизвестная операция.")
             return JSONResponse({"result": result})
-        except (AppError, ValueError, KeyError, TypeError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+        except AppError as exc:
+            return JSONResponse({"error": user_text(exc)}, status_code=400)
+        except (ValueError, KeyError, TypeError) as exc:
+            # Validation messages are Russian; KeyError('id') or a TypeError
+            # from a bad payload must not reach the recruiter verbatim.
+            record(traceback.format_exc())
+            text = str(exc) if isinstance(exc, ValueError) else ""
+            return JSONResponse(
+                {
+                    "error": user_text(
+                        text,
+                        "Не удалось выполнить действие. Обновите окно и попробуйте ещё раз.",
+                    )
+                },
+                status_code=400,
+            )
         except Exception:
+            record(traceback.format_exc())
             return JSONResponse(
                 {
                     "error": "Операция не выполнена. Перезапустите приложение; сохранённые данные останутся."
@@ -303,6 +336,9 @@ def serve(root: Path):
     except Timeout:
         raise SystemExit("Приложение уже использует эту базу данных.")
     token = secrets.token_urlsafe(32)
+    # Handed only to the desktop shell over stdout; never written to disk.
+    desktop_token = secrets.token_urlsafe(32)
+    configure_error_log(root)
     store = Store(root)
     runtime = Runtime(store)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -313,11 +349,16 @@ def serve(root: Path):
     fd = os.open(discovery, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as stream:
         json.dump(connection, stream)
-    print(json.dumps({"ready": True, **connection}), flush=True)
+    print(
+        json.dumps({"ready": True, **connection, "desktop_token": desktop_token}),
+        flush=True,
+    )
     try:
         server = uvicorn.Server(
             uvicorn.Config(
-                create_app(store, runtime, token), log_level="warning", access_log=False
+                create_app(store, runtime, token, desktop_token),
+                log_level="warning",
+                access_log=False,
             )
         )
         asyncio.run(server.serve(sockets=[sock]))

@@ -534,12 +534,6 @@
     "homepage": ""
   },
   {
-    "name": "booster-recruiter",
-    "version": "0.2.14",
-    "license": "",
-    "homepage": ""
-  },
-  {
     "name": "httpx",
     "version": "0.28.1",
     "license": "BSD-3-Clause",
@@ -555,6 +549,12 @@
     "name": "inquirer",
     "version": "3.4.1",
     "license": "MIT",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.3.0",
+    "license": "",
     "homepage": ""
   },
   {
@@ -609,6 +609,12 @@
     "name": "idna",
     "version": "3.20",
     "license": "BSD-3-Clause",
+    "homepage": ""
+  },
+  {
+    "name": "booster-recruiter",
+    "version": "0.3.0",
+    "license": "",
     "homepage": ""
   }
 ]

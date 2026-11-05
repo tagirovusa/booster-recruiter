@@ -256,3 +256,45 @@ async def test_restored_run_cannot_be_resumed_through_api(tmp_path):
     assert s.outreach.run(run["id"])["status"] == "cancelled"
     assert rt.jobs == {}
     s.db.close()
+
+
+def test_backup_from_an_older_version_is_upgraded_on_restore(tmp_path):
+    """A copy made before a schema change still restores after upgrading."""
+    import sqlite3
+
+    from booster_recruiter.store import Store
+    from test_store import prepared
+
+    store = Store(tmp_path)
+    try:
+        _, c, _ = prepared(store)
+        backup = store.workspace.create_backup("manual")
+        path = store.workspace.backup_directory() / backup["id"]
+        # Simulate an older release that did not have this table yet.
+        with sqlite3.connect(path) as old:
+            old.execute("DROP TABLE workspace_acknowledgements")
+        result = store.workspace.restore(backup["id"])
+        assert result["restored"] is True
+        assert store.campaign(c["id"])["status"] == "paused"
+    finally:
+        store.db.close()
+
+
+def test_backup_reports_a_full_disk_plainly(tmp_path, monkeypatch):
+    import os
+
+    import pytest
+    from booster_recruiter.store import AppError, Store
+
+    store = Store(tmp_path)
+
+    def full_disk(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "open", full_disk)
+    try:
+        with pytest.raises(AppError, match="Не хватает места"):
+            store.workspace.create_backup("manual")
+    finally:
+        monkeypatch.undo()
+        store.db.close()

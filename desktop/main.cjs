@@ -159,6 +159,10 @@ const operations = new Set([
   "account.recruiter",
   "account.recruiter_prepare",
   "campaign.create",
+  "campaign.update",
+  "campaign.archive",
+  "campaign.restore",
+  "campaign.delete",
   "campaign.detail",
   "campaign.collect",
   "campaign.pause",
@@ -167,9 +171,6 @@ const operations = new Set([
   "candidate.review",
   "candidate.select_many",
   "candidate.suppress",
-  "campaign.preview",
-  "batch.approve",
-  "batch.resume",
   "delivery.resolve",
   "diagnostics",
   "campaign.automation",
@@ -205,16 +206,33 @@ function backend() {
 }
 async function call(op, params = {}) {
   if (!connection) throw Error("Сервис приложения ещё запускается.");
-  const response = await fetch(`http://127.0.0.1:${connection.port}/command`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${connection.token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ op, params }),
-    signal: AbortSignal.timeout(op === "outreach.preview" ? 240000 : 30000),
-  });
-  const result = await response.json();
+  let result;
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${connection.port}/command`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${connection.desktop_token || connection.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ op, params }),
+        signal: AbortSignal.timeout(op === "outreach.preview" ? 240000 : 30000),
+      },
+    );
+    result = await response.json();
+  } catch (error) {
+    // Transport failures are English and technical; the recruiter gets an
+    // actionable Russian sentence instead.
+    console.error(`command ${op} failed:`, error);
+    if (error?.name === "TimeoutError" || error?.name === "AbortError")
+      throw Error(
+        "Операция заняла слишком много времени. Подождите минуту и обновите окно — если действие выполнилось, результат появится сам.",
+      );
+    throw Error(
+      "Служба приложения не отвечает. Подождите несколько секунд и повторите; если не поможет — перезапустите Booster Recruiter.",
+    );
+  }
   if (result.error) throw Error(result.error);
   return result.result;
 }
@@ -329,6 +347,39 @@ async function start() {
       preferences: desktopPreferences,
       window: win,
       isQuitting: () => exiting,
+      confirmStop: async () => {
+        let running = [];
+        try {
+          const state = await call("state");
+          running = state.campaigns.filter((c) =>
+            [
+              "collecting",
+              "sending",
+              "automating",
+              "checking",
+              "waiting",
+            ].includes(c.status),
+          );
+        } catch {
+          return "close";
+        }
+        if (!running.length) return "close";
+        const { response } = await dialog.showMessageBox(win, {
+          type: "question",
+          title: "Кампании остановятся",
+          message:
+            running.length === 1
+              ? `Кампания «${running[0].name}» работает. Если закрыть приложение, она остановится.`
+              : `Работают кампании: ${running.length}. Если закрыть приложение, они остановятся.`,
+          detail:
+            "Можно оставить приложение работать в фоне — значок останется в строке меню, а окно откроется по щелчку.",
+          buttons: ["Работать в фоне", "Закрыть и остановить", "Отмена"],
+          defaultId: 0,
+          cancelId: 2,
+          noLink: true,
+        });
+        return ["background", "close", "cancel"][response];
+      },
       reportFailure: async (error) => {
         await dialog.showMessageBox(win, {
           type: "error",

@@ -5,7 +5,8 @@ import json
 import os
 import signal
 import sys
-from contextlib import asynccontextmanager
+import traceback
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from .platform_limits import (
@@ -14,6 +15,19 @@ from .platform_limits import (
     LinkedInLimitError,
 )
 from .store import AppError, canonical
+from .user_errors import record, user_text
+
+ACTIVE_STATUSES = {"collecting", "checking", "sending", "automating"}
+PREVIEW_PAUSED = "Предпросмотр приостановлен пользователем."
+
+
+def reply_timeout(action, params):
+    """Seconds to wait for one worker reply; Recruiter reads open extra pages."""
+    if action in {"observe", "check_reply"} and params.get("recruiter"):
+        return 180
+    if action in {"observe", "check_reply", "open_profile"}:
+        return 90
+    return 300
 
 
 def executable_args():
@@ -79,12 +93,7 @@ class Worker:
             try:
                 line = await asyncio.wait_for(
                     self.process.stdout.readline(),
-                    timeout=180
-                    if action in {"observe", "check_reply"}
-                    and (params or {}).get("recruiter")
-                    else 90
-                    if action in {"observe", "check_reply", "open_profile"}
-                    else 300,
+                    timeout=reply_timeout(action, params or {}),
                 )
             except (TimeoutError, asyncio.CancelledError):
                 await self.stop()
@@ -102,9 +111,10 @@ class Worker:
                     "linkedin_auth_required": LinkedInChallengeError,
                     "linkedin_account_restricted": LinkedInAccountRestrictedError,
                 }.get(data.get("error_code"), AppError)
-                raise error_type(
-                    data["error"] or "Браузер LinkedIn не завершил операцию."
-                )
+                message = data["error"] or "Браузер LinkedIn не завершил операцию."
+                if error_type is AppError:
+                    message = user_text(message)
+                raise error_type(message)
             return data["result"]
 
     async def stop(self, *, graceful=None):
@@ -181,10 +191,27 @@ class Runtime:
             coro.close()
             raise
         self.spawn(cid, coro)
+        self.jobs[cid].add_done_callback(
+            lambda task: self._settle_on_failure(cid, task)
+        )
         self.pause_flags.discard(cid)
         self.store.progress(
             cid, status, "Ожидаем завершения текущей операции браузера…"
         )
+
+    def _settle_on_failure(self, cid, task):
+        """Never leave a campaign marked as running after its task failed.
+
+        Without this, an error raised before the task's own handling left the
+        status at "sending"/"automating" and every edit asked for a pause.
+        """
+        if task.cancelled() or task.exception() is None:
+            return
+        exc = task.exception()
+        record("".join(traceback.format_exception(exc)))
+        with suppress(AppError):
+            if self.store.campaign(cid)["status"] in ACTIVE_STATUSES:
+                self.store.progress(cid, "paused", self.friendly(exc))
 
     @asynccontextmanager
     async def campaign_browser(self, cid, status, progress):
@@ -276,7 +303,7 @@ class Runtime:
             for t in ["authentication", "login", "captcha", "checkpoint"]
         ):
             return "Завершите вход или проверку в окне LinkedIn, затем нажмите «Проверить вход»."
-        return text[:600]
+        return user_text(text)
 
     async def verify(self, aid, *, interactive=False):
         account = self.store.account(aid)
@@ -368,13 +395,14 @@ class Runtime:
         ]
         if not eligible:
             raise AppError("Выберите получателей без прежних обращений.")
+        self.ensure_browser_free()
         self.pause_flags.discard(cid)
         try:
             async with self.campaign_browser(
                 cid, "checking", "Проверяем Recruiter и подпись для предпросмотра…"
             ):
                 if cid in self.pause_flags:
-                    raise AppError("Предпросмотр приостановлен пользователем.")
+                    raise AppError(PREVIEW_PAUSED)
                 identity = await self.verify(campaign["account_id"])
                 context = await self.worker(campaign["account_id"]).call(
                     "recruiter_preview",
@@ -382,14 +410,12 @@ class Runtime:
                 )
                 context["sender_name"] = identity["name"]
             if cid in self.pause_flags:
-                raise AppError("Предпросмотр приостановлен пользователем.")
+                raise AppError(PREVIEW_PAUSED)
             self.store.progress(cid, "ready", "Тексты и подпись Recruiter проверены.")
             return self.store.outreach.preview(cid, recruiter_context=context)
         except BaseException:
             if cid in self.pause_flags:
-                self.store.progress(
-                    cid, "paused", "Предпросмотр приостановлен пользователем."
-                )
+                self.store.progress(cid, "paused", PREVIEW_PAUSED)
             else:
                 self.store.progress(cid, campaign["status"], campaign["progress"])
             raise
@@ -454,12 +480,28 @@ class Runtime:
             self.store.progress(cid, "paused", self.friendly(exc))
             self.store.event("collection_stopped", f"{cid}: {self.friendly(exc)}")
 
+    def busy_message(self):
+        """Name the campaign that holds the browser so the user knows what to pause."""
+        for cid, task in self.campaign_operations.items():
+            if task in self.active_campaign_tasks:
+                try:
+                    name = self.store.campaign(cid)["name"]
+                except AppError:
+                    break
+                return (
+                    f"Браузер занят кампанией «{name}». "
+                    "Поставьте её на паузу или дождитесь завершения и повторите."
+                )
+        return "Браузер занят другим действием. Подождите минуту и повторите."
+
+    def ensure_browser_free(self):
+        """Refuse at once instead of leaving the user waiting behind a long run."""
+        if self.browser_lock.locked():
+            raise AppError(self.busy_message())
+
     async def open_profile(self, aid, url):
         url = canonical(url)
-        if self.browser_lock.locked():
-            raise AppError(
-                "Браузер занят. Приостановите обработку и дождитесь завершения текущего действия."
-            )
+        self.ensure_browser_free()
         try:
             async with self.browser_lock:
                 await self.verify(aid, interactive=True)
@@ -470,135 +512,6 @@ class Runtime:
         except LinkedInAccountRestrictedError:
             self.restrict_account(aid)
             raise
-
-    async def send_batch(self, bid):
-        batch = self.store.one("SELECT * FROM batches WHERE id=?", (bid,))
-        cid = batch["campaign_id"]
-        aid = batch["account_id"]
-        if batch["status"] != "approved":
-            raise AppError("Очередь не подтверждена в приложении.")
-        try:
-            async with self.campaign_browser(
-                cid, "sending", "Проверяем аккаунт и очередь…"
-            ):
-                if cid in self.pause_flags:
-                    self.store.progress(cid, "paused", "Отправка приостановлена.")
-                    return
-                await self.verify(aid)
-                sent = 0
-                verify_before_next = False
-                while cid not in self.pause_flags:
-                    if verify_before_next:
-                        if not self.store.rows(
-                            "SELECT d.id FROM deliveries d JOIN batches b ON b.id=d.batch_id WHERE d.batch_id=? AND d.status='pending' AND b.status='approved'",
-                            (bid,),
-                        ):
-                            break
-                        await self.verify(aid)
-                        verify_before_next = False
-                        if cid in self.pause_flags:
-                            break
-                    row = self.store.claim(bid)
-                    if not row:
-                        break
-                    if row.get("skip"):
-                        continue
-                    self.store.progress(
-                        cid,
-                        "sending",
-                        f"Отправляем подготовленное сообщение. Завершено: {sent}.",
-                    )
-                    try:
-                        result = await self.worker(aid).call(
-                            "send", {"url": row["url"], "message": row["message"]}
-                        )
-                    except BaseException as exc:
-                        self.store.finish(
-                            row["id"],
-                            "unknown",
-                            "Ответ браузера не получен. Этот получатель отложен для проверки; повтор исключён.",
-                        )
-                        if (
-                            not isinstance(exc, Exception)
-                            or isinstance(
-                                exc,
-                                (
-                                    LinkedInAccountRestrictedError,
-                                    LinkedInChallengeError,
-                                    LinkedInLimitError,
-                                ),
-                            )
-                            or self.store.account(aid)["status"] != "ready"
-                        ):
-                            raise
-                        await self.outreach.reset_profile_browser(aid)
-                        verify_before_next = True
-                        continue
-                    restriction = (
-                        self.restrict_account(aid)
-                        if result.get("account_restricted")
-                        else None
-                    )
-                    challenge = result.get("auth_required") and not restriction
-                    if challenge:
-                        self.pause_for_challenge(
-                            aid,
-                            result.get("message")
-                            or "Завершите проверку в окне LinkedIn.",
-                        )
-                    if result.get("sent") is True:
-                        self.store.finish(
-                            row["id"],
-                            "sent",
-                            "Появление сообщения подтверждено в LinkedIn.",
-                            result.get("thread_id"),
-                        )
-                        sent += 1
-                    elif result.get("retry_safe") is True:
-                        self.store.finish(
-                            row["id"],
-                            "blocked",
-                            result.get("message")
-                            or result.get("status", "Недоступно обычное сообщение"),
-                        )
-                    else:
-                        self.store.finish(
-                            row["id"],
-                            "unknown",
-                            result.get("message")
-                            or "Результат отправки не подтверждён.",
-                        )
-                    if result.get("platform_limited"):
-                        raise LinkedInLimitError(
-                            result.get("message")
-                            or "LinkedIn сообщил о лимите отправки."
-                        )
-                    if challenge:
-                        raise LinkedInChallengeError(
-                            result.get("message")
-                            or "Завершите проверку в окне LinkedIn."
-                        )
-                    if restriction:
-                        raise AppError(restriction)
-                    if result.get("sent") is not True:
-                        await self.outreach.reset_profile_browser(aid)
-                        verify_before_next = True
-                self.store.progress(
-                    cid,
-                    "paused" if cid in self.pause_flags else "ready",
-                    f"Обработка завершена. Подтверждено сообщений в этой сессии: {sent}."
-                    + (
-                        " Отдельные получатели требуют проверки; повторная отправка им заблокирована."
-                        if self.store.rows(
-                            "SELECT id FROM deliveries WHERE batch_id=? AND status='unknown'",
-                            (bid,),
-                        )
-                        else ""
-                    ),
-                )
-        except Exception as exc:
-            self.pause_sender(aid, self.friendly(exc))
-            self.store.progress(cid, "paused", self.friendly(exc))
 
     async def close(self):
         await self.outreach.stop()

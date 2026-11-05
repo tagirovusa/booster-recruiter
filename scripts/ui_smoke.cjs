@@ -1,4 +1,5 @@
-const { _electron: electron, expect } = require("./patchright_test_driver.cjs").loadPatchright();
+const { _electron: electron, expect } =
+  require("./patchright_test_driver.cjs").loadPatchright();
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -88,10 +89,10 @@ const { execFileSync } = require("node:child_process");
     ).not.toBeVisible();
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     await expect(
-      page.getByRole("dialog", { name: "Проверьте отправку" }),
+      page.getByRole("dialog", { name: "Перед запуском" }),
     ).toBeVisible();
     await expect(
       page.getByText(
@@ -103,8 +104,9 @@ const { execFileSync } = require("node:child_process");
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page
       .getByRole("radiogroup", { name: "Способ связи" })
-      .getByText("Экономить кредиты", { exact: true })
+      .getByText("С InMail", { exact: true })
       .click();
+    // InMail starts in the credit-saving order; the faster order is optional.
     await expect(
       page.getByRole("radio", { name: /Экономить кредиты/ }),
     ).toBeChecked();
@@ -134,7 +136,10 @@ const { execFileSync } = require("node:child_process");
     ).toBeVisible();
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await expect(
-      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+      page.getByRole("button", {
+        name: "Посмотреть перед запуском",
+        exact: true,
+      }),
     ).toBeDisabled();
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page.getByLabel("Подписка для InMail").selectOption("linkedin");
@@ -161,7 +166,10 @@ const { execFileSync } = require("node:child_process");
     });
     await page.getByRole("button", { name: "Далее: сообщения" }).click();
     await expect(
-      page.getByRole("button", { name: "Проверить запуск", exact: true }),
+      page.getByRole("button", {
+        name: "Посмотреть перед запуском",
+        exact: true,
+      }),
     ).toBeDisabled();
     await page
       .getByLabel("Тема InMail · Open to Work")
@@ -175,7 +183,7 @@ const { execFileSync } = require("node:child_process");
       fullPage: true,
     });
     await page
-      .getByRole("button", { name: "Проверить запуск", exact: true })
+      .getByRole("button", { name: "Посмотреть перед запуском", exact: true })
       .click();
     await expect(
       page.getByText("Hi Alex, let us connect.", { exact: true }),
@@ -332,6 +340,10 @@ const { execFileSync } = require("node:child_process");
     const background = page.getByRole("checkbox", {
       name: "Продолжать работу после закрытия окна",
     });
+    // A fresh install keeps campaigns working after the window is closed.
+    await expect(background).toBeChecked();
+    await background.uncheck();
+    await expect(page.getByRole("status")).toHaveText("Настройки сохранены.");
     for (const failSave of [false, true]) {
       await app.evaluate(({ app, dialog }, failSave) => {
         const fs = process.getBuiltinModule("fs");

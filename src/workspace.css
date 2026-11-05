@@ -6,7 +6,7 @@
   margin: 6px 0 0;
   font-size: 14px;
   font-weight: 400;
-  color: var(--muted, #68717b);
+  color: var(--muted, var(--text-muted));
 }
 .attention-filters {
   display: flex;
@@ -83,7 +83,7 @@
 }
 .attention-copy p {
   margin: 0;
-  color: #626b75;
+  color: var(--text-muted);
   overflow-wrap: anywhere;
   font-size: 14px;
 }
@@ -92,9 +92,9 @@
   font-size: 12px;
 }
 .attention-kind {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #626b75;
+  color: var(--text-muted);
 }
 .attention-actions {
   flex-shrink: 0;
@@ -114,7 +114,7 @@
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  color: #626b75;
+  color: var(--text-muted);
 }
 .workspace-empty p {
   margin: 0;
@@ -142,7 +142,7 @@
 }
 .search-builder small {
   display: block;
-  color: #68717b;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 .search-query-preview {
@@ -152,7 +152,7 @@
 }
 .search-query-preview span {
   font-size: 12px;
-  color: #68717b;
+  color: var(--text-muted);
 }
 .search-query-preview code {
   display: block;
@@ -165,7 +165,7 @@
   white-space: pre-wrap;
 }
 .template-picker > p {
-  color: #68717b;
+  color: var(--text-muted);
   line-height: 1.5;
   margin: 0 0 18px;
 }
@@ -236,7 +236,7 @@
 }
 .repair-confirm-details dt {
   font-size: 12px;
-  color: #687078;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 .repair-confirm-details dd {
@@ -256,4 +256,22 @@
 }
 .attention-actions {
   flex-wrap: wrap;
+}
+.search-query-preview summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #4f5861;
+}
+.search-refine {
+  margin-top: 6px;
+}
+.search-refine summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+.search-refine[open] summary {
+  margin-bottom: 8px;
 }

@@ -5,8 +5,8 @@ import asyncio
 import pytest
 from booster_recruiter.runtime import Runtime
 from booster_recruiter.store import AppError, Store
+from legacy_history import legacy_approve, legacy_preview
 from test_outreach import Worker, activate, due
-from test_runtime import FakeWorker
 
 
 @pytest.fixture
@@ -30,99 +30,9 @@ def legacy_batch(store, aid, url="legacy-recipient", count=1):
         store.add_candidate(c["id"], {"url": f"{url}-{i}", "name": "Legacy Person"})
     for person in store.detail(c["id"])["candidates"]:
         store.review(person["id"], "neutral", True)
-    p = store.preview(c["id"])
-    store.approve(p["batch_id"], p["digest"])
+    p = legacy_preview(store, c["id"])
+    legacy_approve(store, p["batch_id"], p["digest"])
     return c, p
-
-
-@pytest.mark.parametrize("status", ["sent", "unknown", "blocked"])
-@pytest.mark.parametrize("duplicate_slot", [False, True])
-async def test_legacy_queue_ignores_retired_message_cap(
-    store, status, duplicate_slot, monkeypatch
-):
-    a, _, _, plan, _, _ = activate(store, daily_messages=1)
-    action = store.outreach.reserve(plan["messages"][0]["id"], "message")
-    store.outreach.finish(action, status, "attempt")
-    sender = a
-    if duplicate_slot:
-        sender = store.create_account("Duplicate browser slot")
-        store.set_account(sender["id"], "ready", store.account(a["id"])["url"])
-    c, batch = legacy_batch(store, sender["id"])
-    FakeWorker.sent = []
-    FakeWorker.fail_send = False
-    FakeWorker.identity = store.account(a["id"])["url"]
-
-    async def no_wait(_):
-        pass
-
-    monkeypatch.setattr("booster_recruiter.runtime.asyncio.sleep", no_wait)
-    rt = Runtime(store, FakeWorker)
-    await rt.send_batch(batch["batch_id"])
-    assert len(FakeWorker.sent) == 1
-    assert store.campaign(c["id"])["status"] == "ready"
-
-
-async def test_legacy_queue_sends_with_another_sender(store, monkeypatch):
-    a, _, _, plan, _, _ = activate(store, daily_messages=1)
-    action = store.outreach.reserve(plan["messages"][0]["id"], "message")
-    store.outreach.finish(action, "sent", "attempt")
-    other = store.create_account("Other sender")
-    store.set_account(other["id"], "ready", "other-sender")
-    _, batch = legacy_batch(store, other["id"])
-    FakeWorker.sent = []
-    FakeWorker.fail_send = False
-    FakeWorker.identity = store.account(other["id"])["url"]
-
-    async def no_wait(_):
-        pass
-
-    monkeypatch.setattr("booster_recruiter.runtime.asyncio.sleep", no_wait)
-    await Runtime(store, FakeWorker).send_batch(batch["batch_id"])
-    assert len(FakeWorker.sent) == 1
-
-
-@pytest.mark.parametrize("sent", [True, False, None])
-async def test_legacy_account_restriction_stops_queue_and_sender_plans(
-    store, monkeypatch, sent
-):
-    a, _, _, plan, _, _ = activate(store)
-    twin = store.create_account("Duplicate browser slot")
-    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
-    independent = store.create_account("Independent sender")
-    store.set_account(independent["id"], "ready", "independent-sender")
-    c, batch = legacy_batch(store, twin["id"], count=2)
-    calls = []
-
-    class RestrictedWorker(FakeWorker):
-        identity = store.account(a["id"])["url"]
-
-        async def call(self, action, params=None):
-            if action == "send":
-                calls.append(params)
-                return {
-                    "sent": sent,
-                    "retry_safe": sent is False,
-                    "account_restricted": True,
-                    "message": "Restricted",
-                }
-            return await super().call(action, params)
-
-    async def no_wait(_):
-        pass
-
-    monkeypatch.setattr("booster_recruiter.runtime.asyncio.sleep", no_wait)
-    rt = Runtime(store, RestrictedWorker)
-    await rt.send_batch(batch["batch_id"])
-    assert len(calls) == 1
-    assert store.account(a["id"])["status"] == "restricted"
-    assert store.account(twin["id"])["status"] == "restricted"
-    assert store.account(independent["id"])["status"] == "ready"
-    assert store.outreach.run(plan["run_id"])["status"] == "paused"
-    assert store.campaign(c["id"])["status"] == "paused"
-    expected = "sent" if sent else "blocked" if sent is False else "unknown"
-    assert store.rows("SELECT status FROM deliveries ORDER BY status") == [
-        {"status": value} for value in sorted(["pending", expected])
-    ]
 
 
 @pytest.mark.parametrize("kind", ["invite", "message", "inmail"])
@@ -366,40 +276,6 @@ async def test_platform_limit_stops_all_sender_plans_without_losing_result(
     assert store.rows("SELECT status FROM outreach_actions") == [{"status": expected}]
     await OutreachRuntime(rt).process(other["run_id"])
     assert len(worker.actions) == 1
-
-
-@pytest.mark.parametrize("confirmed", [True, False, None])
-async def test_legacy_platform_limit_stops_sender_even_when_result_unknown(
-    store, confirmed
-):
-    a, _, _, p, _, _ = activate(store)
-    twin = store.create_account("Same sender")
-    store.set_account(twin["id"], "ready", store.account(a["id"])["url"])
-    campaign, batch = legacy_batch(store, twin["id"], count=2)
-    calls = []
-
-    class LimitedWorker(FakeWorker):
-        identity = store.account(a["id"])["url"]
-
-        async def call(self, action, params=None):
-            if action == "send":
-                calls.append(params)
-                return {
-                    "sent": confirmed,
-                    "retry_safe": confirmed is False,
-                    "platform_limited": True,
-                    "message": "LinkedIn сообщил о лимите.",
-                }
-            return await super().call(action, params)
-
-    await Runtime(store, LimitedWorker).send_batch(batch["batch_id"])
-    assert len(calls) == 1
-    assert store.outreach.run(p["run_id"])["status"] == "paused"
-    assert store.campaign(campaign["id"])["status"] == "paused"
-    expected = "sent" if confirmed else "blocked" if confirmed is False else "unknown"
-    assert sorted(
-        r["status"] for r in store.rows("SELECT status FROM deliveries")
-    ) == sorted(["pending", expected])
 
 
 async def test_platform_limit_exception_keeps_uncertain_action_and_stops_sender(store):

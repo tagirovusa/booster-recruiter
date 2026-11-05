@@ -12,11 +12,9 @@ from booster_recruiter.platform_limits import (
     LinkedInLimitError,
     check_after_browser_action,
 )
-from booster_recruiter.runtime import Runtime
 from booster_recruiter.store import Store
 from test_outreach import activate
-from test_outreach_acceptance import additional_outreach, legacy_batch
-from test_runtime import FakeWorker
+from test_outreach_acceptance import additional_outreach
 
 
 @pytest.fixture
@@ -131,43 +129,6 @@ async def test_outgoing_challenge_preserves_result_and_stops_sender(
     ]
     await s["runtime"].outreach.process(s["other"]["run_id"])
     assert len(worker.actions) == 1
-
-
-@pytest.mark.parametrize("confirmed", [True, False, None])
-async def test_legacy_outgoing_challenge_keeps_result_and_pending_recipients(
-    scenario, confirmed
-):
-    s = scenario
-    store = s["store"]
-    campaign, batch = legacy_batch(store, s["twin"]["id"], count=2)
-    calls = []
-
-    class ChallengedWorker(FakeWorker):
-        identity = store.account(s["account"]["id"])["url"]
-
-        async def call(self, action, params=None):
-            if action == "send":
-                calls.append(params)
-                return {
-                    "sent": confirmed,
-                    "retry_safe": confirmed is False,
-                    "auth_required": True,
-                    "message": "Complete captcha checkpoint",
-                }
-            return await super().call(action, params)
-
-    s["runtime"] = Runtime(store, ChallengedWorker)
-    await s["runtime"].send_batch(batch["batch_id"])
-    assert_sender_paused(s)
-    assert len(calls) == 1
-    assert store.campaign(campaign["id"])["status"] == "paused"
-    expected = "sent" if confirmed else "blocked" if confirmed is False else "unknown"
-    assert sorted(
-        row["status"]
-        for row in store.rows(
-            "SELECT status FROM deliveries WHERE batch_id=?", (batch["batch_id"],)
-        )
-    ) == sorted(["pending", expected])
 
 
 @pytest.mark.parametrize(
