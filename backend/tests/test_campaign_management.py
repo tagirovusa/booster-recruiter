@@ -67,3 +67,27 @@ def test_contacted_campaign_can_only_be_archived(store, monkeypatch):
     monkeypatch.setattr(store, "contacted", lambda cid: True)
     with pytest.raises(AppError, match="только перенести"):
         store.delete_campaign(c["id"])
+
+
+def test_campaign_is_created_in_the_recruiters_time_zone(store):
+    a, _, _ = prepared(store)
+    c = store.create_campaign(
+        {
+            "name": "Чикаго",
+            "account_id": a["id"],
+            "keywords": "CDL",
+            "max_profiles": 5,
+            "timezone": "America/Chicago",
+        }
+    )
+    assert store.outreach.rules(c["id"])["timezone"] == "America/Chicago"
+    other = store.create_campaign(
+        {
+            "name": "Неизвестный пояс",
+            "account_id": a["id"],
+            "keywords": "CDL",
+            "max_profiles": 5,
+            "timezone": "Mars/Base",
+        }
+    )
+    assert store.outreach.rules(other["id"])["timezone"] == "UTC"

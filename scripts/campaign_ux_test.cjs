@@ -38,7 +38,7 @@ test("uncertain paused sends direct user to history rather than promise another 
     now,
   );
   assert.equal(value.kind, "review");
-  assert.match(value.text, /Повторная отправка заблокирована/);
+  assert.match(value.text, /Повторно писать не будем/);
   assert.doesNotMatch(value.text, /Следующая проверка/);
 });
 test("ordinary manual pause never advertises a stale automatic check", () => {
@@ -51,7 +51,7 @@ test("ordinary manual pause never advertises a stale automatic check", () => {
     now,
   );
   assert.equal(value.kind, "paused");
-  assert.match(value.text, /остановлены/);
+  assert.match(value.text, /Продолжить/);
   assert.doesNotMatch(value.text, /14:00/);
 });
 test("future checks use run timezone and a lower bound rather than guaranteed delivery time", () => {
@@ -69,7 +69,7 @@ test("future checks use run timezone and a lower bound rather than guaranteed de
   assert.match(value.text, /11:00/);
   assert.match(value.text, /America\/New_York/);
   assert.match(value.text, /не раньше/);
-  assert.match(value.text, /если LinkedIn разрешает/);
+  assert.match(value.text, /Когда приглашение примут/);
 });
 test("overdue work explains waiting without inventing a deadline", () => {
   const value = next(
@@ -79,7 +79,7 @@ test("overdue work explains waiting without inventing a deadline", () => {
     ready,
     now,
   );
-  assert.match(value.text, /ожидает выполнения в рабочее время/);
+  assert.match(value.text, /ближайшие рабочие часы/);
   assert.doesNotMatch(value.text, /не раньше/);
 });
 test("finished and excluded people do not create a future check", () => {
@@ -101,7 +101,7 @@ test("pause during submission waits for confirmation instead of asking for manua
     now,
   );
   assert.equal(value.kind, "busy");
-  assert.match(value.text, /Дождитесь результата/);
+  assert.match(value.text, /Повторять ничего не нужно/);
 });
 test("one parked profile does not label the whole active campaign stopped", () => {
   const value = next(
@@ -115,8 +115,8 @@ test("one parked profile does not label the whole active campaign stopped", () =
     now,
   );
   assert.match(value.title, /Ожидаем принятия/);
-  assert.match(value.text, /Отложены для проверки: 1/);
-  assert.match(value.text, /Остальные получатели продолжают/);
+  assert.match(value.text, /Требуют внимания: 1/);
+  assert.match(value.text, /Остальным пишем по плану/);
 });
 test("a repaired old unknown invitation does not demand manual resolution again", () => {
   const value = next(
@@ -144,6 +144,6 @@ test("manual pause can resume other approved recipients while uncertain people s
     now,
   );
   assert.equal(value.kind, "paused");
-  assert.match(value.text, /Можно продолжить план для остальных/);
-  assert.match(value.text, /спорные действия повторяться не будут/);
+  assert.match(value.text, /Можно продолжить для остальных/);
+  assert.match(value.text, /повторно писать не будем/);
 });

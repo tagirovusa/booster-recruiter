@@ -251,6 +251,14 @@ class Store:
                     now(),
                 ),
             )
+        timezone_name = str(data.get("timezone") or "").strip()
+        if timezone_name and hasattr(self, "outreach"):
+            # Work in the recruiter's own hours from the start; an unknown
+            # zone keeps the safe default instead of failing the creation.
+            try:
+                self.outreach.configure(cid, {"timezone": timezone_name})
+            except AppError:
+                pass
         return self.campaign(cid)
 
     def state(self):

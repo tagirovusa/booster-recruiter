@@ -22,6 +22,7 @@ export function NotificationsSettings() {
         <h2>Уведомления</h2>
         <p>Только новые ответы и ситуации, где нужна ваша помощь.</p>
       </header>
+      {!value && !error && <p className="safety-note">Загружаем настройку…</p>}
       {value && (
         <label className="safety-toggle">
           <input
@@ -66,7 +67,7 @@ export function NotificationsSettings() {
 export function DataSafety({ onRestored }) {
   const confirmation = useRef(null);
 
-  const [backups, setBackups] = useState([]),
+  const [backups, setBackups] = useState(null),
     [pending, setPending] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -136,7 +137,16 @@ export function DataSafety({ onRestored }) {
           </button>
         </div>
       )}
-      {backups.length > 0 && (
+      {backups === null && !error && (
+        <p className="safety-note">Загружаем список копий…</p>
+      )}
+      {backups?.length === 0 && (
+        <p className="safety-note">
+          Копий пока нет. Первая появится автоматически сегодня, или создайте её
+          кнопкой выше.
+        </p>
+      )}
+      {backups?.length > 0 && (
         <ul className="backup-list">
           {backups.map((b) => (
             <li key={b.id}>
@@ -168,11 +178,9 @@ export function DataSafety({ onRestored }) {
             {new Date(selected.created).toLocaleString("ru-RU")}?
           </h3>
           <p>
-            Текущие данные будут заменены. Перед заменой сохраним отдельную
-            копию. Кампании будут остановлены, аккаунты потребуется подключить
-            заново. Текущая история останется в копии перед восстановлением.
-            Защита от повторного контакта сохранится. Для новой отправки
-            потребуется новый предпросмотр.
+            Данные приложения вернутся к этой дате. Текущие данные мы сначала
+            сохраним отдельной копией. После восстановления кампании будут на
+            паузе, а в аккаунты LinkedIn нужно будет войти заново.
           </p>
           <div className="actions">
             <button

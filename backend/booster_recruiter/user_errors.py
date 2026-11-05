@@ -25,7 +25,8 @@ _LOG_LIMIT = 512 * 1024
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 _TECHNICAL = re.compile(
-    r"(\{\s*\"|Traceback|\bFile \"|/" r"Users/|[A-Za-z]:\\|https?://(?!www\.linkedin\.com/in/)|"
+    r"(\{\s*\"|Traceback|\bFile \"|/"
+    r"Users/|[A-Za-z]:\\|https?://(?!www\.linkedin\.com/in/)|"
     r"Diagnostics:|NoneType|object is not|Error:|Exception|\bline \d+)",
 )
 

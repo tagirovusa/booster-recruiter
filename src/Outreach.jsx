@@ -251,7 +251,7 @@ export function campaignNextEvent(run, account, at = Date.now()) {
         account?.status === "restricted"
           ? "Действия аккаунта ограничены"
           : "Требуется подключение аккаунта",
-      text: "Откройте аккаунты и проверьте состояние отправителя. Очередь сохранена.",
+      text: "Откройте «Аккаунты» и войдите заново. Очередь сохранена.",
     };
   if (
     run.status === "paused" &&
@@ -260,7 +260,7 @@ export function campaignNextEvent(run, account, at = Date.now()) {
     return {
       kind: "busy",
       title: "Завершаем текущее действие",
-      text: "Дождитесь результата. Пауза сохранится после завершения; повторять действие не нужно.",
+      text: "Подождите немного — после этого кампания встанет на паузу. Повторять ничего не нужно.",
     };
   const uncertain = (run.actions || []).some(
     (a) => a.status === "unknown" && !a.repair_replaced_by,
@@ -279,15 +279,15 @@ export function campaignNextEvent(run, account, at = Date.now()) {
     return {
       kind: "paused",
       title: "Кампания на паузе",
-      text: `Неподтверждённые действия остаются на проверке. Можно продолжить план для остальных получателей (${otherRecipients}); спорные действия повторяться не будут.`,
+      text: `Можно продолжить для остальных получателей (${otherRecipients}). Тем, по кому результат неясен, повторно писать не будем.`,
     };
   if (run.status === "paused")
     return {
       kind: uncertain ? "review" : "paused",
       title: uncertain ? "Проверьте результат в LinkedIn" : "Кампания на паузе",
       text: uncertain
-        ? "Укажите результат в истории перед продолжением. Повторная отправка заблокирована."
-        : "Автоматические проверки остановлены. Продолжите кампанию, когда причина остановки устранена.",
+        ? "Отметьте в истории, дошло ли сообщение. Повторно писать не будем."
+        : "Нажмите «Продолжить», когда будете готовы.",
     };
   const waiting = members.filter(
     (m) => m.status === "waiting_acceptance",
@@ -311,8 +311,8 @@ export function campaignNextEvent(run, account, at = Date.now()) {
     next === undefined
       ? ""
       : next <= at
-        ? "Проверка ожидает выполнения в рабочее время."
-        : `Следующая проверка — не раньше ${new Intl.DateTimeFormat("ru-RU", { timeZone: zone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(next)} (${zone}), в рабочие часы кампании.`;
+        ? "Проверим в ближайшие рабочие часы."
+        : `Следующая проверка — не раньше ${new Intl.DateTimeFormat("ru-RU", { timeZone: zone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(next)} (${zone}).`;
   return {
     kind: "scheduled",
     title: waiting
@@ -322,14 +322,12 @@ export function campaignNextEvent(run, account, at = Date.now()) {
         : "Текущие действия завершены",
     text: [
       waiting
-        ? "После принятия отправим утверждённое сообщение, если LinkedIn разрешает связь."
+        ? "Когда приглашение примут, отправим ваше сообщение."
         : pending.length
-          ? "Проверяем доступную связь и ответы по утверждённому плану."
+          ? "Пишем кандидатам и следим за ответами."
           : "Результаты и ответы доступны в истории.",
       schedule,
-      parked
-        ? `Отложены для проверки: ${parked}. Остальные получатели продолжают свой план; исправьте отдельный профиль в «Требует внимания».`
-        : "",
+      parked ? `Требуют внимания: ${parked}. Остальным пишем по плану.` : "",
     ]
       .filter(Boolean)
       .join(" "),
@@ -877,19 +875,18 @@ export function Automation({
             {reviewMembers.length > 0 && (
               <div>
                 <strong>{reviewMembers.length}</strong>
-                <span>Требуют проверки</span>
+                <span>Требуют внимания</span>
               </div>
             )}
           </div>
           {active.status === "paused" && recoverableMembers.length > 0 && (
             <div className="recovery-check">
               <p>
-                Повторная проверка уточнит состояние контактов. Она не
-                отправляет приглашения или сообщения.
+                Приложение посмотрит в LinkedIn текущие статусы. Ничего не
+                отправит.
               </p>
               <button className="button" disabled={disabled} onClick={onCheck}>
-                <RefreshCw size={16} /> Повторно проверить контакты · без
-                отправки
+                <RefreshCw size={16} /> Обновить статусы контактов
               </button>
             </div>
           )}
