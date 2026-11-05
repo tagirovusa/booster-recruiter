@@ -250,6 +250,7 @@ export function buildSearch({
 export function SearchBuilder({ value, onChange, invalid, errorId }) {
   const [advanced, setAdvanced] = useState(Boolean(value));
   const [resetPending, setResetPending] = useState(false);
+  const [refineOpen, setRefineOpen] = useState(false);
   const [fields, setFields] = useState({
     roles: "",
     industry: "",
@@ -336,43 +337,70 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
         </label>
       ) : (
         <>
-          <div className="search-builder-grid">
-            {[
-              ["roles", "Должности", "Driver recruiter, recruitment manager"],
-              ["industry", "Отрасль", "Trucking, transportation"],
-              ["phrases", "Ключевые фразы", "Driver retention, CDL drivers"],
-              ["excluded", "Исключить", "Например, internship"],
-            ].map(([key, label, placeholder]) => (
-              <label key={key} className="field">
-                {label}
+          <label className="field">
+            Должности
+            <textarea
+              rows={2}
+              aria-label="Должности"
+              aria-invalid={invalid}
+              aria-describedby={invalid ? errorId : undefined}
+              value={fields.roles}
+              placeholder="Например: driver recruiter, recruitment manager"
+              onChange={(e) => update("roles", e.target.value)}
+            />
+            <small>Несколько вариантов — через запятую.</small>
+          </label>
+          <details
+            className="search-refine"
+            open={refineOpen}
+            onToggle={(e) => setRefineOpen(e.currentTarget.open)}
+          >
+            <summary>
+              Уточнить поиск: отрасль, ключевые фразы, исключения
+            </summary>
+            <div className="search-builder-grid">
+              <label className="field">
+                Отрасль
                 <textarea
                   rows={2}
-                  aria-label={label}
-                  aria-invalid={invalid && key === "roles"}
-                  aria-describedby={
-                    invalid && key === "roles" ? errorId : undefined
-                  }
-                  value={fields[key]}
-                  placeholder={placeholder}
-                  onChange={(e) => update(key, e.target.value)}
+                  aria-label="Отрасль"
+                  value={fields.industry}
+                  placeholder="Trucking, transportation"
+                  onChange={(e) => update("industry", e.target.value)}
                 />
               </label>
-            ))}
-          </div>
-          <label className="field">
-            Совпадение ключевых фраз
-            <select
-              value={fields.all ? "all" : "any"}
-              onChange={(e) => update("all", e.target.value === "all")}
-            >
-              <option value="any">Хотя бы одна фраза</option>
-              <option value="all">Все фразы</option>
-            </select>
-          </label>
-          <small>
-            Разделяйте варианты запятой или новой строкой. Должности и отрасли
-            ищутся по любому варианту в своей группе.
-          </small>
+              <label className="field">
+                Ключевые фразы
+                <textarea
+                  rows={2}
+                  aria-label="Ключевые фразы"
+                  value={fields.phrases}
+                  placeholder="Driver retention, CDL drivers"
+                  onChange={(e) => update("phrases", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Исключить
+                <textarea
+                  rows={2}
+                  aria-label="Исключить"
+                  value={fields.excluded}
+                  placeholder="Например, internship"
+                  onChange={(e) => update("excluded", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Совпадение ключевых фраз
+                <select
+                  value={fields.all ? "all" : "any"}
+                  onChange={(e) => update("all", e.target.value === "all")}
+                >
+                  <option value="any">Хотя бы одна фраза</option>
+                  <option value="all">Все фразы</option>
+                </select>
+              </label>
+            </div>
+          </details>
           <input type="hidden" name="keywords" value={value} />
           <details className="search-query-preview">
             <summary>Показать итоговый запрос</summary>

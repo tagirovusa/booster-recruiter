@@ -541,6 +541,8 @@ export function Automation({
     }
   }, [campaign.template_open, campaign.template_neutral]);
   const field = (key, value) => setRules((r) => ({ ...r, [key]: value }));
+  // Two plain choices first; the InMail timing only matters once paid
+  // InMail is allowed, so it lives inside that choice.
   const mode = !rules.allow_inmail
     ? "free"
     : rules.strategy === "fast"
@@ -551,26 +553,34 @@ export function Automation({
       id: "free",
       icon: UserRoundPlus,
       title: "Без InMail",
-      tag: "Без расхода кредитов",
+      tag: "Рекомендуем",
       description: rules.allow_invites
-        ? "Бесплатное сообщение или приглашение в контакты."
-        : "Только доступное бесплатное сообщение. Приглашения выключены.",
+        ? "Бесплатное сообщение, а если нельзя — приглашение в контакты."
+        : "Только бесплатное сообщение. Приглашения выключены.",
     },
+    {
+      id: "inmail",
+      icon: Wallet,
+      title: "С InMail",
+      tag: "Расходует кредиты",
+      description:
+        "Если бесплатно написать нельзя, используем InMail вашей подписки.",
+    },
+  ];
+  const inmailTimings = [
     {
       id: "economy",
       icon: Clock3,
       title: "Экономить кредиты",
-      tag: rules.allow_invites ? "Сначала знакомство" : "Без приглашений",
       description: rules.allow_invites
-        ? "Сначала приглашение. Платный InMail — после ожидания или если пригласить нельзя."
-        : "Приглашения выключены: доступный InMail без ожидания, если бесплатно написать нельзя.",
+        ? "Сначала приглашение. InMail — если не примут или пригласить нельзя."
+        : "InMail, если бесплатно написать нельзя.",
     },
     {
       id: "fast",
       icon: Zap,
       title: "Связаться быстрее",
-      tag: "InMail без ожидания",
-      description: "Сразу InMail, если бесплатное сообщение недоступно.",
+      description: "Сразу InMail, без ожидания приглашения.",
     },
   ];
   const choose = (id) =>
@@ -581,7 +591,12 @@ export function Automation({
         !r.allow_inmail && account?.services?.recruiter?.status === "ready"
           ? "recruiter"
           : r.inmail_channel || "linkedin",
-      strategy: id === "fast" ? "fast" : "economy",
+      strategy:
+        id === "fast"
+          ? "fast"
+          : id === "inmail" && r.allow_inmail
+            ? r.strategy
+            : "economy",
     }));
   const active = data.runs.find((r) => ["active", "paused"].includes(r.status));
   const [editing, setEditing] = useState(!active);
@@ -949,7 +964,10 @@ export function Automation({
                       ({ id, icon: Icon, title, tag, description }) => (
                         <label
                           className={
-                            "strategy-choice " + (mode === id ? "chosen" : "")
+                            "strategy-choice " +
+                            ((id === "free") === (mode === "free")
+                              ? "chosen"
+                              : "")
                           }
                           key={id}
                         >
@@ -957,7 +975,7 @@ export function Automation({
                             type="radio"
                             name="outreach-mode"
                             value={id}
-                            checked={mode === id}
+                            checked={(id === "free") === (mode === "free")}
                             onChange={() => choose(id)}
                           />
                           <span className="strategy-icon">
@@ -969,7 +987,9 @@ export function Automation({
                           </span>
                           <span className="strategy-tag">{tag}</span>
                           <span className="strategy-indicator">
-                            {mode === id && <Check size={12} />}
+                            {(id === "free") === (mode === "free") && (
+                              <Check size={12} />
+                            )}
                           </span>
                         </label>
                       ),
@@ -977,15 +997,39 @@ export function Automation({
                   </div>
                   {rules.allow_inmail && (
                     <div className="inmail-settings">
-                      <div>
-                        <h3>InMail для выбранных кандидатов</h3>
-                        <p>
-                          Этот режим разрешает расход кредитов подписки. Сначала
-                          используем бесплатную связь. Если кредитов не хватит,
-                          сохраним оставшихся кандидатов в очереди.
-                          Дополнительные кредиты не покупаем.
-                        </p>
+                      <div
+                        className="inmail-timing"
+                        role="radiogroup"
+                        aria-label="Когда отправлять InMail"
+                      >
+                        {inmailTimings.map(
+                          ({ id, icon: Icon, title, description }) => (
+                            <label
+                              key={id}
+                              className={
+                                "timing-choice " + (mode === id ? "chosen" : "")
+                              }
+                            >
+                              <input
+                                type="radio"
+                                name="inmail-timing"
+                                value={id}
+                                checked={mode === id}
+                                onChange={() => choose(id)}
+                              />
+                              <Icon size={16} />
+                              <span>
+                                <strong>{title}</strong>
+                                <small>{description}</small>
+                              </span>
+                            </label>
+                          ),
+                        )}
                       </div>
+                      <p className="field-note">
+                        Дополнительные кредиты не покупаем. Если кредиты
+                        закончатся, оставшиеся кандидаты подождут в очереди.
+                      </p>
                       <label className="field">
                         <span>Подписка для InMail</span>
                         <select
@@ -1136,10 +1180,6 @@ export function Automation({
                           90,
                         )}
                       </div>
-                      <button className="button small" onClick={onCheck}>
-                        <RefreshCw size={14} />
-                        Обновить статусы контактов
-                      </button>
                     </div>
                   </details>
                 </>
@@ -1397,7 +1437,11 @@ export function Automation({
                     : "Сохранено"}
                 </span>
               </div>
-              <h3>{modes.find((m) => m.id === mode).title}</h3>
+              <h3>
+                {mode === "free"
+                  ? "Без InMail"
+                  : `С InMail · ${mode === "fast" ? "быстрее" : "экономно"}`}
+              </h3>
               <div className="plan-account">
                 <Users size={16} />
                 <div>

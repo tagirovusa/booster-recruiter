@@ -2311,3 +2311,40 @@ th,
 .stats.compact .stat strong {
   font-size: 22px;
 }
+
+/* InMail timing, shown only when InMail is allowed */
+.inmail-timing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.timing-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.timing-choice.chosen {
+  border-color: var(--accent);
+  background: #fffdf2;
+}
+.timing-choice input {
+  margin-top: 2px;
+}
+.timing-choice span {
+  display: grid;
+  gap: 3px;
+}
+.timing-choice small {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.inmail-settings > .inmail-timing,
+.inmail-settings > .field-note,
+.inmail-settings > .hint {
+  grid-column: 1 / -1;
+}

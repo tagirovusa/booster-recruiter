@@ -262,3 +262,16 @@
   font-size: 13px;
   color: #4f5861;
 }
+.search-refine {
+  margin-top: 6px;
+}
+.search-refine summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+.search-refine[open] summary {
+  margin-bottom: 8px;
+}

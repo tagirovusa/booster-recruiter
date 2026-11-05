@@ -104,8 +104,9 @@ const { execFileSync } = require("node:child_process");
     await page.getByRole("button", { name: "Назад", exact: true }).click();
     await page
       .getByRole("radiogroup", { name: "Способ связи" })
-      .getByText("Экономить кредиты", { exact: true })
+      .getByText("С InMail", { exact: true })
       .click();
+    // InMail starts in the credit-saving order; the faster order is optional.
     await expect(
       page.getByRole("radio", { name: /Экономить кредиты/ }),
     ).toBeChecked();

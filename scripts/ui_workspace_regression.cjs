@@ -124,6 +124,8 @@ const { execFileSync } = require("node:child_process");
     await page
       .getByLabel("Название кампании", { exact: true })
       .fill("Workspace search fixture");
+    // Refinements stay folded until the recruiter asks for them.
+    await page.locator("details.search-refine summary").click();
     await page.getByLabel("Исключить", { exact: true }).fill("internship");
     await page
       .getByRole("button", { name: "Создать кампанию", exact: true })
