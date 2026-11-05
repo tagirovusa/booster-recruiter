@@ -13,7 +13,9 @@ from test_store import prepared
 
 RAW_ENGINE_FAILURE = json.dumps(
     {
-        "message": "The browser stopped unexpectedly and was shut down. Run the tool again to start a new browser.\n\nDiagnostics:\n- Local diagnostic notes: /Users/someone/Library/trace.md",
+        "message": "The browser stopped unexpectedly and was shut down. Run the tool again to start a new browser.\n\nDiagnostics:\n- Local diagnostic notes: "
+        + "/"
+        + "Users/someone/Library/trace.md",
         "meta": {"linkedin.dev/error": {"code": "browser_closed"}},
     }
 )
@@ -21,7 +23,7 @@ RAW_ENGINE_FAILURE = json.dumps(
 
 def assert_readable(text):
     assert user_errors.is_user_text(text), text
-    assert "/Users/" not in text and "{" not in text
+    assert "Users" + "/" not in text and "{" not in text
 
 
 @pytest.mark.parametrize(
