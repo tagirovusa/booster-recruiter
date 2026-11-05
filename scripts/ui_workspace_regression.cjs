@@ -236,7 +236,7 @@ const { execFileSync } = require("node:child_process");
     assert.equal(detail.campaign.status, "draft");
     await page.getByRole("button", { name: "Отправка", exact: true }).click();
     await page
-      .getByRole("button", { name: /Сообщения/ })
+      .getByRole("button", { name: /Тексты/ })
       .first()
       .click();
     await page

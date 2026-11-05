@@ -339,6 +339,10 @@ const { execFileSync } = require("node:child_process");
     const background = page.getByRole("checkbox", {
       name: "Продолжать работу после закрытия окна",
     });
+    // A fresh install keeps campaigns working after the window is closed.
+    await expect(background).toBeChecked();
+    await background.uncheck();
+    await expect(page.getByRole("status")).toHaveText("Настройки сохранены.");
     for (const failSave of [false, true]) {
       await app.evaluate(({ app, dialog }, failSave) => {
         const fs = process.getBuiltinModule("fs");
