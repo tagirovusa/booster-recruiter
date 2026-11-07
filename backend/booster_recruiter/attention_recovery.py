@@ -17,6 +17,9 @@ DELIVERY_UNCONFIRMED = (
     "Пока недостаточно данных для подтверждения отправки. Повтор не выполнялся."
 )
 RECHECK_UNSUPPORTED = "Для этой старой отправки InMail не сохранено достаточно данных для автоматического подтверждения. Откройте переписку и укажите результат вручную."
+ACCOUNT_NOT_READY = (
+    "Сначала войдите в аккаунт {label} на странице «Аккаунты», затем уточните статус."
+)
 CONTACT_RELATIONS = {"connected", "pending"}
 
 
@@ -49,6 +52,9 @@ class AttentionRecovery:
         self.repairs = InvitationRepair(self)
 
     def capability(self, item):
+        account = self.store.account(item["account_id"], include_deleted=True)
+        if account["status"] != "ready":
+            return False, ACCOUNT_NOT_READY.format(label=account["label"])
         if item["id"].startswith("delivery:"):
             row = self.store.one(
                 "SELECT thread_id FROM deliveries WHERE id=?", (item["action_id"],)
@@ -77,6 +83,7 @@ class AttentionRecovery:
             if item["kind"] == "review":
                 available, reason = self.capability(item)
                 item.update(
+                    needs_sign_in=reason.startswith("Сначала войдите"),
                     repair=self.repairs.public(item["id"]),
                     can_recheck=available,
                     recheck_unavailable_reason=reason,

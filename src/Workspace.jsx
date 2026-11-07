@@ -182,7 +182,7 @@ export function AttentionPanel({
                       disabled={disabled}
                       onClick={() => onOpen(item)}
                     >
-                      {item.kind === "login"
+                      {item.kind === "login" || item.needs_sign_in
                         ? "Открыть аккаунт"
                         : item.kind === "reply"
                           ? "Открыть ответ"
