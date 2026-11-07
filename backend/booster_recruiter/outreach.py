@@ -527,7 +527,7 @@ class OutreachStore:
                 )
                 if prior:
                     self.db.execute(
-                        "UPDATE outreach_members SET invitation_at=?,status='waiting_acceptance',"
+                        "UPDATE outreach_members SET invitation_at=?,status='waiting_acceptance',relationship='pending',"
                         "detail='Приглашение уже отправлено; ожидаем принятия.' WHERE id=?",
                         (prior[0]["invitation_at"], m["id"]),
                     )

@@ -93,7 +93,10 @@ async def test_invite_accept_message_and_reply_are_one_durable_sequence(store):
     assert worker.actions == [
         ("invite", {"url": person["url"], "note": "Let's connect, Alice."})
     ]
-    assert store.outreach.members(p["run_id"])[0]["status"] == "waiting_acceptance"
+    invited = store.outreach.members(p["run_id"])[0]
+    assert invited["status"] == "waiting_acceptance"
+    # The row must not keep saying "no contact" next to a pending invitation.
+    assert invited["relationship"] == "pending"
     worker.observation.update(
         relationship="connected", can_invite=False, free_message=True
     )

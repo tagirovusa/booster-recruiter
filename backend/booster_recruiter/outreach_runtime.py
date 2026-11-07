@@ -365,7 +365,11 @@ class OutreachRuntime:
                                 result.get("thread_id"),
                             )
                             fields = (
-                                {"status": "waiting_acceptance", "invitation_at": now()}
+                                {
+                                    "status": "waiting_acceptance",
+                                    "invitation_at": now(),
+                                    "relationship": "pending",
+                                }
                                 if action == "invite"
                                 else {
                                     "status": "sent",
