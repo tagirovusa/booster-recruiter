@@ -31,7 +31,7 @@ export const labels = {
   pending: "В очереди",
   replied: "Ответ получен",
   failed: "Ошибка",
-  waiting: "Ждёт рабочих часов",
+  waiting: "По расписанию",
   automating: "Идёт отправка",
   checking: "Обновляем статусы",
 };
