@@ -378,6 +378,12 @@
     "homepage": ""
   },
   {
+    "name": "booster-recruiter",
+    "version": "0.3.1",
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "opencv-python",
     "version": "5.0.0.93",
     "license": "Apache 2.0",
@@ -552,12 +558,6 @@
     "homepage": ""
   },
   {
-    "name": "booster-recruiter",
-    "version": "0.3.0",
-    "license": "",
-    "homepage": ""
-  },
-  {
     "name": "booster-linkedin-runtime",
     "version": "0.2.8",
     "license": "Apache-2.0",
@@ -613,7 +613,7 @@
   },
   {
     "name": "booster-recruiter",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "license": "",
     "homepage": ""
   }
