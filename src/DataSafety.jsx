@@ -1,6 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./safety.css";
 
+const backupKinds = {
+  daily: "Ежедневная",
+  manual: "Создана вручную",
+  before: "Перед восстановлением",
+};
+const formatSize = (bytes) =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} КБ`
+    : `${(bytes / 1024 / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
+
 export function NotificationsSettings() {
   const [value, setValue] = useState(null),
     [error, setError] = useState(""),
@@ -152,7 +162,10 @@ export function DataSafety({ onRestored }) {
             <li key={b.id}>
               <span>
                 {new Date(b.created).toLocaleString("ru-RU")}
-                <small>{Math.max(1, Math.round(b.bytes / 1024))} КБ</small>
+                <small>
+                  {backupKinds[b.id.split("-")[0]] || "Копия"} ·{" "}
+                  {formatSize(b.bytes)}
+                </small>
               </span>
               <button
                 className="button small"
