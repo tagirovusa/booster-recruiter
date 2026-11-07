@@ -25,6 +25,7 @@ export default function WorkspaceDialogs({ ctx }) {
     eligible,
     error,
     invitationRepair,
+    leaveCampaign,
     modal,
     openCampaign,
     openInSenderAccount,
@@ -235,16 +236,11 @@ export default function WorkspaceDialogs({ ctx }) {
             onSubmit={async (e) => {
               e.preventDefault();
               if (campaignEdit.armed) {
-                const done = await act(
-                  "campaign.delete",
-                  { id: cid, confirm: true },
-                  "Кампания удалена.",
-                );
-                if (done) {
-                  setModal(null);
-                  setCid(null);
-                  setDetail(null);
-                }
+                const done = await act("campaign.delete", {
+                  id: cid,
+                  confirm: true,
+                });
+                if (done) leaveCampaign("Кампания удалена.");
                 return;
               }
               const saved = await act(
@@ -329,16 +325,8 @@ export default function WorkspaceDialogs({ ctx }) {
                     type="button"
                     disabled={busy || active}
                     onClick={async () => {
-                      const done = await act(
-                        "campaign.archive",
-                        { id: cid },
-                        "Кампания перенесена в архив.",
-                      );
-                      if (done) {
-                        setModal(null);
-                        setCid(null);
-                        setDetail(null);
-                      }
+                      const done = await act("campaign.archive", { id: cid });
+                      if (done) leaveCampaign("Кампания перенесена в архив.");
                     }}
                   >
                     <Archive size={16} />В архив
