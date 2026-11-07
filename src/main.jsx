@@ -137,8 +137,10 @@ function App() {
     noticeAfterNavigation.current = null;
   }, [page, cid, tab]);
   const leaveCampaign = (text) => {
-    noticeAfterNavigation.current = text;
     setModal(null);
+    // Already elsewhere (e.g. a notification opened another screen): show it now.
+    if (!cid) return notify(text, noticeScope.current.revision);
+    noticeAfterNavigation.current = text;
     setCid(null);
     setDetail(null);
   };
