@@ -2374,3 +2374,13 @@ th,
 .inmail-settings > .hint {
   grid-column: 1 / -1;
 }
+
+/* Every plan in the history lines up in the same columns */
+.history-table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+.history-table th,
+.history-table td {
+  overflow-wrap: anywhere;
+}
