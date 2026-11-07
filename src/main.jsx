@@ -121,10 +121,27 @@ function App() {
     if (revision === noticeScope.current.revision)
       setNotice({ text, revision });
   };
+  // A confirmation that should survive the navigation its own action causes,
+  // such as "campaign deleted" shown on the campaign list.
+  const noticeAfterNavigation = useRef(null);
   useEffect(() => {
-    setNotice("");
     setError("");
+    setNotice(
+      noticeAfterNavigation.current
+        ? {
+            text: noticeAfterNavigation.current,
+            revision: noticeScope.current.revision,
+          }
+        : "",
+    );
+    noticeAfterNavigation.current = null;
   }, [page, cid, tab]);
+  const leaveCampaign = (text) => {
+    noticeAfterNavigation.current = text;
+    setModal(null);
+    setCid(null);
+    setDetail(null);
+  };
   useEffect(() => {
     setSuppressConfirm(false);
   }, [person?.id]);
@@ -677,6 +694,7 @@ function App() {
         <WorkspaceDialogs
           ctx={{
             act,
+            leaveCampaign,
             active,
             approvedPlan,
             archived,
