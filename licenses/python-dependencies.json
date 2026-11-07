@@ -168,6 +168,12 @@
     "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile"
   },
   {
+    "name": "booster-recruiter",
+    "version": "0.3.2",
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "wcwidth",
     "version": "0.9.4",
     "license": "",
@@ -375,12 +381,6 @@
     "name": "jsonschema-path",
     "version": "0.5.0",
     "license": "Apache-2.0",
-    "homepage": ""
-  },
-  {
-    "name": "booster-recruiter",
-    "version": "0.3.1",
-    "license": "",
     "homepage": ""
   },
   {
@@ -613,7 +613,7 @@
   },
   {
     "name": "booster-recruiter",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "license": "",
     "homepage": ""
   }
