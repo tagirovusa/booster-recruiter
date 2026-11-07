@@ -267,7 +267,7 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
         <strong>Кого ищем?</strong>
         <button
           type="button"
-          className="text-button"
+          className="text-link"
           onClick={() => {
             if (advanced && value !== buildSearch(fields))
               setResetPending(true);

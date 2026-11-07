@@ -1,6 +1,7 @@
 // Outreach setup for one campaign: contact mode, texts and launch check,
 // plus the live panel of a running plan.
 import React, { useEffect, useRef, useState } from "react";
+import { zoneNames } from "../labels";
 import {
   UserRoundPlus,
   Clock3,
@@ -277,15 +278,6 @@ export function Automation({
       "UTC",
     ]),
   ];
-  const zoneNames = {
-    "America/Chicago": "Чикаго",
-    "America/New_York": "Нью-Йорк",
-    "America/Los_Angeles": "Лос-Анджелес",
-    "Europe/Kyiv": "Киев",
-    "Europe/Warsaw": "Варшава",
-    "Asia/Tbilisi": "Тбилиси",
-    UTC: "UTC",
-  };
   const number = (key, label, min, max) => (
     <label className="field" key={key}>
       <span>{label}</span>
