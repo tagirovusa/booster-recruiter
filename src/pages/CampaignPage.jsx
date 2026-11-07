@@ -69,6 +69,9 @@ export default function CampaignPage({ ctx }) {
     tab,
     workspaceSummary,
   } = ctx;
+  const unassigned = detail.candidates.filter(
+    (p) => p.segment === "review",
+  ).length;
   return (
     <>
       <button className="text-button muted" onClick={() => setCid(null)}>
@@ -239,11 +242,12 @@ export default function CampaignPage({ ctx }) {
             value={detail.candidates.filter((p) => p.segment === "open").length}
           />
           <Stat
-            label="Без группы"
+            label="Обычный текст"
             value={
-              detail.candidates.filter((p) => p.segment === "review").length
+              detail.candidates.filter((p) => p.segment === "neutral").length
             }
           />
+          {unassigned > 0 && <Stat label="Без группы" value={unassigned} />}
           <Stat label="Выбрано для сообщения" value={selected.length} />
         </div>
       )}
@@ -634,8 +638,10 @@ export default function CampaignPage({ ctx }) {
                             {p.data.photo_frame?.status === "hiring"
                               ? "Рамка Hiring"
                               : p.segment === "review"
-                                ? "Нужна проверка"
-                                : "Готов к выбору"}
+                                ? "Выберите группу"
+                                : eligible(p)
+                                  ? "Готов к выбору"
+                                  : p.outreach_exclusion}
                           </span>
                         )}
                       </td>
