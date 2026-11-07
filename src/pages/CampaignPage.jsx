@@ -19,6 +19,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import { labels } from "../labels";
 import { Automation } from "../outreach/Automation";
 import { OutreachHistory } from "../outreach/OutreachHistory";
 import { ContactState, DetailMessage } from "../outreach/parts";
@@ -211,8 +212,9 @@ export default function CampaignPage({ ctx }) {
       )}
       {!archived && account?.status !== "ready" && (
         <div className="hint warning">
-          Подключите аккаунт отправителя, чтобы искать кандидатов и запускать
-          кампанию.{" "}
+          {account?.status === "new"
+            ? `Подключите аккаунт ${account.label}, чтобы искать кандидатов и запускать кампанию.`
+            : `Аккаунт ${account?.label || "отправителя"} не готов: ${labels[account?.status]?.toLowerCase() || "проверьте вход"}. Поиск и отправка продолжатся после входа.`}{" "}
           <button className="text-link" onClick={() => goTo("accounts")}>
             Открыть аккаунты
           </button>

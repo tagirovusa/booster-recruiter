@@ -53,7 +53,10 @@ def test_archive_and_restore(store):
     state = store.state()
     assert c["id"] in [x["id"] for x in state["archived_campaigns"]]
     assert c["id"] not in [x["id"] for x in state["campaigns"]]
-    assert store.restore_campaign(c["id"])["status"] == "ready"
+    restored = store.restore_campaign(c["id"])
+    assert restored["status"] == "ready"
+    # Without an approved plan there is nothing paused to mention.
+    assert restored["progress"] == "Кампания возвращена из архива."
 
 
 def test_delete_only_without_contacts(store):
