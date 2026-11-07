@@ -9,7 +9,7 @@ import anyio
 from patchright.async_api import (
     JSHandle,
     Page,
-    TimeoutError as PlaywrightTimeoutError,
+    TimeoutError as BrowserTimeoutError,
 )
 
 from .auth import raise_if_auth_route
@@ -320,7 +320,7 @@ async def detect_rate_limit(page: Page) -> None:
                 )
     except RateLimitError:
         raise
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         pass
 
 
@@ -423,7 +423,7 @@ async def scroll_job_sidebar(
         await page.wait_for_selector(
             _JOB_CARD_SELECTOR, timeout=max(1, min(5000, int(deadline * 1000)))
         )
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         logger.debug("No job card links found, skipping sidebar scroll")
         return False
     except Exception as exc:
@@ -551,7 +551,7 @@ async def handle_modal_close(page: Page) -> bool:
             await asyncio.sleep(0.5)
             logger.debug("Closed modal")
             return True
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         pass
     except OffLinkedInLandingError:
         raise

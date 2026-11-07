@@ -14,7 +14,7 @@ from typing import Any
 
 import anyio
 import anyio.lowlevel
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.destination import (
     is_another_site,
@@ -356,7 +356,7 @@ class SectionCapture:
 
         try:
             await self._session.page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No <main> element found on %s", url)
 
         await self._session.dismiss_modal()
@@ -371,7 +371,7 @@ class SectionCapture:
                     }""",
                     timeout=10000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Activity feed content did not appear on %s", url)
 
         if CaptureMode.SEARCH_RESULTS in plan.mode:
@@ -384,7 +384,7 @@ class SectionCapture:
                     }""",
                     timeout=10000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Search results content did not appear on %s", url)
 
         # Employee text hydrates after the company header. The profile anchors
@@ -400,7 +400,7 @@ class SectionCapture:
                     }""",
                     timeout=5000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Company people listing did not appear on %s", url)
 
         if CaptureMode.DETAILS in plan.mode:
@@ -409,7 +409,7 @@ class SectionCapture:
                     self._detail_text.readiness_expression(),
                     timeout=10000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Detail section content did not appear on %s", url)
 
         if CaptureMode.DETAILS in plan.mode:
@@ -431,7 +431,7 @@ class SectionCapture:
                     await self._session.delay(1.0)
                 except OffLinkedInLandingError:
                     raise
-                except PlaywrightTimeoutError:
+                except BrowserTimeoutError:
                     logger.debug("Show more click timed out after %d clicks", i)
                     break
                 except Exception as e:
@@ -449,7 +449,7 @@ class SectionCapture:
                     self._job_posting_text.readiness_expression(),
                     timeout=10000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Job description did not appear on %s", url)
 
         if CaptureMode.ACTIVITY in plan.mode:
@@ -516,7 +516,7 @@ class SectionCapture:
             await self._session.page.wait_for_selector(
                 "dialog[open], .artdeco-modal__content"
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug(
                 "Overlay wait timed out on %s; checking roots at read time", url
             )

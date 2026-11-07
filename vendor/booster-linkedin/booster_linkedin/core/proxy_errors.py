@@ -12,7 +12,7 @@ import logging
 from typing import Any
 from urllib.parse import quote
 
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.config.schema import BrowserConfig
 
@@ -258,7 +258,7 @@ async def _goto_within_budget(
         )
         if not goto.done() and not sent.done():
             await _stop_goto(goto)
-            raise PlaywrightTimeoutError(
+            raise BrowserTimeoutError(
                 f"Page.goto: Timeout {startup_ms:g}ms exceeded before "
                 "the request was sent."
             )
@@ -271,7 +271,7 @@ async def _goto_within_budget(
             return await asyncio.wait_for(asyncio.shield(goto), timeout / 1000)
         except TimeoutError:
             await _stop_goto(goto)
-            raise PlaywrightTimeoutError(
+            raise BrowserTimeoutError(
                 f"Page.goto: Timeout {timeout:g}ms exceeded after the request was sent."
             ) from None
     finally:

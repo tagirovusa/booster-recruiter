@@ -20,7 +20,7 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 import anyio
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.exceptions import LinkedInOperationError
 from booster_linkedin.core.utils import (
@@ -719,7 +719,7 @@ class JobPageReader:
             await page.wait_for_function(
                 EASY_APPLY_OPEN_JS, timeout=_EASY_APPLY_OPEN_TIMEOUT * 1000
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             raise RuntimeError("The Easy Apply dialog did not open") from None
 
         step = await self._read_easy_apply_step(None)
@@ -830,10 +830,10 @@ class JobPageReader:
                     await page.wait_for_function(
                         EASY_APPLY_OPEN_JS, timeout=opening_grace * 1000
                     )
-                except PlaywrightTimeoutError:
+                except BrowserTimeoutError:
                     return True
             await page.keyboard.press("Escape")
-            with suppress(PlaywrightTimeoutError):
+            with suppress(BrowserTimeoutError):
                 await page.locator(EASY_APPLY_DISCARD_SELECTOR).first.click(
                     timeout=_EASY_APPLY_DISCARD_TIMEOUT * 1000
                 )
@@ -868,7 +868,7 @@ class JobPageReader:
             await page.wait_for_function(
                 APPLY_READY_JS, arg=opts, timeout=_APPLY_READY_TIMEOUT * 1000
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No apply control or posting state rendered on %s", url)
 
         signals = await self._session.run_on_linkedin(APPLY_SIGNALS_JS, opts)
@@ -1045,7 +1045,7 @@ class JobPageReader:
         main_found = True
         try:
             await self._session.page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No <main> element found on %s", url)
             main_found = False
 
@@ -1274,7 +1274,7 @@ class JobPageReader:
         main_found = True
         try:
             await self._session.page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No <main> element found on %s", url)
             main_found = False
 
@@ -1428,7 +1428,7 @@ class JobPageReader:
                 state="attached",
                 timeout=int(_SEARCH_READY_TIMEOUT * 1000),
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No result card rendered on %s", url)
 
     async def _find_search_card(self, job_id: str) -> dict[str, int]:

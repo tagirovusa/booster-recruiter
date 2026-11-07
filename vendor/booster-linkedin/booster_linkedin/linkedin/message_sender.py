@@ -16,7 +16,7 @@ from urllib.parse import ParseResult, parse_qs, unquote, urljoin, urlparse
 
 import anyio
 import anyio.lowlevel
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.destination import raise_if_off_linkedin
 from booster_linkedin.core.exceptions import (
@@ -1625,7 +1625,7 @@ class MessageSender:
                 _PROFILE_MESSAGE_TARGET_READY_JS,
                 timeout=timeout_ms,
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             pass
         except Exception:
             logger.debug("Could not wait for the profile Message action", exc_info=True)
@@ -1709,7 +1709,7 @@ class MessageSender:
                 _MESSAGE_COMPOSER_READY_JS,
                 arg=self._message_target_argument(target),
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             return False
         except Exception:
             logger.debug("Could not wait for the message editor", exc_info=True)
@@ -2054,7 +2054,7 @@ class MessageSender:
 
         try:
             await self._page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Profile page did not load for %s", linkedin_username)
 
         resolution = await self._read_profile_message_target(
@@ -2109,7 +2109,7 @@ class MessageSender:
 
         try:
             await self._page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Compose page did not fully load for %s", linkedin_username)
         if self._page.url != expected_route:
             return contracts.message_action_result(
@@ -2470,7 +2470,7 @@ class MessageSender:
         await self._session.check_rate_limit()
         try:
             await self._page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Thread page did not load for %s", target.thread_id)
 
         expected_route = self._page.url

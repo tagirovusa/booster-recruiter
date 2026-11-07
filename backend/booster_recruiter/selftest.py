@@ -42,7 +42,7 @@ async def check():
     )
     from booster_linkedin.server import create_mcp_server
     from fastmcp import Client
-    from patchright.async_api import async_playwright
+    from patchright.async_api import async_playwright as patchright_session
     from PIL import Image
 
     from .browser_engine import verify_browser_engine
@@ -73,7 +73,7 @@ async def check():
     async with Client(create_mcp_server()) as client:
         names = {tool.name for tool in await client.list_tools()}
         assert {"get_my_profile", "get_person_profile", "send_message"} <= names
-    async with async_playwright() as playwright:
+    async with patchright_session() as patchright:
         # Exercise the same manager/mode as background campaigns, including
         # persistence after a clean close. No account or LinkedIn request.
         with tempfile.TemporaryDirectory(prefix="booster-background-") as folder:
@@ -82,7 +82,7 @@ async def check():
                     folder,
                     headless=True,
                     native_headless=True,
-                    executable_path=playwright.chromium.executable_path,
+                    executable_path=patchright.chromium.executable_path,
                 )
                 async with manager:
                     assert manager.headless and not manager._windowless
@@ -112,7 +112,7 @@ async def check():
                             for c in cookies
                         )
                 assert manager.close_confirmed
-        browser = await playwright.chromium.launch(channel="chromium", headless=True)
+        browser = await patchright.chromium.launch(channel="chromium", headless=True)
         try:
             assert browser.version == engine["chromium_version"], (
                 "Running Chromium does not match the shipped Patchright browser."

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from patchright.async_api import (
     Error as PlaywrightError,
     Page,
-    TimeoutError as PlaywrightTimeoutError,
+    TimeoutError as BrowserTimeoutError,
 )
 
 from .destination import is_linkedin_landing, linkedin_element
@@ -112,7 +112,7 @@ async def is_logged_in(page: Page) -> bool:
             return False
 
         return bool(body_text.strip())
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         logger.warning(
             "Timeout checking login status on %s — treating as not logged in",
             page.url,
@@ -165,7 +165,7 @@ async def _detect_auth_barrier(
                 "includeBody": include_body_text,
             },
         )
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         logger.warning(
             "Timeout checking auth barrier on %s — continuing without barrier detection",
             page.url,
@@ -256,7 +256,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
                 _REMEMBER_ME_CONTAINER_SELECTOR, timeout=operation_timeout
             )
             logger.debug("Remember-me container appeared")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Remember-me container did not appear in time")
             return False
 
@@ -267,7 +267,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
                 return False
             await target.wait_for(state="visible", timeout=operation_timeout)
             logger.debug("Remember-me button became visible")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug(
                 "Remember-me prompt container appeared without a visible login button"
             )
@@ -288,7 +288,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
                     if operation_timeout is None:
                         return False
                     await button.scroll_into_view_if_needed(timeout=operation_timeout)
-                except PlaywrightTimeoutError:
+                except BrowserTimeoutError:
                     logger.debug("Remember-me button did not scroll into view in time")
 
                 try:
@@ -297,7 +297,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
                         return False
                     await button.click(timeout=operation_timeout)
                     logger.debug("Remember-me button click succeeded")
-                except PlaywrightTimeoutError:
+                except BrowserTimeoutError:
                     logger.debug("Retrying remember-me prompt click with force=True")
                     operation_timeout = _operation_timeout(5000)
                     if operation_timeout is None:
@@ -317,7 +317,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
             await page.wait_for_load_state(
                 "domcontentloaded", timeout=operation_timeout
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Remember-me prompt click did not finish loading in time")
 
         if deadline is None or loop is None:
@@ -327,7 +327,7 @@ async def resolve_remember_me_prompt(page: Page, *, timeout: int | None = None) 
             if remaining > 0:
                 await asyncio.sleep(min(1, remaining))
         return True
-    except PlaywrightTimeoutError:
+    except BrowserTimeoutError:
         logger.debug("Remember-me prompt was present but not clickable in time")
         return False
     except Exception:

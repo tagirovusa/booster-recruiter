@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import logging
 import re
 
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.destination import is_linkedin_landing
 from booster_linkedin.core.exceptions import LinkedInOperationError
@@ -400,7 +400,7 @@ class PersonReader:
 
         try:
             await self._session.page.wait_for_selector("main", timeout=5000)
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No <main> element found on %s", url)
 
         await self._session.dismiss_modal()
@@ -452,7 +452,7 @@ class PersonReader:
 
             try:
                 await self._session.page.wait_for_selector("main")
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("No <main> on Show all page for section %s", section_key)
 
             await self._session.dismiss_modal()
