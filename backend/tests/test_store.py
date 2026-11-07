@@ -1,4 +1,5 @@
 import io
+import re
 
 import pytest
 from booster_recruiter.store import AppError, Store, message_for
@@ -221,3 +222,20 @@ def test_same_profile_is_saved_once_despite_tracking_parameters(store):
         {"url": "https://www.linkedin.com/in/alice-example/?trk=foo", "name": "Again"},
     )
     assert len(store.detail(c["id"])["candidates"]) == 1
+
+
+def test_export_speaks_the_recruiters_language(store):
+    _, c, _ = prepared(store)
+    sheet = load_workbook(io.BytesIO(store.export(c["id"], "xlsx"))).active
+    header = [cell.value for cell in sheet[1]]
+    row = dict(zip(header, (cell.value for cell in sheet[2])))
+    assert row["Группа"] in {"Open to Work", "Обычный текст", "Без группы"}
+    assert row["Рамка"] in {
+        "Open to Work",
+        "Hiring (сам нанимает)",
+        "Без рамки",
+        "Не определена",
+    }
+    assert row["Состояние контакта"] == "Не подтверждена"
+    # Local "дд.мм.гггг чч:мм", never a raw UTC ISO timestamp.
+    assert re.fullmatch(r"\d\d\.\d\d\.\d{4} \d\d:\d\d", row["Проверено"])

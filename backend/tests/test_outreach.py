@@ -537,7 +537,7 @@ async def test_export_contains_outreach_history_and_formula_is_text(store):
     await rt.outreach.process(p["run_id"])
     workbook = load_workbook(BytesIO(store.export(c["id"], "xlsx")))
     history = workbook["История обращений"]
-    assert history["B2"].value == "invite"
+    assert history["B2"].value == "Приглашение"
     assert history["F2"].value == "Let's connect, Alice."
     assert history["F2"].data_type == "s"
 
