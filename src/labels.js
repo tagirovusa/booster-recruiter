@@ -76,3 +76,13 @@ export const attentionKinds = {
   review: "Нужно проверить",
   login: "Нужен вход",
 };
+
+export const zoneNames = {
+  "America/Chicago": "Чикаго",
+  "America/New_York": "Нью-Йорк",
+  "America/Los_Angeles": "Лос-Анджелес",
+  "Europe/Kyiv": "Киев",
+  "Europe/Warsaw": "Варшава",
+  "Asia/Tbilisi": "Тбилиси",
+  UTC: "UTC",
+};

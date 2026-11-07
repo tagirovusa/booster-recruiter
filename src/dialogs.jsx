@@ -3,7 +3,7 @@
 import React from "react";
 import { Archive, ExternalLink, Play, Trash2 } from "lucide-react";
 import { AccountForm, CampaignForm } from "./forms";
-import { frameLabels } from "./labels";
+import { frameLabels, zoneNames } from "./labels";
 import { describeOutreach } from "./outreach/rules";
 import { plural } from "./text";
 import { Badge, Button, Modal } from "./ui";
@@ -562,7 +562,9 @@ export default function WorkspaceDialogs({ ctx }) {
             </div>
           )}
           <div className="message-preview">
-            <p>Профиль отправителя: {preview.account.url}</p>
+            <p className="preview-fact">
+              Профиль отправителя: {preview.account.url}
+            </p>
             {preview.rules.allow_inmail && (
               <p>
                 <strong>
@@ -586,12 +588,13 @@ export default function WorkspaceDialogs({ ctx }) {
                 включена в текст ниже.
               </p>
             )}
-            <details>
+            <details className="preview-schedule">
               <summary>Расписание и проверки</summary>
               <p>
                 Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}
-                :00 ({preview.rules.timezone}). Проверка каждые{" "}
-                {preview.rules.check_hours} ч. · Наблюдение{" "}
+                :00 (
+                {zoneNames[preview.rules.timezone] || preview.rules.timezone}
+                ). Проверка каждые {preview.rules.check_hours} ч. · Наблюдение{" "}
                 {preview.rules.monitor_days} дней.
                 {preview.rules.allow_inmail &&
                   preview.rules.allow_invites &&
@@ -599,7 +602,7 @@ export default function WorkspaceDialogs({ ctx }) {
                   ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}
               </p>
             </details>
-            <p>
+            <p className="preview-fact">
               Обрабатываем только выбранных получателей. При ограничении
               LinkedIn остановимся и сохраним очередь.
             </p>
@@ -610,13 +613,15 @@ export default function WorkspaceDialogs({ ctx }) {
                 <pre>{m.message}</pre>
                 {preview.rules.allow_invites && (
                   <>
-                    <b>Если потребуется приглашение</b>
+                    <b className="preview-label">
+                      Если потребуется приглашение
+                    </b>
                     <pre>{m.invitation || "Без заметки"}</pre>
                   </>
                 )}
                 {preview.rules.allow_inmail && (
                   <>
-                    <b>InMail · {m.subject}</b>
+                    <b className="preview-label">InMail · {m.subject}</b>
                     <pre>{m.inmail_message}</pre>
                   </>
                 )}

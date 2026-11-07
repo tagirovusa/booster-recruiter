@@ -1003,6 +1003,32 @@ input[type="checkbox"] {
   color: #9ba3aa;
   margin-top: 5px;
 }
+.message-preview .preview-fact {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+.message-preview .preview-schedule {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.message-preview .preview-schedule summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #151515;
+}
+.message-preview .preview-schedule p {
+  margin: 6px 0 0 16px;
+}
+.message-preview article {
+  margin-top: 16px;
+}
+.message-preview .preview-label {
+  display: block;
+  margin-top: 18px;
+  font-size: 13px;
+}
 .message-preview pre {
   white-space: pre-wrap;
   font: 13px/1.8 Nunito;
