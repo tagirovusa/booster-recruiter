@@ -41,7 +41,13 @@ export function OutreachHistory({
             )}
           </div>
           <div className="table-scroll">
-            <table>
+            <table className="history-table">
+              <colgroup>
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "18%" }} />
+                <col />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Человек</th>
