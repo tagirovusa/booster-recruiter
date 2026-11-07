@@ -561,7 +561,7 @@ function App() {
                     )
                   }
                   onOpen={(item) => {
-                    if (item.kind === "login") {
+                    if (item.kind === "login" || item.needs_sign_in) {
                       goTo("accounts");
                       setFocusTarget("account-" + item.account_id);
                     } else {

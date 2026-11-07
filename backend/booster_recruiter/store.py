@@ -101,6 +101,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY,applied TEXT NOT NULL);
           PRAGMA user_version=1;
         """)
+        self._ensure_account_status_time()
         # Recovery never retries an operation which may already have sent.
         with self.db:
             self.db.execute(
@@ -131,6 +132,16 @@ class Store:
         from .workspace import Workspace
 
         self.workspace = Workspace(self)
+
+    def _ensure_account_status_time(self):
+        """Remember when each account last changed status, so a sign-in request
+        shows when it actually appeared rather than when the account was added."""
+        columns = {r["name"] for r in self.rows("PRAGMA table_info(accounts)")}
+        if "status_changed" in columns:
+            return
+        with self.db:
+            self.db.execute("ALTER TABLE accounts ADD COLUMN status_changed TEXT")
+            self.db.execute("UPDATE accounts SET status_changed=created")
 
     def _migrate_neutral_default(self):
         """Move only old automatic review assignments; keep manual decisions."""
@@ -220,12 +231,15 @@ class Store:
             )
         with self.db:
             self.db.execute(
-                "UPDATE accounts SET status=?,url=COALESCE(?,url),error=?,label=COALESCE(?,label) WHERE id=?",
+                "UPDATE accounts SET status=?,url=COALESCE(?,url),error=?,label=COALESCE(?,label),"
+                "status_changed=CASE WHEN status=? THEN status_changed ELSE ? END WHERE id=?",
                 (
                     status,
                     canonical(url) if url else None,
                     error,
                     name if status == "ready" else None,
+                    status,
+                    now(),
                     aid,
                 ),
             )

@@ -44,7 +44,7 @@ class Workspace:
                         action_id=None,
                         name=a["label"],
                         detail=a.get("error") or "Подключите аккаунт LinkedIn.",
-                        updated=a["created"],
+                        updated=a.get("status_changed") or a["created"],
                         url=a.get("url"),
                     )
                 )
@@ -101,6 +101,8 @@ class Workspace:
                 )
             )
         items.sort(key=lambda i: i["updated"], reverse=True)
+        # A missing sign-in blocks everything else for that sender: show it first.
+        items.sort(key=lambda i: i["kind"] != "login")
         return {
             "items": items,
             "counts": {
@@ -315,7 +317,8 @@ class Workspace:
             ]
             with stage:
                 stage.execute(
-                    "UPDATE accounts SET status='needs_login',error='Проверьте вход после восстановления резервной копии.' WHERE status!='deleted'"
+                    "UPDATE accounts SET status='needs_login',error='Проверьте вход после восстановления резервной копии.',status_changed=? WHERE status!='deleted'",
+                    (now(),),
                 )
                 stage.executemany(
                     "UPDATE accounts SET status='deleted' WHERE id=?",

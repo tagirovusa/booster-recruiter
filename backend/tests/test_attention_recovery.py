@@ -376,3 +376,36 @@ def test_known_old_inmail_without_proof_does_not_offer_automatic_check(store):
     with pytest.raises(Exception, match="автоматического подтверждения"):
         rt.attention.start(item["id"])
     assert not rt.jobs
+
+
+def test_recheck_waits_for_sender_sign_in(store):
+    a, _, member, _ = uncertain_invite(store)
+    store.set_account(a["id"], "needs_login", error="Сессия LinkedIn истекла.")
+    rt = Runtime(store, Worker)
+    identity = "review:" + member["id"]
+    item = next(
+        i
+        for i in rt.attention.decorate(store.workspace.summary())["items"]
+        if i["id"] == identity
+    )
+    assert item["can_recheck"] is False
+    assert item["needs_sign_in"] is True
+    assert "Сначала войдите" in item["recheck_unavailable_reason"]
+    with pytest.raises(Exception, match="Сначала войдите"):
+        rt.attention.start(identity)
+    assert not rt.jobs
+
+
+def test_sign_in_request_is_dated_when_it_appeared(store):
+    a, *_ = uncertain_invite(store)
+    store.db.execute(
+        "UPDATE accounts SET created='2020-01-01T00:00:00+00:00',status_changed=created"
+    )
+    store.set_account(a["id"], "needs_login", error="Сессия LinkedIn истекла.")
+    login = next(i for i in store.workspace.summary()["items"] if i["kind"] == "login")
+    assert login["updated"] > "2026"
+    # Re-applying the same status keeps the original time.
+    first = login["updated"]
+    store.set_account(a["id"], "needs_login", error="Сессия LinkedIn истекла.")
+    again = next(i for i in store.workspace.summary()["items"] if i["kind"] == "login")
+    assert again["updated"] == first
