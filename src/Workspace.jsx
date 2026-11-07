@@ -90,12 +90,16 @@ export function AttentionPanel({
                     </span>
                     <strong>{item.name}</strong>
                     <small>
-                      {[
-                        campaigns.find((c) => c.id === item.campaign_id)?.name,
-                        accounts.find((a) => a.id === item.account_id)?.label,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {item.kind === "login"
+                        ? "Аккаунт LinkedIn"
+                        : [
+                            campaigns.find((c) => c.id === item.campaign_id)
+                              ?.name,
+                            accounts.find((a) => a.id === item.account_id)
+                              ?.label,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                     </small>
                     <p>{item.detail}</p>
                     {item.repairing && (

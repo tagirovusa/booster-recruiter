@@ -433,10 +433,16 @@ class Store:
             raise AppError(
                 "Аккаунт этой кампании удалён. Кампанию можно только просматривать."
             )
+        paused_plan = self.rows(
+            "SELECT 1 FROM outreach_runs WHERE campaign_id=? AND status IN ('active','paused') LIMIT 1",
+            (cid,),
+        )
         self.progress(
             cid,
             "ready",
-            "Кампания возвращена из архива. Утверждённый ранее план на паузе.",
+            "Кампания возвращена из архива. Утверждённый ранее план на паузе — продолжите его на вкладке «Отправка»."
+            if paused_plan
+            else "Кампания возвращена из архива.",
         )
         return self.campaign(cid)
 
