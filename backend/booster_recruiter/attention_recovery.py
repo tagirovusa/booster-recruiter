@@ -83,7 +83,10 @@ class AttentionRecovery:
             if item["kind"] == "review":
                 available, reason = self.capability(item)
                 item.update(
-                    needs_sign_in=reason.startswith("Сначала войдите"),
+                    needs_sign_in=self.store.account(
+                        item["account_id"], include_deleted=True
+                    )["status"]
+                    != "ready",
                     repair=self.repairs.public(item["id"]),
                     can_recheck=available,
                     recheck_unavailable_reason=reason,
