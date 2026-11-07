@@ -14,7 +14,7 @@ import re
 
 import anyio
 import anyio.lowlevel
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.exceptions import (
     InvalidReferenceError,
@@ -670,7 +670,7 @@ class ConversationReader:
                 arg={"minimumLength": minimum_length},
                 timeout=timeout,
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("%s content did not appear", log_context)
 
     async def _scroll_main_scrollable_region(
@@ -764,7 +764,7 @@ class ConversationReader:
                 state="attached",
                 timeout=10000,
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug(
                 "conversation labels did not appear within 10s (context=%s)",
                 context,
@@ -991,7 +991,7 @@ class ConversationReader:
 
         try:
             await self._session.page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Profile page did not load for %s", linkedin_username)
 
         await self._session.dismiss_modal()
@@ -1021,7 +1021,7 @@ class ConversationReader:
                 )
 
             await self._navigator._navigate_to_page(thread_urls[index])
-        except PlaywrightTimeoutError as exc:
+        except BrowserTimeoutError as exc:
             raise LinkedInOperationError(
                 "Messaging search results did not load in time."
             ) from exc

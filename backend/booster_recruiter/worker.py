@@ -120,11 +120,11 @@ async def serve(profile: Path, *, visible=False):
         None if getattr(sys, "frozen", False) else os.environ.get("BOOSTER_BROWSER")
     )
     if not browser_path:
-        from patchright.async_api import async_playwright
+        from patchright.async_api import async_playwright as patchright_session
 
         if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
-            async with async_playwright() as playwright:
-                browser_path = playwright.chromium.executable_path
+            async with patchright_session() as patchright:
+                browser_path = patchright.chromium.executable_path
             if not Path(browser_path).is_file():
                 raise RuntimeError(
                     "Встроенный браузер не найден. Переустановите приложение."

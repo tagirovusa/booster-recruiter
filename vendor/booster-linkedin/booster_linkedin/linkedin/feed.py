@@ -10,7 +10,7 @@ import logging
 
 import anyio
 import anyio.lowlevel
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.exceptions import LinkedInOperationError
 from booster_linkedin.error_diagnostics import build_issue_diagnostics
@@ -237,7 +237,7 @@ class FeedReader:
 
         try:
             await page.wait_for_selector("main")
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("No <main> element found on %s", url)
 
         await self._session.dismiss_modal()
@@ -251,7 +251,7 @@ class FeedReader:
                 }""",
                 timeout=10000,
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Feed content did not appear on %s", url)
 
         # The feed has its own scroll container — window.scrollTo is a no-op.

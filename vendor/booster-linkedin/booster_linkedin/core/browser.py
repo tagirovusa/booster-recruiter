@@ -15,7 +15,7 @@ from patchright.async_api import (
     BrowserContext,
     Page,
     Playwright,
-    async_playwright,
+    async_playwright as patchright_session,
 )
 
 from booster_linkedin.common_utils import (
@@ -285,9 +285,9 @@ class BrowserManager:
         # `context.pages` for no reason.
         if self._windowless:
             with attaching_to_other_targets():
-                driver = await async_playwright().start()
+                driver = await patchright_session().start()
         else:
-            driver = await async_playwright().start()
+            driver = await patchright_session().start()
         self._playwright = driver
         try:
             self._containment = contain_browser_launch(driver)

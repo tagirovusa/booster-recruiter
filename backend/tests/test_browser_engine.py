@@ -6,12 +6,12 @@ from pathlib import Path
 
 import httpx
 import pytest
-from booster_linkedin.core.browser import async_playwright as vendor_browser_factory
+from booster_linkedin.core.browser import patchright_session as vendor_browser_factory
 from booster_recruiter import browser_engine, selftest
 from booster_recruiter.api import create_app
 from booster_recruiter.runtime import Runtime
 from booster_recruiter.store import Store
-from patchright.async_api import async_playwright
+from patchright.async_api import async_playwright as patchright_session
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -27,7 +27,7 @@ def test_shipped_engine_matches_exact_lock_and_vendor_factory():
     assert f"patchright=={info['version']}" in vendor["project"]["dependencies"]
     assert info["driver"] == "patchright-core"
     assert info["chromium_version"] and info["chromium_revision"]
-    assert vendor_browser_factory is async_playwright
+    assert vendor_browser_factory is patchright_session
     assert not any(p["name"] == "playwright" for p in lock["package"])
 
 

@@ -31,7 +31,7 @@ from urllib.parse import quote_plus
 import asyncio
 import logging
 
-from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import TimeoutError as BrowserTimeoutError
 
 from booster_linkedin.core.destination import (
     linkedin_element,
@@ -408,7 +408,7 @@ class ConnectionActions:
             await self._session.page.wait_for_selector(
                 _DIALOG_SELECTOR, state="hidden", timeout=3000
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             pass
 
     async def _get_premium_upsell_message(self, *, timeout: int = 2500) -> str | None:
@@ -423,7 +423,7 @@ class ConnectionActions:
         locator = self._session.page.locator(_DIALOG_PREMIUM_LINK_SELECTOR).first
         try:
             await locator.wait_for(state="visible", timeout=timeout)
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             return None
         except Exception:
             try:
@@ -491,7 +491,7 @@ class ConnectionActions:
         try:
             await self._session.page.wait_for_selector("[role='menu']", timeout=3000)
             return True
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("More menu did not appear after click")
             return False
 
@@ -602,7 +602,7 @@ class ConnectionActions:
                             state="visible",
                             timeout=3000,
                         )
-                    except PlaywrightTimeoutError:
+                    except BrowserTimeoutError:
                         logger.debug("Note textarea did not appear")
                         textarea_appeared = False
                     # ponytail: LinkedIn now renders a persistent Premium
@@ -697,7 +697,7 @@ class ConnectionActions:
             await self._session.page.wait_for_selector(
                 _DIALOG_SELECTOR, state="hidden", timeout=5000
             )
-        except PlaywrightTimeoutError:
+        except BrowserTimeoutError:
             logger.debug("Invite dialog did not close after submit")
             dialog_closed = False
 
@@ -770,7 +770,7 @@ class ConnectionActions:
                     state="visible",
                     timeout=3000,
                 )
-            except PlaywrightTimeoutError:
+            except BrowserTimeoutError:
                 logger.debug("Note textarea did not appear during quota probe")
 
         note_limit_message = await self._get_premium_upsell_message()
