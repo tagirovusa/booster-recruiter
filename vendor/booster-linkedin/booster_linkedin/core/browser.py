@@ -1007,7 +1007,7 @@ class BrowserManager:
             return False
 
         try:
-            all_cookies = json.loads(path.read_text())
+            all_cookies = json.loads(path.read_text(encoding="utf-8"))
             if not all_cookies:
                 logger.debug("Cookie file is empty")
                 return False

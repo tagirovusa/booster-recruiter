@@ -347,7 +347,7 @@ def serve(root: Path):
     connection = {"port": sock.getsockname()[1], "token": token, "pid": os.getpid()}
     discovery = root / "connection.json"
     fd = os.open(discovery, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as stream:
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
         json.dump(connection, stream)
     print(
         json.dumps({"ready": True, **connection, "desktop_token": desktop_token}),

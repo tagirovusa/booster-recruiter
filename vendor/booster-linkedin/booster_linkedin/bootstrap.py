@@ -476,7 +476,7 @@ def _patchright_registry_entries() -> tuple[Mapping[str, Any], ...] | None:
         registry = (
             Path(patchright.__file__).parent / "driver" / "package" / "browsers.json"
         )
-        payload = json.loads(registry.read_text())
+        payload = json.loads(registry.read_text(encoding="utf-8"))
     except (ImportError, OSError, json.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
@@ -646,7 +646,7 @@ def _cache_report_is_current(marker: Path, signature: dict[str, object]) -> bool
     because a file could not be parsed costs the whole point of the report.
     """
     try:
-        payload = json.loads(marker.read_text())
+        payload = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return False
     return payload == signature
@@ -1010,7 +1010,7 @@ def _metadata_shape_ok() -> Path | None:
     if not metadata_path.exists() or not configured_browsers_path.exists():
         return None
     try:
-        payload = json.loads(metadata_path.read_text())
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not (

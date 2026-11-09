@@ -58,7 +58,9 @@ def test_raw_text_is_kept_in_the_local_log(tmp_path):
     user_errors.configure(tmp_path)
     try:
         user_errors.user_text(RAW_ENGINE_FAILURE)
-        assert "browser stopped" in (tmp_path / "errors.log").read_text()
+        assert "browser stopped" in (tmp_path / "errors.log").read_text(
+            encoding="utf-8"
+        )
     finally:
         user_errors._LOG = None
 

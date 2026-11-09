@@ -190,7 +190,7 @@ def _windows_master_key(local_state_path: Path) -> bytes:  # pragma: no cover
     import ctypes.wintypes
     import json
 
-    payload = json.loads(local_state_path.read_text())
+    payload = json.loads(local_state_path.read_text(encoding="utf-8"))
     encrypted_key = base64.b64decode(payload["os_crypt"]["encrypted_key"])
     if encrypted_key[:5] != b"DPAPI":
         raise KeystoreUnavailableError("Local State key lacks the DPAPI prefix")
