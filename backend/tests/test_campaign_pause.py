@@ -195,3 +195,39 @@ async def test_pause_api_releases_queued_collection_while_browser_stays_busy(sto
     finally:
         runtime.browser_lock.release()
         await asyncio.gather(*runtime.jobs.values(), return_exceptions=True)
+
+
+def _second_campaign(store, account_id, name):
+    return store.create_campaign(
+        {
+            "name": name,
+            "account_id": account_id,
+            "keywords": "CDL recruiter",
+            "max_profiles": 5,
+            "template_open": "Hello {first_name}.",
+            "template_neutral": "Hello {first_name}.",
+        }
+    )
+
+
+async def test_sender_pause_leaves_archived_and_idle_campaigns_alone(store):
+    account, campaign, _, plan, runtime, _ = activate(store)
+    archived = _second_campaign(store, account["id"], "Old")
+    idle = _second_campaign(store, account["id"], "Idle")
+    store.archive_campaign(archived["id"])
+    store.progress(idle["id"], "ready", "Профилей сохранено: 0.")
+
+    # An earlier, finished task stays in runtime.jobs for this campaign.
+    async def finished():
+        return None
+
+    runtime.jobs[idle["id"]] = asyncio.create_task(finished())
+    await runtime.jobs[idle["id"]]
+
+    runtime.pause_sender(account["id"], "Лимит LinkedIn.")
+
+    assert store.campaign(archived["id"])["status"] == "archived"
+    assert store.campaign(idle["id"])["status"] == "ready"
+    # The campaign with an active plan is still paused, plan included.
+    assert store.campaign(campaign["id"])["status"] == "paused"
+    assert store.outreach.run(plan["run_id"])["status"] == "paused"

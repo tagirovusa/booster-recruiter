@@ -322,14 +322,16 @@ class Runtime:
         sender_ids = self.store.outreach.sender_ids(aid)
         placeholders = ",".join("?" for _ in sender_ids)
         for campaign in self.store.rows(
-            f"SELECT id FROM campaigns WHERE account_id IN ({placeholders})",
+            # Archived campaigns keep their status: their history is read-only.
+            f"SELECT id FROM campaigns WHERE account_id IN ({placeholders}) "
+            "AND status != 'archived'",
             sender_ids,
         ):
             cid = campaign["id"]
             self.pause_generations[cid] = self.pause_generations.get(cid, 0) + 1
             # Includes a legacy batch or a task already queued for browser access.
             self.pause_flags.add(cid)
-            if cid in self.jobs or self.store.rows(
+            if self._has_running_task(cid) or self.store.rows(
                 "SELECT 1 FROM outreach_runs WHERE campaign_id=? AND status='active' "
                 "UNION SELECT 1 FROM batches WHERE campaign_id=? AND status='approved'",
                 (cid, cid),
@@ -341,6 +343,13 @@ class Runtime:
         ):
             self.store.outreach.status(run["id"], "paused", detail)
         return detail
+
+    def _has_running_task(self, cid):
+        """Finished tasks stay in self.jobs; only unfinished ones count."""
+        return any(
+            task is not None and not task.done()
+            for task in (self.jobs.get(cid), self.campaign_operations.get(cid))
+        )
 
     def pause_for_challenge(self, aid, detail):
         for sender_id in self.store.outreach.sender_ids(aid):
