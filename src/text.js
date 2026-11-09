@@ -1,14 +1,3 @@
-// Shared Russian wording helpers for every screen.
-const rules = new Intl.PluralRules("ru");
-
-// plural(3, ["кандидат", "кандидата", "кандидатов"]) → "кандидата"
-export function plural(count, [one, few, many]) {
-  const form = rules.select(count);
-  return form === "one"
-    ? one
-    : form === "few"
-      ? few
-      : form === "many"
-        ? many
-        : few;
-}
+// Shared wording helpers for every screen; language-aware versions live in
+// i18n.js.
+export { plural } from "./i18n";
