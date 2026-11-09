@@ -413,11 +413,11 @@ class Runtime:
                 context["sender_name"] = identity["name"]
             if cid in self.pause_flags:
                 raise AppError(PREVIEW_PAUSED)
-            self.store.progress(cid, "ready", "Тексты и подпись Recruiter проверены.")
+            self.store.settle(cid, "ready", "Тексты и подпись Recruiter проверены.")
             return self.store.outreach.preview(cid, recruiter_context=context)
         except BaseException:
             if cid in self.pause_flags:
-                self.store.progress(cid, "paused", PREVIEW_PAUSED)
+                self.store.settle(cid, "paused", PREVIEW_PAUSED)
             else:
                 self.store.progress(cid, campaign["status"], campaign["progress"])
             raise
