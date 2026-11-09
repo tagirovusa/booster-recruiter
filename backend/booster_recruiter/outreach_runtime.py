@@ -122,6 +122,17 @@ class OutreachRuntime:
         except Exception as exc:
             self.store.progress(cid, "paused", self.rt.friendly(exc))
 
+    def first_contact(self, member):
+        """When this person was first written to, or None."""
+        if member["sent_at"] or member["invitation_at"]:
+            return min(t for t in (member["sent_at"], member["invitation_at"]) if t)
+        rows = self.store.rows(
+            "SELECT MIN(created) AS first FROM outreach_actions "
+            "WHERE member_id=? AND status IN ('sent','unknown','submitting')",
+            (member["id"],),
+        )
+        return rows[0]["first"] if rows else None
+
     async def process(self, rid):
         run = self.repo.run(rid)
         cid, aid, rules = run["campaign_id"], run["account_id"], run["rules"]
@@ -171,11 +182,17 @@ class OutreachRuntime:
                                 detail="Получатель исключён или уже обработан в другой кампании.",
                             )
                             continue
+                        # The period runs from the first real contact with
+                        # this person, never from the preview: a long pause
+                        # or a late acceptance must not end the plan early.
                         # Nobody has written to a planned member yet, so
                         # there is nothing to watch and nothing to finish.
-                        if member["status"] != "planned" and utc() >= utc(
-                            member["sent_at"] or run["created"]
-                        ) + timedelta(days=rules["monitor_days"]):
+                        contacted = member["status"] != "planned" and (
+                            self.first_contact(member)
+                        )
+                        if contacted and utc() >= utc(contacted) + timedelta(
+                            days=rules["monitor_days"]
+                        ):
                             self.repo.update_member(
                                 member["id"],
                                 status="finished",
