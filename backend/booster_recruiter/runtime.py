@@ -440,7 +440,7 @@ class Runtime:
                 cid, "collecting", "Проверяем аккаунт отправителя…"
             ):
                 if cid in self.pause_flags:
-                    self.store.progress(cid, "paused", "Поиск приостановлен.")
+                    self.store.settle(cid, "paused", "Поиск приостановлен.")
                     return
                 await self.verify(aid)
                 known = {p["url"] for p in self.store.detail(cid)["candidates"]}
@@ -522,9 +522,9 @@ class Runtime:
                     )
                 else:
                     message += " Проверьте группы и выберите получателей."
-                self.store.progress(cid, "paused" if paused else "ready", message)
+                self.store.settle(cid, "paused" if paused else "ready", message)
         except Exception as exc:
-            self.store.progress(cid, "paused", self.friendly(exc))
+            self.store.settle(cid, "paused", self.friendly(exc))
             self.store.event("collection_stopped", f"{cid}: {self.friendly(exc)}")
 
     def busy_message(self):
