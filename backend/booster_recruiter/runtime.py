@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import signal
 import sys
 import traceback
@@ -14,6 +15,7 @@ from .platform_limits import (
     LinkedInChallengeError,
     LinkedInLimitError,
 )
+from .search_match import compile_query, matches
 from .store import AppError, canonical
 from .user_errors import record, user_text
 
@@ -423,6 +425,16 @@ class Runtime:
     async def collect(self, cid):
         campaign = self.store.campaign(cid)
         aid = campaign["account_id"]
+        keywords = campaign["keywords"]
+        limit = campaign["max_profiles"]
+        # A pasted profile link is one explicit target, not a query to check.
+        query = (
+            None
+            if re.match(r"(?i)^\s*https?:", keywords)
+            else compile_query(keywords)
+        )
+        rejected = 0
+        exhausted = False
         try:
             async with self.campaign_browser(
                 cid, "collecting", "Проверяем аккаунт отправителя…"
@@ -433,9 +445,12 @@ class Runtime:
                 await self.verify(aid)
                 known = {p["url"] for p in self.store.detail(cid)["candidates"]}
                 count = len(known)
+                # Profiles that did not match the query earlier are not opened
+                # again when the recruiter raises the number of profiles.
+                known |= self.store.search_rejects(cid, keywords)
                 seen_pages = set()
                 for page in range(1, 21):
-                    if cid in self.pause_flags or count >= campaign["max_profiles"]:
+                    if cid in self.pause_flags or count >= limit:
                         break
                     self.store.progress(
                         cid,
@@ -443,12 +458,13 @@ class Runtime:
                         f"Страница {page}. Профилей сохранено: {count}.",
                     )
                     result = await self.worker(aid).call(
-                        "search", {"keywords": campaign["keywords"], "page": page}
+                        "search", {"keywords": keywords, "page": page}
                     )
                     fingerprint = tuple(
                         sorted(p.get("url", "") for p in result["profiles"])
                     )
                     if not fingerprint or fingerprint in seen_pages:
+                        exhausted = True
                         break
                     seen_pages.add(fingerprint)
                     links = []
@@ -461,21 +477,52 @@ class Runtime:
                             links.append(url)
                             known.add(url)
                     for url in links:
-                        if cid in self.pause_flags or count >= campaign["max_profiles"]:
+                        if cid in self.pause_flags or count >= limit:
                             break
                         person = await self.worker(aid).call("profile", {"url": url})
+                        if query is not None and not matches(query, person):
+                            details = await self.worker(aid).call(
+                                "profile_details", {"url": url}
+                            )
+                            person["sections"] = {
+                                **(person.get("sections") or {}),
+                                **(details.get("sections") or {}),
+                            }
+                            if not matches(query, person):
+                                rejected += 1
+                                self.store.reject_candidate(cid, url, keywords)
+                                self.store.event(
+                                    "search_mismatch",
+                                    f"{cid}: {url} — профиль не соответствует запросу.",
+                                )
+                                self.store.progress(
+                                    cid,
+                                    "collecting",
+                                    f"Сохранено {count} из {limit}. Пропущено несоответствующих запросу: {rejected}.",
+                                )
+                                continue
                         self.store.add_candidate(cid, person)
                         count += 1
                         self.store.progress(
                             cid,
                             "collecting",
-                            f"Сохранено {count} из {campaign['max_profiles']}. Проверяем следующий профиль…",
+                            f"Сохранено {count} из {limit}. Проверяем следующий профиль…",
                         )
-                self.store.progress(
-                    cid,
-                    "paused" if cid in self.pause_flags else "ready",
-                    f"Профилей сохранено: {count}. Проверьте группы и выберите получателей.",
-                )
+                else:
+                    exhausted = True
+                paused = cid in self.pause_flags
+                message = f"Профилей сохранено: {count}."
+                if rejected:
+                    message += f" Пропущено несоответствующих запросу: {rejected}."
+                if not paused and count < limit and exhausted:
+                    message += (
+                        f" LinkedIn больше не находит подходящих профилей по этому запросу "
+                        f"(нужно было {limit}). Чтобы найти больше, упростите запрос: "
+                        "уберите часть условий AND или точных фраз в кавычках."
+                    )
+                else:
+                    message += " Проверьте группы и выберите получателей."
+                self.store.progress(cid, "paused" if paused else "ready", message)
         except Exception as exc:
             self.store.progress(cid, "paused", self.friendly(exc))
             self.store.event("collection_stopped", f"{cid}: {self.friendly(exc)}")

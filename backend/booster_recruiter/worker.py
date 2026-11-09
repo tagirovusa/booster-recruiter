@@ -271,6 +271,16 @@ async def serve(profile: Path, *, visible=False):
                         photo_frame=frame["photo_frame"],
                     )
                     result = person
+                elif action == "profile_details":
+                    # Experience and skills, read only when the main page did
+                    # not confirm the campaign query.
+                    raw, _ = await call(
+                        "get_person_profile",
+                        {"linkedin_username": p["url"], "sections": "experience,skills"},
+                    )
+                    sections = dict(raw.get("sections") or {})
+                    sections.pop("main_profile", None)
+                    result = {"sections": sections}
                 elif action in (
                     "observe",
                     "verify_delivery",

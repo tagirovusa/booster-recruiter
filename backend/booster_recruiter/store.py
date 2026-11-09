@@ -97,6 +97,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS suppression(url TEXT PRIMARY KEY,reason TEXT NOT NULL,created TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,created TEXT NOT NULL,kind TEXT NOT NULL,detail TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY,applied TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS search_rejects(campaign_id TEXT NOT NULL REFERENCES campaigns(id),url TEXT NOT NULL,keywords TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(campaign_id,url));
           PRAGMA user_version=1;
         """)
         self._ensure_account_status_time()
@@ -373,6 +374,23 @@ class Store:
                 ),
             )
 
+    def search_rejects(self, cid, keywords):
+        """Profiles LinkedIn returned for this query that did not match it."""
+        return {
+            r["url"]
+            for r in self.rows(
+                "SELECT url FROM search_rejects WHERE campaign_id=? AND keywords=?",
+                (cid, keywords),
+            )
+        }
+
+    def reject_candidate(self, cid, url, keywords):
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO search_rejects(campaign_id,url,keywords,created) VALUES(?,?,?,?)",
+                (cid, canonical(url), keywords, now()),
+            )
+
     def update_campaign(self, cid, data):
         """Rename, change the search size, or fix the search before collection."""
         campaign = self.campaign(cid)
@@ -486,6 +504,7 @@ class Store:
                 "batches",
                 "candidates",
                 "outreach_settings",
+                "search_rejects",
             ):
                 self.db.execute(f"DELETE FROM {table} WHERE campaign_id=?", (cid,))
             self.db.execute("DELETE FROM campaigns WHERE id=?", (cid,))
