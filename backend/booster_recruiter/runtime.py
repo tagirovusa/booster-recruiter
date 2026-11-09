@@ -213,7 +213,7 @@ class Runtime:
         record("".join(traceback.format_exception(exc)))
         with suppress(AppError):
             if self.store.campaign(cid)["status"] in ACTIVE_STATUSES:
-                self.store.progress(cid, "paused", self.friendly(exc))
+                self.store.settle(cid, "paused", self.friendly(exc))
 
     @asynccontextmanager
     async def campaign_browser(self, cid, status, progress):
