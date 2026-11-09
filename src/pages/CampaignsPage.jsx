@@ -2,6 +2,7 @@
 import React from "react";
 import { ArrowRight, ChevronRight, Plus, Search } from "lucide-react";
 import { Badge, Button, Empty, Stat } from "../ui";
+import { t } from "../i18n";
 
 export default function CampaignsPage({
   state,
@@ -17,8 +18,8 @@ export default function CampaignsPage({
     <>
       <div className="page-heading">
         <div>
-          <h1>Ваши кампании</h1>
-          <p>От поискового запроса до сохранённого списка кандидатов.</p>
+          <h1>{t("Ваши кампании")}</h1>
+          <p>{t("От поискового запроса до сохранённого списка кандидатов.")}</p>
         </div>
         <Button
           kind="primary"
@@ -27,41 +28,43 @@ export default function CampaignsPage({
           }
         >
           <Plus size={18} />
-          {state.accounts.length ? "Новая кампания" : "Подключить LinkedIn"}
+          {state.accounts.length ? t("Новая кампания") : t("Подключить LinkedIn")}
         </Button>
       </div>
 
       {templates.length > 0 && (
         <div className="workspace-template-shortcut">
           <Button onClick={() => onModal("template")}>
-            Создать из шаблона
+            {t("Создать из шаблона")}
           </Button>
         </div>
       )}
-      <div className="archive-tabs" aria-label="Список кампаний">
+      <div className="archive-tabs" aria-label={t("Список кампаний")}>
         <button
           className={"button " + (!showArchived ? "primary" : "")}
           aria-pressed={!showArchived}
           onClick={() => onShowArchived(false)}
         >
-          Активные
+          {t("Активные")}
         </button>
         <button
           className={"button " + (showArchived ? "primary" : "")}
           aria-pressed={showArchived}
           onClick={() => onShowArchived(true)}
         >
-          Архив · {(state.archived_campaigns || []).length}
+          {t("Архив · {count}", {
+            count: (state.archived_campaigns || []).length,
+          })}
         </button>
       </div>
       <div className="stats">
-        <Stat label="Кампании" value={state.campaigns.length} />
+        <Stat label={t("Кампании")} value={state.campaigns.length} />
         <Stat
-          label="Сохранённые профили"
+          label={t("Сохранённые профили")}
           value={state.campaigns.reduce((n, c) => n + c.count, 0)}
         />
         <Stat
-          label="Готовые аккаунты"
+          label={t("Готовые аккаунты")}
           value={state.accounts.filter((a) => a.status === "ready").length}
         />
       </div>
@@ -70,13 +73,13 @@ export default function CampaignsPage({
           icon={Search}
           title={
             showArchived
-              ? "Архив пока пуст"
-              : "Найдите людей для вашей следующей вакансии"
+              ? t("Архив пока пуст")
+              : t("Найдите людей для вашей следующей вакансии")
           }
           text={
             showArchived
-              ? "История кампаний удалённых аккаунтов появится здесь."
-              : "Задайте ключевые слова и подготовьте сообщения. Программа сохранит найденные профили и поможет проверить их перед отправкой."
+              ? t("История кампаний удалённых аккаунтов появится здесь.")
+              : t("Задайте ключевые слова и подготовьте сообщения. Программа сохранит найденные профили и поможет проверить их перед отправкой.")
           }
           action={
             <Button
@@ -86,8 +89,8 @@ export default function CampaignsPage({
               }
             >
               {state.accounts.length
-                ? "Создать первую кампанию"
-                : "Подключить LinkedIn"}
+                ? t("Создать первую кампанию")
+                : t("Подключить LinkedIn")}
               <ArrowRight size={18} />
             </Button>
           }
@@ -95,17 +98,17 @@ export default function CampaignsPage({
       ) : (
         <div className="panel">
           <div className="panel-title">
-            <h2>{showArchived ? "Архив кампаний" : "Все кампании"}</h2>
-            <span>{campaigns.length} всего</span>
+            <h2>{showArchived ? t("Архив кампаний") : t("Все кампании")}</h2>
+            <span>{t("{count} всего", { count: campaigns.length })}</span>
           </div>
           <div className="table-scroll">
             <table className="campaign-table">
               <thead>
                 <tr>
-                  <th>Кампания</th>
-                  <th>Отправитель</th>
-                  <th>Профили</th>
-                  <th>Статус</th>
+                  <th>{t("Кампания")}</th>
+                  <th>{t("Отправитель")}</th>
+                  <th>{t("Профили")}</th>
+                  <th>{t("Статус")}</th>
                   <th />
                 </tr>
               </thead>

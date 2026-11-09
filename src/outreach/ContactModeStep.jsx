@@ -8,6 +8,7 @@ import {
   UserRoundPlus,
 } from "lucide-react";
 import { TemplateFeedback } from "./parts";
+import { t } from "../i18n";
 
 export function ContactModeStep({ ctx }) {
   const {
@@ -28,13 +29,13 @@ export function ContactModeStep({ ctx }) {
   return (
     <>
       <div className="setup-section-title">
-        <h3>Как связываться с кандидатами?</h3>
-        <p>Доступное бесплатное сообщение всегда используется первым.</p>
+        <h3>{t("Как связываться с кандидатами?")}</h3>
+        <p>{t("Доступное бесплатное сообщение всегда используется первым.")}</p>
       </div>
       <div
         className="strategy-options"
         role="radiogroup"
-        aria-label="Способ связи"
+        aria-label={t("Способ связи")}
       >
         {modes.map(({ id, icon: Icon, title, tag, description }) => (
           <label
@@ -70,7 +71,7 @@ export function ContactModeStep({ ctx }) {
           <div
             className="inmail-timing"
             role="radiogroup"
-            aria-label="Когда отправлять InMail"
+            aria-label={t("Когда отправлять InMail")}
           >
             {inmailTimings.map(({ id, icon: Icon, title, description }) => (
               <label
@@ -93,11 +94,10 @@ export function ContactModeStep({ ctx }) {
             ))}
           </div>
           <p className="field-note">
-            Дополнительные кредиты не покупаем. Если кредиты закончатся,
-            оставшиеся кандидаты подождут в очереди.
+            {t("Дополнительные кредиты не покупаем. Если кредиты закончатся, оставшиеся кандидаты подождут в очереди.")}
           </p>
           <label className="field">
-            <span>Подписка для InMail</span>
+            <span>{t("Подписка для InMail")}</span>
             <select
               value={rules.inmail_channel || "linkedin"}
               onChange={(e) => field("inmail_channel", e.target.value)}
@@ -108,32 +108,31 @@ export function ContactModeStep({ ctx }) {
           </label>
           {rules.inmail_channel === "recruiter" && !recruiterReady && (
             <div className="hint warning">
-              Подключите Recruiter и разрешите отправку ваших текстов в аккаунте
-              отправителя.{" "}
+              {t("Подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.")}{" "}
               <button className="text-link" onClick={onAccounts}>
-                Открыть аккаунты
+                {t("Открыть аккаунты")}
               </button>
             </div>
           )}
           {mode === "economy" &&
             rules.allow_invites &&
-            number("wait_days", "Ждать принятия · дней", 1, 60)}
+            number("wait_days", t("Ждать принятия · дней"), 1, 60)}
         </div>
       )}
       <details className="setup-details">
         <summary>
           <span>
             <UserRoundPlus size={17} />
-            <b>Приглашения в контакты</b>
+            <b>{t("Приглашения в контакты")}</b>
           </span>
           <small>
             {rules.allow_invites && fieldChecks.invitation.error
-              ? "Проверьте текст"
+              ? t("Проверьте текст")
               : rules.allow_invites
                 ? rules.invitation.trim()
-                  ? "С вашей заметкой"
-                  : "Без заметки"
-                : "Выключены"}
+                  ? t("С вашей заметкой")
+                  : t("Без заметки")
+                : t("Выключены")}
           </small>
           <ChevronDown size={16} />
         </summary>
@@ -145,22 +144,22 @@ export function ContactModeStep({ ctx }) {
               onChange={(e) => field("allow_invites", e.target.checked)}
             />
             <span>
-              <b>Приглашать в контакты</b>
+              <b>{t("Приглашать в контакты")}</b>
               <small>
-                После принятия программа отправит утверждённый текст.
+                {t("После принятия программа отправит утверждённый текст.")}
               </small>
             </span>
           </label>
           {rules.allow_invites && (
             <label className="field">
-              <span>Текст приглашения · необязательно</span>
+              <span>{t("Текст приглашения · необязательно")}</span>
               <textarea
                 rows={3}
                 aria-invalid={!!fieldChecks.invitation.error}
                 aria-describedby="invitation-feedback"
                 value={rules.invitation}
                 onChange={(e) => field("invitation", e.target.value)}
-                placeholder="Можно оставить пустым"
+                placeholder={t("Можно оставить пустым")}
               />
               <TemplateFeedback
                 id="invitation-feedback"
@@ -175,7 +174,7 @@ export function ContactModeStep({ ctx }) {
         <summary>
           <span>
             <SlidersHorizontal size={17} />
-            <b>Дополнительные настройки</b>
+            <b>{t("Дополнительные настройки")}</b>
           </span>
           <small>
             {times(rules.start_hour)}–{times(rules.end_hour)}
@@ -183,10 +182,10 @@ export function ContactModeStep({ ctx }) {
           <ChevronDown size={16} />
         </summary>
         <div className="details-body">
-          <h3>Когда работать</h3>
+          <h3>{t("Когда работать")}</h3>
           <div className="settings-row">
             <label className="field">
-              <span>Часовой пояс</span>
+              <span>{t("Часовой пояс")}</span>
               <select
                 value={rules.timezone}
                 onChange={(e) => field("timezone", e.target.value)}
@@ -201,7 +200,7 @@ export function ContactModeStep({ ctx }) {
             {["start_hour", "end_hour"].map((key) => (
               <label className="field" key={key}>
                 <span>
-                  {key === "start_hour" ? "Начинать в" : "Заканчивать в"}
+                  {key === "start_hour" ? t("Начинать в") : t("Заканчивать в")}
                 </span>
                 <select
                   value={rules[key]}
@@ -219,10 +218,10 @@ export function ContactModeStep({ ctx }) {
               </label>
             ))}
           </div>
-          <h3>Когда проверять контакты и ответы</h3>
+          <h3>{t("Когда проверять контакты и ответы")}</h3>
           <div className="settings-row">
-            {number("check_hours", "Проверять контакты каждые · ч", 1, 72)}
-            {number("monitor_days", "Следить за ответами · дней", 1, 90)}
+            {number("check_hours", t("Проверять контакты каждые · ч"), 1, 72)}
+            {number("monitor_days", t("Следить за ответами · дней"), 1, 90)}
           </div>
         </div>
       </details>

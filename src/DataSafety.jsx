@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./safety.css";
+import { formatDateTime, formatNumber, t, tr } from "./i18n";
 
 const backupKinds = {
-  daily: "Ежедневная",
-  manual: "Создана вручную",
-  before: "Перед восстановлением",
+  daily: t("Ежедневная"),
+  manual: t("Создана вручную"),
+  before: t("Перед восстановлением"),
 };
 const formatSize = (bytes) =>
   bytes < 1024 * 1024
-    ? `${Math.max(1, Math.round(bytes / 1024))} КБ`
-    : `${(bytes / 1024 / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
+    ? t("{size} КБ", { size: Math.max(1, Math.round(bytes / 1024)) })
+    : t("{size} МБ", {
+        size: formatNumber(bytes / 1024 / 1024, { maximumFractionDigits: 1 }),
+      });
 
 export function NotificationsSettings() {
   const [value, setValue] = useState(null),
@@ -29,10 +32,10 @@ export function NotificationsSettings() {
   return (
     <section className="panel settings-card">
       <header className="settings-card-heading">
-        <h2>Уведомления</h2>
-        <p>Только новые ответы и ситуации, где нужна ваша помощь.</p>
+        <h2>{t("Уведомления")}</h2>
+        <p>{t("Только новые ответы и ситуации, где нужна ваша помощь.")}</p>
       </header>
-      {!value && !error && <p className="safety-note">Загружаем настройку…</p>}
+      {!value && !error && <p className="safety-note">{t("Загружаем настройку…")}</p>}
       {value && (
         <label className="safety-toggle">
           <input
@@ -54,19 +57,17 @@ export function NotificationsSettings() {
               }
             }}
           />{" "}
-          Показывать уведомления на компьютере
+          {t("Показывать уведомления на компьютере")}
         </label>
       )}
       <p className="safety-note">
-        Имена и тексты сообщений в уведомления не попадают. Если они не
-        появляются, разрешите уведомления Booster Recruiter в настройках
-        системы.
+        {t("Имена и тексты сообщений в уведомления не попадают. Если они не появляются, разрешите уведомления Booster Recruiter в настройках системы.")}
       </p>
       {error && (
         <div role="alert">
-          <p>{error}</p>
+          <p>{tr(error)}</p>
           <button className="button" onClick={load}>
-            Повторить
+            {t("Повторить")}
           </button>
         </div>
       )}
@@ -110,8 +111,8 @@ export function DataSafety({ onRestored }) {
       await load();
       setNotice(
         op === "backup.restore"
-          ? "Данные восстановлены. Войдите в аккаунты заново; кампании оставлены на паузе."
-          : "Резервная копия сохранена.",
+          ? t("Данные восстановлены. Войдите в аккаунты заново; кампании оставлены на паузе.")
+          : t("Резервная копия сохранена."),
       );
       if (op === "backup.restore") await onRestored?.();
     } catch (e) {
@@ -123,37 +124,34 @@ export function DataSafety({ onRestored }) {
   return (
     <section className="panel settings-card">
       <header className="settings-card-heading">
-        <h2>Резервные копии</h2>
-        <p>Кампании, профили и история сохраняются на этом компьютере.</p>
+        <h2>{t("Резервные копии")}</h2>
+        <p>{t("Кампании, профили и история сохраняются на этом компьютере.")}</p>
       </header>
       <p className="safety-note">
-        Автоматическая копия создаётся ежедневно при работе приложения. Сессии
-        LinkedIn и пароли в копии не входят. Копии на этом же диске не защищают
-        от потери компьютера.
+        {t("Автоматическая копия создаётся ежедневно при работе приложения. Сессии LinkedIn и пароли в копии не входят. Копии на этом же диске не защищают от потери компьютера.")}
       </p>
       <button
         className="button"
         disabled={!!pending}
         onClick={() => run("backup.create")}
       >
-        {pending === "backup.create" ? "Сохраняем…" : "Создать копию сейчас"}
+        {pending === "backup.create" ? t("Сохраняем…") : t("Создать копию сейчас")}
       </button>
       {notice && <p role="status">{notice}</p>}
       {error && (
         <div role="alert">
-          <p>{error}</p>
+          <p>{tr(error)}</p>
           <button className="button" disabled={!!pending} onClick={load}>
-            Обновить список
+            {t("Обновить список")}
           </button>
         </div>
       )}
       {backups === null && !error && (
-        <p className="safety-note">Загружаем список копий…</p>
+        <p className="safety-note">{t("Загружаем список копий…")}</p>
       )}
       {backups?.length === 0 && (
         <p className="safety-note">
-          Копий пока нет. Первая появится автоматически сегодня, или создайте её
-          кнопкой выше.
+          {t("Копий пока нет. Первая появится автоматически сегодня, или создайте её кнопкой выше.")}
         </p>
       )}
       {backups?.length > 0 && (
@@ -161,9 +159,9 @@ export function DataSafety({ onRestored }) {
           {backups.map((b) => (
             <li key={b.id}>
               <span>
-                {new Date(b.created).toLocaleString("ru-RU")}
+                {formatDateTime(b.created)}
                 <small>
-                  {backupKinds[b.id.split("-")[0]] || "Копия"} ·{" "}
+                  {backupKinds[b.id.split("-")[0]] || t("Копия")} ·{" "}
                   {formatSize(b.bytes)}
                 </small>
               </span>
@@ -172,7 +170,7 @@ export function DataSafety({ onRestored }) {
                 disabled={!!pending}
                 onClick={() => setSelected(b)}
               >
-                Восстановить
+                {t("Восстановить")}
               </button>
             </li>
           ))}
@@ -184,16 +182,15 @@ export function DataSafety({ onRestored }) {
           ref={confirmation}
           tabIndex={-1}
           role="group"
-          aria-label="Подтверждение восстановления"
+          aria-label={t("Подтверждение восстановления")}
         >
           <h3>
-            Восстановить данные от{" "}
-            {new Date(selected.created).toLocaleString("ru-RU")}?
+            {t("Восстановить данные от {date}?", {
+              date: formatDateTime(selected.created),
+            })}
           </h3>
           <p>
-            Данные приложения вернутся к этой дате. Текущие данные мы сначала
-            сохраним отдельной копией. После восстановления кампании будут на
-            паузе, а в аккаунты LinkedIn нужно будет войти заново.
+            {t("Данные приложения вернутся к этой дате. Текущие данные мы сначала сохраним отдельной копией. После восстановления кампании будут на паузе, а в аккаунты LinkedIn нужно будет войти заново.")}
           </p>
           <div className="actions">
             <button
@@ -201,7 +198,7 @@ export function DataSafety({ onRestored }) {
               disabled={!!pending}
               onClick={() => setSelected(null)}
             >
-              Отмена
+              {t("Отмена")}
             </button>
             <button
               className="button danger"
@@ -211,8 +208,8 @@ export function DataSafety({ onRestored }) {
               }
             >
               {pending === "backup.restore"
-                ? "Восстанавливаем…"
-                : "Подтвердить восстановление"}
+                ? t("Восстанавливаем…")
+                : t("Подтвердить восстановление")}
             </button>
           </div>
         </div>

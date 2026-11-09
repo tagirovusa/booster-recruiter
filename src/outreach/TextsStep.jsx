@@ -2,6 +2,7 @@
 import React from "react";
 import { ChevronDown, MessageSquare } from "lucide-react";
 import { TemplateFeedback } from "./parts";
+import { t } from "../i18n";
 
 export function TextsStep({ ctx }) {
   const {
@@ -17,10 +18,9 @@ export function TextsStep({ ctx }) {
   return (
     <>
       <div className="setup-section-title">
-        <h3>Что получат кандидаты?</h3>
+        <h3>{t("Что получат кандидаты?")}</h3>
         <p>
-          Для каждой группы — свой текст. Программа подставит имя и покажет итог
-          перед запуском.
+          {t("Для каждой группы — свой текст. Программа подставит имя и покажет итог перед запуском.")}
         </p>
       </div>
       <div className="setup-message-grid">
@@ -29,29 +29,31 @@ export function TextsStep({ ctx }) {
             <div className="message-group-title">
               <span className={"group-dot " + segment} />
               <strong>
-                {segment === "open" ? "Open to Work" : "Обычный текст"}
+                {segment === "open" ? "Open to Work" : t("Обычный текст")}
               </strong>
               <small>
-                {segment === "open" ? openCount : neutralCount} выбрано
+                {t("{count} выбрано", {
+                  count: segment === "open" ? openCount : neutralCount,
+                })}
               </small>
             </div>
             <p>
               {segment === "open"
-                ? "Для людей с подтверждённой рамкой."
-                : "Для остальных выбранных профилей."}
+                ? t("Для людей с подтверждённой рамкой.")
+                : t("Для остальных выбранных профилей.")}
             </p>
             {rules.allow_inmail && (
               <label className="field">
                 <span>
-                  Тема InMail ·{" "}
-                  {segment === "open" ? "Open to Work" : "нейтральное"}
+                  {t("Тема InMail ·")}{" "}
+                  {segment === "open" ? "Open to Work" : t("нейтральное")}
                 </span>
                 <input
                   aria-invalid={!!fieldChecks["subject_" + segment].error}
                   aria-describedby={"subject-feedback-" + segment}
                   value={rules["subject_" + segment]}
                   onChange={(e) => field("subject_" + segment, e.target.value)}
-                  placeholder="Например: Recruitment opportunity"
+                  placeholder={t("Например: Recruitment opportunity")}
                 />
                 <TemplateFeedback
                   id={"subject-feedback-" + segment}
@@ -62,21 +64,22 @@ export function TextsStep({ ctx }) {
             )}
             <label className="field">
               <span className="sr-only">
-                Сообщение ·{" "}
-                {segment === "open" ? "Open to Work" : "нейтральное"}
+                {t("Сообщение ·")}{" "}
+                {segment === "open" ? "Open to Work" : t("нейтральное")}
               </span>
               <textarea
                 aria-invalid={!!fieldChecks[segment].error}
                 aria-describedby={"message-feedback-" + segment}
                 aria-label={
-                  "Сообщение · " +
-                  (segment === "open" ? "Open to Work" : "нейтральное")
+                  t("Сообщение ·") +
+                  " " +
+                  (segment === "open" ? "Open to Work" : t("нейтральное"))
                 }
                 rows={7}
                 value={texts[segment]}
                 onChange={(e) =>
-                  setTexts((t) => ({
-                    ...t,
+                  setTexts((prev) => ({
+                    ...prev,
                     [segment]: e.target.value,
                   }))
                 }
@@ -91,7 +94,7 @@ export function TextsStep({ ctx }) {
                 value={fieldChecks[segment]}
               />
               <small>
-                <code>{"{first_name}"}</code> заменится на имя кандидата
+                <code>{"{first_name}"}</code> {t("заменится на имя кандидата")}
               </small>
             </label>
           </div>
@@ -102,22 +105,22 @@ export function TextsStep({ ctx }) {
           <summary>
             <span>
               <MessageSquare size={17} />
-              <b>Другой текст для InMail</b>
+              <b>{t("Другой текст для InMail")}</b>
             </span>
             <small>
               {rules.inmail_open || rules.inmail_neutral
-                ? "Настроен отдельно"
-                : "Используем основной"}
+                ? t("Настроен отдельно")
+                : t("Используем основной")}
             </small>
             <ChevronDown size={16} />
           </summary>
           <div className="details-body">
-            <p>Оставьте поля пустыми, чтобы использовать сообщения выше.</p>
+            <p>{t("Оставьте поля пустыми, чтобы использовать сообщения выше.")}</p>
             <div className="setup-message-grid">
               {["open", "neutral"].map((s) => (
                 <label className="field" key={s}>
                   <span>
-                    {s === "open" ? "InMail · Open to Work" : "Обычный InMail"}
+                    {s === "open" ? "InMail · Open to Work" : t("Обычный InMail")}
                   </span>
                   <textarea
                     aria-invalid={!!fieldChecks["inmail_" + s].error}
@@ -138,14 +141,12 @@ export function TextsStep({ ctx }) {
       )}
       {rules.allow_inmail && rules.inmail_channel === "recruiter" && (
         <p className="field-feedback">
-          Подпись Recruiter входит в лимит 1900 символов. Точный текст вместе с
-          подписью проверим перед запуском.
+          {t("Подпись Recruiter входит в лимит 1900 символов. Точный текст вместе с подписью проверим перед запуском.")}
         </p>
       )}
       {active && (
         <p className="setup-caution">
-          Сохранение изменений заменит текущий план. Запуск нужно будет
-          подтвердить заново.
+          {t("Сохранение изменений заменит текущий план. Запуск нужно будет подтвердить заново.")}
         </p>
       )}
     </>

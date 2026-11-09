@@ -2,17 +2,17 @@
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { AlertCircle, ArrowLeft, RefreshCw, X } from "lucide-react";
 import { labels } from "./labels";
-import { plural } from "./text";
+import { plural, locale, t, tr } from "./i18n";
 
 export const fmt = (d) =>
-  new Date(d).toLocaleString("ru-RU", {
+  new Date(d).toLocaleString(locale(), {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
   });
 export const profileWord = (count) =>
-  plural(count, ["профиль", "профиля", "профилей"]);
+  plural(count, ["профиль", "профиля", "профилей"], ["profile", "profiles"]); // i18n-ignore
 export const initials = (name) =>
   (name || "?")
     .split(" ")
@@ -138,14 +138,14 @@ export function Modal({
             <h2>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
-          <button className="icon" aria-label="Закрыть" onClick={onClose}>
+          <button className="icon" aria-label={t("Закрыть")} onClick={onClose}>
             <X size={20} />
           </button>
         </header>
         {error && (
           <div className="alert error" role="alert" tabIndex={-1}>
             <AlertCircle size={18} />
-            <span>{error}</span>
+            <span>{tr(error)}</span>
           </div>
         )}
         {form
@@ -175,18 +175,18 @@ export function LoadFailure({
         {onBack && (
           <Button onClick={onBack}>
             <ArrowLeft size={16} />
-            Все кампании
+            {t("Все кампании")}
           </Button>
         )}
         <Button kind="primary" disabled={retrying} onClick={onRetry}>
           <RefreshCw size={16} className={retrying ? "spin" : ""} />
-          {retrying ? "Загружаем…" : "Попробовать ещё раз"}
+          {retrying ? t("Загружаем…") : t("Попробовать ещё раз")}
         </Button>
       </div>
       {detail && (
         <details className="technical-details">
-          <summary>Технические подробности</summary>
-          <pre>{detail}</pre>
+          <summary>{t("Технические подробности")}</summary>
+          <pre>{tr(detail)}</pre>
         </details>
       )}
     </section>

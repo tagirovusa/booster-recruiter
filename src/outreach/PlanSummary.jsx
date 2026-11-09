@@ -1,5 +1,6 @@
 // The "Ваш план" card beside the setup steps.
 import React from "react";
+import { t } from "../i18n";
 import {
   CheckCircle2,
   Clock3,
@@ -27,22 +28,24 @@ export function PlanSummary({ ctx }) {
     <aside className="automation-plan">
       <section className="panel plan-card">
         <div className="plan-heading">
-          <span className="eyebrow">ВАШ ПЛАН</span>
+          <span className="eyebrow">{t("ВАШ ПЛАН")}</span>
           <span
             role="status"
             className={"save-indicator " + (dirty ? "unsaved" : "")}
           >
             {dirty
               ? draftPersisted
-                ? "Черновик сохранён на этом компьютере"
-                : "Есть несохранённые изменения"
-              : "Сохранено"}
+                ? t("Черновик сохранён на этом компьютере")
+                : t("Есть несохранённые изменения")
+              : t("Сохранено")}
           </span>
         </div>
         <h3>
           {mode === "free"
-            ? "Без InMail"
-            : `С InMail · ${mode === "fast" ? "быстрее" : "экономно"}`}
+            ? t("Без InMail")
+            : t("С InMail · {how}", {
+                how: mode === "fast" ? t("быстрее") : t("экономно"),
+              })}
         </h3>
         <div className="plan-account">
           <Users size={16} />
@@ -51,12 +54,12 @@ export function PlanSummary({ ctx }) {
               {selected.length} {peopleLabel}
             </strong>
             <button className="text-link" onClick={onPeople}>
-              {selected.length ? "Изменить выбор" : "Выбрать кандидатов"}
+              {selected.length ? t("Изменить выбор") : t("Выбрать кандидатов")}
             </button>
           </div>
         </div>
         <details className="plan-sequence">
-          <summary>Последовательность действий</summary>
+          <summary>{t("Последовательность действий")}</summary>
           <ol className="plan-flow">
             {flow.map((item, i) => (
               <li key={i}>
@@ -73,7 +76,7 @@ export function PlanSummary({ ctx }) {
           <p>
             <UserRound size={14} />
             <span>
-              Отправитель: <b>{account?.label || "Не выбран"}</b>
+              {t("Отправитель:")} <b>{account?.label || t("Не выбран")}</b>
             </span>
           </p>
           <p>
@@ -87,7 +90,7 @@ export function PlanSummary({ ctx }) {
             <p>
               <Wallet size={14} />
               <span>
-                Кредиты InMail: до <b>{selected.length}</b>
+                {t("Кредиты InMail: до")} <b>{selected.length}</b>
               </span>
             </p>
           )}
@@ -95,13 +98,14 @@ export function PlanSummary({ ctx }) {
       </section>
       <p className="plan-note">
         <Monitor size={15} />
-        <span>Оставьте приложение запущенным, а компьютер — включённым.</span>
+        <span>
+          {t("Оставьте приложение запущенным, а компьютер — включённым.")}
+        </span>
       </p>
       <p className="plan-note">
         <CheckCircle2 size={15} />
         <span>
-          Обрабатываем только выбранных кандидатов. При ограничении LinkedIn
-          остановимся и сохраним очередь.
+          {t("Обрабатываем только выбранных кандидатов. При ограничении LinkedIn остановимся и сохраним очередь.")}
         </span>
       </p>
     </aside>

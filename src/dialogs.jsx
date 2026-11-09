@@ -5,7 +5,7 @@ import { Archive, ExternalLink, Play, Trash2 } from "lucide-react";
 import { AccountForm, CampaignForm } from "./forms";
 import { frameLabels, zoneNames } from "./labels";
 import { describeOutreach } from "./outreach/rules";
-import { plural } from "./text";
+import { plural, t, tr, hourLabel } from "./i18n";
 import { Badge, Button, Modal } from "./ui";
 import { TemplatePicker } from "./Workspace";
 
@@ -54,7 +54,7 @@ export default function WorkspaceDialogs({ ctx }) {
     <>
       {modal === "retry-invitation" && invitationRepair && (
         <Modal
-          title="Отправить приглашение?"
+          title={t("Отправить приглашение?")}
           subtitle={invitationRepair.name}
           error={error}
           onClose={() => {
@@ -65,12 +65,12 @@ export default function WorkspaceDialogs({ ctx }) {
           <div className="repair-confirm-details">
             <dl>
               <div>
-                <dt>Получатель</dt>
+                <dt>{t("Получатель")}</dt>
                 <dd>{invitationRepair.name}</dd>
                 <dd>{invitationRepair.url}</dd>
               </div>
               <div>
-                <dt>Отправитель</dt>
+                <dt>{t("Отправитель")}</dt>
                 <dd>
                   {invitationRepair.account_label ||
                     state.accounts.find(
@@ -80,18 +80,18 @@ export default function WorkspaceDialogs({ ctx }) {
               </div>
             </dl>
             <div>
-              <h3>Текст приглашения</h3>
-              <pre>{invitationRepair.note || "Приглашение без заметки"}</pre>
+              <h3>{t("Текст приглашения")}</h3>
+              <pre>{invitationRepair.note || t("Приглашение без заметки")}</pre>
             </div>
             <p>
-              Результат старой попытки не подтверждён. Сейчас LinkedIn разрешает
-              новое приглашение; перед отправкой ещё раз проверим профиль и
-              доступность действия.
+              {t(
+                "Результат старой попытки не подтверждён. Сейчас LinkedIn разрешает новое приглашение; перед отправкой ещё раз проверим профиль и доступность действия.",
+              )}
             </p>
             <p className="hint">
-              Запрос касается только этого получателя. После подтверждения
-              LinkedIn его статус обновится в той же кампании. Остальные
-              получатели сохранят свой план.
+              {t(
+                "Запрос касается только этого получателя. После подтверждения LinkedIn его статус обновится в той же кампании. Остальные получатели сохранят свой план.",
+              )}
             </p>
           </div>
           <div className="modal-footer">
@@ -102,7 +102,7 @@ export default function WorkspaceDialogs({ ctx }) {
                 setInvitationRepair(null);
               }}
             >
-              Отмена
+              {t("Отмена")}
             </Button>
             <Button
               kind="primary"
@@ -115,7 +115,9 @@ export default function WorkspaceDialogs({ ctx }) {
                     digest: invitationRepair.digest,
                     confirm: true,
                   },
-                  "Запрос принят. Результат приглашения появится здесь и в кампании.",
+                  t(
+                    "Запрос принят. Результат приглашения появится здесь и в кампании.",
+                  ),
                 );
                 if (result) {
                   setModal(null);
@@ -123,14 +125,14 @@ export default function WorkspaceDialogs({ ctx }) {
                 }
               }}
             >
-              {busy ? "Запускаем…" : "Подтвердить приглашение"}
+              {busy ? t("Запускаем…") : t("Подтвердить приглашение")}
             </Button>
           </div>
         </Modal>
       )}
       {modal === "delete-account" && deletingAccount && (
         <Modal
-          title="Удалить аккаунт из приложения?"
+          title={t("Удалить аккаунт из приложения?")}
           subtitle={deletingAccount.label}
           error={error}
           onClose={() => {
@@ -139,22 +141,26 @@ export default function WorkspaceDialogs({ ctx }) {
           }}
         >
           <p>
-            Аккаунт исчезнет из списка, его сохранённая сессия LinkedIn будет
-            удалена с этого компьютера. Сам профиль LinkedIn сохранится.
+            {t(
+              "Аккаунт исчезнет из списка, его сохранённая сессия LinkedIn будет удалена с этого компьютера. Сам профиль LinkedIn сохранится.",
+            )}
           </p>
           <p>
-            Связанных кампаний:{" "}
+            {t("Связанных кампаний:")}{" "}
             <strong>
               {deletingAccount.campaign_count ??
                 deletingAccount.campaigns?.length ??
                 0}
             </strong>
-            . Кампании перейдут в «Архив», их история сохранится, а обработка
-            будет остановлена. Другие аккаунты, включая отдельные сессии того же
-            профиля, останутся.
+            .{" "}
+            {t(
+              "Кампании перейдут в «Архив», их история сохранится, а обработка будет остановлена. Другие аккаунты, включая отдельные сессии того же профиля, останутся.",
+            )}
           </p>
           <p className="hint">
-            Новые обращения из сохранённой истории не запускаются автоматически.
+            {t(
+              "Новые обращения из сохранённой истории не запускаются автоматически.",
+            )}
           </p>
           <div className="modal-footer">
             <Button
@@ -164,7 +170,7 @@ export default function WorkspaceDialogs({ ctx }) {
                 setDeletingAccount(null);
               }}
             >
-              Отмена
+              {t("Отмена")}
             </Button>
             <Button
               kind="danger"
@@ -182,7 +188,7 @@ export default function WorkspaceDialogs({ ctx }) {
                 }
               }}
             >
-              Удалить аккаунт и сессию
+              {t("Удалить аккаунт и сессию")}
             </Button>
           </div>
         </Modal>
@@ -205,8 +211,8 @@ export default function WorkspaceDialogs({ ctx }) {
       )}
       {modal === "template" && (
         <Modal
-          title="Кампания из шаблона"
-          subtitle="Начните новую кампанию с сохранёнными настройками."
+          title={t("Кампания из шаблона")}
+          subtitle={t("Начните новую кампанию с сохранёнными настройками.")}
           error={error}
           onClose={() => setModal(null)}
         >
@@ -227,7 +233,9 @@ export default function WorkspaceDialogs({ ctx }) {
       )}
       {modal === "edit-campaign" && campaignEdit && campaign && (
         <Modal
-          title={campaignEdit.armed ? "Удалить кампанию?" : "Изменить кампанию"}
+          title={
+            campaignEdit.armed ? t("Удалить кампанию?") : t("Изменить кампанию")
+          }
           subtitle={campaign.name}
           error={error}
           onClose={() => setModal(null)}
@@ -240,7 +248,7 @@ export default function WorkspaceDialogs({ ctx }) {
                   id: cid,
                   confirm: true,
                 });
-                if (done) leaveCampaign("Кампания удалена.");
+                if (done) leaveCampaign(t("Кампания удалена."));
                 return;
               }
               const saved = await act(
@@ -251,22 +259,22 @@ export default function WorkspaceDialogs({ ctx }) {
                   max_profiles: Number(campaignEdit.max_profiles),
                   keywords: campaignEdit.keywords.trim(),
                 },
-                "Изменения сохранены.",
+                t("Изменения сохранены."),
               );
               if (saved) setModal(null);
             }}
           >
             {campaignEdit.armed ? (
               <p className="modal-copy">
-                Кампания «{campaign.name}» и найденные профили будут удалены
-                навсегда. Если по кампании уже были сообщения, приложение
-                предложит перенести её в архив — так люди не получат повторное
-                обращение.
+                {t(
+                  "Кампания «{name}» и найденные профили будут удалены навсегда. Если по кампании уже были сообщения, приложение предложит перенести её в архив — так люди не получат повторное обращение.",
+                  { name: campaign.name },
+                )}
               </p>
             ) : (
               <>
                 <label className="field">
-                  Название
+                  {t("Название")}
                   <input
                     autoFocus
                     required
@@ -281,7 +289,7 @@ export default function WorkspaceDialogs({ ctx }) {
                   />
                 </label>
                 <label className="field">
-                  Сколько профилей найти (до 100)
+                  {t("Сколько профилей найти (до 100)")}
                   <input
                     type="number"
                     min={1}
@@ -299,13 +307,14 @@ export default function WorkspaceDialogs({ ctx }) {
                 </label>
                 {detail.candidates.length ? (
                   <p className="field-note">
-                    Запрос поиска: {campaign.keywords}. После сбора профилей
-                    запрос не меняется — для другого поиска создайте новую
-                    кампанию.
+                    {t("Запрос поиска:")} {campaign.keywords}.{" "}
+                    {t(
+                      "После сбора профилей запрос не меняется — для другого поиска создайте новую кампанию.",
+                    )}
                   </p>
                 ) : (
                   <label className="field">
-                    Запрос поиска
+                    {t("Запрос поиска")}
                     <textarea
                       required
                       maxLength={1000}
@@ -326,10 +335,11 @@ export default function WorkspaceDialogs({ ctx }) {
                     disabled={busy || active}
                     onClick={async () => {
                       const done = await act("campaign.archive", { id: cid });
-                      if (done) leaveCampaign("Кампания перенесена в архив.");
+                      if (done) leaveCampaign(t("Кампания перенесена в архив."));
                     }}
                   >
-                    <Archive size={16} />В архив
+                    <Archive size={16} />
+                    {t("В архив")}
                   </Button>
                   <Button
                     type="button"
@@ -340,14 +350,14 @@ export default function WorkspaceDialogs({ ctx }) {
                     }
                   >
                     <Trash2 size={16} />
-                    Удалить кампанию
+                    {t("Удалить кампанию")}
                   </Button>
                 </div>
                 {active && (
                   <p className="field-note">
-                    Пока кампания работает, можно изменить только название.
-                    Поставьте её на паузу, чтобы менять поиск или перенести в
-                    архив.
+                    {t(
+                      "Пока кампания работает, можно изменить только название. Поставьте её на паузу, чтобы менять поиск или перенести в архив.",
+                    )}
                   </p>
                 )}
               </>
@@ -362,14 +372,14 @@ export default function WorkspaceDialogs({ ctx }) {
                 }
               >
                 {campaignEdit.armed && !campaignEdit.deleteOnly
-                  ? "Назад"
-                  : "Отмена"}
+                  ? t("Назад")
+                  : t("Отмена")}
               </Button>
               <Button
                 kind={campaignEdit.armed ? "danger" : "primary"}
                 disabled={busy}
               >
-                {campaignEdit.armed ? "Удалить навсегда" : "Сохранить"}
+                {campaignEdit.armed ? t("Удалить навсегда") : t("Сохранить")}
               </Button>
             </div>
           </form>
@@ -377,8 +387,10 @@ export default function WorkspaceDialogs({ ctx }) {
       )}
       {modal === "save-template" && (
         <Modal
-          title="Сохранить шаблон"
-          subtitle="Сохраняются настройки кампании. Сначала сохраните изменения в автоматизации. Кандидаты и разрешение на отправку не переносятся."
+          title={t("Сохранить шаблон")}
+          subtitle={t(
+            "Сохраняются настройки кампании. Сначала сохраните изменения в автоматизации. Кандидаты и разрешение на отправку не переносятся.",
+          )}
           error={error}
           onClose={() => setModal(null)}
         >
@@ -393,7 +405,7 @@ export default function WorkspaceDialogs({ ctx }) {
             }}
           >
             <label className="field">
-              Название шаблона
+              {t("Название шаблона")}
               <input
                 autoFocus
                 required
@@ -404,10 +416,10 @@ export default function WorkspaceDialogs({ ctx }) {
             </label>
             <div className="modal-footer">
               <Button type="button" onClick={() => setModal(null)}>
-                Отмена
+                {t("Отмена")}
               </Button>
               <Button kind="primary" disabled={busy || !templateName.trim()}>
-                Сохранить шаблон
+                {t("Сохранить шаблон")}
               </Button>
             </div>
           </form>
@@ -436,8 +448,8 @@ export default function WorkspaceDialogs({ ctx }) {
       {person && !confirmation && (
         <Modal
           error={error}
-          title={person.data.name || "Профиль кандидата"}
-          subtitle="Проверка исходных сведений"
+          title={person.data.name || t("Профиль кандидата")}
+          subtitle={t("Проверка исходных сведений")}
           initialFocus={restorePersonFocus.current ? "select" : undefined}
           onClose={() => setPerson(null)}
           wide
@@ -447,38 +459,40 @@ export default function WorkspaceDialogs({ ctx }) {
               <img
                 className="profile-photo"
                 src={"data:image/png;base64," + person.data.photo}
-                alt="Фото для проверки рамки"
+                alt={t("Фото для проверки рамки")}
               />
             )}
             <div>
               <Badge value={person.segment} />
-              <h3>{person.data.headline || "Заголовок не определён"}</h3>
+              <h3>{person.data.headline || t("Заголовок не определён")}</h3>
               <p>
-                Рамка:{" "}
+                {t("Рамка:")}{" "}
                 {frameLabels[person.data.photo_frame?.status] ||
-                  "Не определена"}
-                . Отсутствие подтверждения не означает, что человек не ищет
-                работу.
+                  t("Не определена")}
+                .{" "}
+                {t(
+                  "Отсутствие подтверждения не означает, что человек не ищет работу.",
+                )}
               </p>
               {archived && (
                 <p className="hint">
-                  Архивная запись. Ссылка откроется в обычном браузере.
+                  {t("Архивная запись. Ссылка откроется в обычном браузере.")}
                 </p>
               )}
               <Button onClick={() => openInSenderAccount(person.url)}>
                 <ExternalLink size={16} />
-                Открыть LinkedIn
+                {t("Открыть LinkedIn")}
               </Button>
             </div>
           </div>
-          <h3>Сведения, полученные из профиля</h3>
+          <h3>{t("Сведения, полученные из профиля")}</h3>
           <pre className="profile-text">
             {person.data.sections?.main_profile ||
               person.data.top_card_text ||
-              "Текст недоступен"}
+              t("Текст недоступен")}
           </pre>
           <label className="field">
-            Группа сообщения
+            {t("Группа сообщения")}
             <select
               value={person.segment}
               disabled={archived || active || busy}
@@ -490,27 +504,35 @@ export default function WorkspaceDialogs({ ctx }) {
                 )
               }
             >
-              <option value="review">Без группы</option>
+              <option value="review">{t("Без группы")}</option>
               <option value="open">Open to Work</option>
-              <option value="neutral">Обычный текст</option>
+              <option value="neutral">{t("Обычный текст")}</option>
             </select>
             <small>
               {archived
-                ? "Архивная запись доступна только для просмотра."
+                ? t("Архивная запись доступна только для просмотра.")
                 : person.segment === "review"
-                  ? "Проверьте сведения и выберите группу. Затем профиль можно будет включить в кампанию."
+                  ? t(
+                      "Проверьте сведения и выберите группу. Затем профиль можно будет включить в кампанию.",
+                    )
                   : !eligible(person)
-                    ? person.outreach_exclusion
+                    ? tr(person.outreach_exclusion)
                     : person.selected
-                      ? "Группа сохранена. Профиль выбран для этой кампании."
-                      : "Группа сохранена. Выберите профиль в списке кандидатов, чтобы включить его в кампанию."}
+                      ? t("Группа сохранена. Профиль выбран для этой кампании.")
+                      : t(
+                          "Группа сохранена. Выберите профиль в списке кандидатов, чтобы включить его в кампанию.",
+                        )}
             </small>
           </label>
           {(suppressConfirm || person.blocked) && (
             <div className="hint warning">
               {person.blocked
-                ? "Этот профиль исключён из будущих обращений во всех кампаниях и со всех аккаунтов."
-                : "Исключить этот профиль из будущих обращений во всех кампаниях и со всех аккаунтов? Уже отправленные сообщения и приглашения останутся в LinkedIn."}
+                ? t(
+                    "Этот профиль исключён из будущих обращений во всех кампаниях и со всех аккаунтов.",
+                  )
+                : t(
+                    "Исключить этот профиль из будущих обращений во всех кампаниях и со всех аккаунтов? Уже отправленные сообщения и приглашения останутся в LinkedIn.",
+                  )}
             </div>
           )}
           <div className="modal-footer">
@@ -523,25 +545,25 @@ export default function WorkspaceDialogs({ ctx }) {
                 }
                 const result = await act(
                   "candidate.suppress",
-                  { url: person.url, reason: "Исключён рекрутером" },
-                  "Профиль исключён из будущих обращений во всех кампаниях.",
+                  { url: person.url, reason: "Исключён рекрутером" }, // i18n-ignore: stored reason
+                  t("Профиль исключён из будущих обращений во всех кампаниях."),
                 );
                 if (result) setPerson(null);
               }}
               disabled={archived || busy || person.blocked}
             >
               {person.blocked
-                ? "Контакт исключён"
+                ? t("Контакт исключён")
                 : suppressConfirm
-                  ? "Исключить во всех кампаниях"
-                  : "Не контактировать"}
+                  ? t("Исключить во всех кампаниях")
+                  : t("Не контактировать")}
             </Button>
             {suppressConfirm ? (
               <Button disabled={busy} onClick={() => setSuppressConfirm(false)}>
-                Отмена
+                {t("Отмена")}
               </Button>
             ) : (
-              <Button onClick={() => setPerson(null)}>Закрыть</Button>
+              <Button onClick={() => setPerson(null)}>{t("Закрыть")}</Button>
             )}
           </div>
         </Modal>
@@ -549,62 +571,74 @@ export default function WorkspaceDialogs({ ctx }) {
       {preview && (
         <Modal
           error={error}
-          title="Перед запуском"
-          subtitle={`${preview.messages.length} ${plural(preview.messages.length, ["получатель", "получателя", "получателей"])} · Отправитель: ${preview.account.label}`}
+          title={t("Перед запуском")}
+          subtitle={`${preview.messages.length} ${plural(preview.messages.length, ["получатель", "получателя", "получателей"], ["recipient", "recipients"])} · ${t("Отправитель:")} ${preview.account.label}`}
           wide
           onClose={() => setPreview(null)}
         >
           <div className="hint">{describeOutreach(preview.rules)}</div>
           {approvedPlan && (
             <div className="hint warning">
-              Текущий утверждённый план сохранён. Он будет заменён только после
-              нажатия «Запустить отправку».
+              {t(
+                "Текущий утверждённый план сохранён. Он будет заменён только после нажатия «Запустить отправку».",
+              )}
             </div>
           )}
           <div className="message-preview">
             <p className="preview-fact">
-              Профиль отправителя: {preview.account.url}
+              {t("Профиль отправителя:")} {preview.account.url}
             </p>
             {preview.rules.allow_inmail && (
               <p>
                 <strong>
-                  Максимальный расход InMail: {preview.maximum_credits}{" "}
-                  {plural(preview.maximum_credits, [
-                    "кредит",
-                    "кредита",
-                    "кредитов",
-                  ])}
+                  {t("Максимальный расход InMail:")} {preview.maximum_credits}{" "}
+                  {plural(
+                    preview.maximum_credits,
+                    ["кредит", "кредита", "кредитов"],
+                    ["credit", "credits"],
+                  )}
                   .
                 </strong>{" "}
-                Только для этих получателей, если бесплатная связь недоступна.
-                Используем доступные кредиты подписки; дополнительные не
-                покупаем.
+                {t(
+                  "Только для этих получателей, если бесплатная связь недоступна. Используем доступные кредиты подписки; дополнительные не покупаем.",
+                )}
               </p>
             )}
             {preview.context?.contract && (
               <p>
-                InMail через Recruiter:{" "}
-                <strong>{preview.context.contract}</strong>. Подпись отправителя
-                включена в текст ниже.
+                {t("InMail через Recruiter:")}{" "}
+                <strong>{preview.context.contract}</strong>.{" "}
+                {t("Подпись отправителя включена в текст ниже.")}
               </p>
             )}
             <details className="preview-schedule">
-              <summary>Расписание и проверки</summary>
+              <summary>{t("Расписание и проверки")}</summary>
               <p>
-                Работа: {preview.rules.start_hour}:00–{preview.rules.end_hour}
-                :00 (
-                {zoneNames[preview.rules.timezone] || preview.rules.timezone}
-                ). Проверка каждые {preview.rules.check_hours} ч. · Наблюдение{" "}
-                {preview.rules.monitor_days} дней.
+                {t(
+                  "Работа: {start}–{end} ({zone}). Проверка каждые {check} ч. · Наблюдение {days} дней.",
+                  {
+                    start: hourLabel(preview.rules.start_hour),
+                    end: hourLabel(preview.rules.end_hour),
+                    zone:
+                      zoneNames[preview.rules.timezone] ||
+                      preview.rules.timezone,
+                    check: preview.rules.check_hours,
+                    days: preview.rules.monitor_days,
+                  },
+                )}
                 {preview.rules.allow_inmail &&
                   preview.rules.allow_invites &&
                   preview.rules.strategy === "economy" &&
-                  ` Переход к InMail через ${preview.rules.wait_days} дней ожидания.`}
+                  " " +
+                    t("Переход к InMail через {days} дней ожидания.", {
+                      days: preview.rules.wait_days,
+                    })}
               </p>
             </details>
             <p className="preview-fact">
-              Обрабатываем только выбранных получателей. При ограничении
-              LinkedIn остановимся и сохраним очередь.
+              {t(
+                "Обрабатываем только выбранных получателей. При ограничении LinkedIn остановимся и сохраним очередь.",
+              )}
             </p>
             {preview.messages.map((m) => (
               <article key={m.id}>
@@ -614,9 +648,9 @@ export default function WorkspaceDialogs({ ctx }) {
                 {preview.rules.allow_invites && (
                   <>
                     <b className="preview-label">
-                      Если потребуется приглашение
+                      {t("Если потребуется приглашение")}
                     </b>
-                    <pre>{m.invitation || "Без заметки"}</pre>
+                    <pre>{m.invitation || t("Без заметки")}</pre>
                   </>
                 )}
                 {preview.rules.allow_inmail && (
@@ -630,13 +664,13 @@ export default function WorkspaceDialogs({ ctx }) {
           </div>
           {preview.skipped.length > 0 && (
             <p className="muted">
-              Исключено повторных или запрещённых контактов:{" "}
+              {t("Исключено повторных или запрещённых контактов:")}{" "}
               {preview.skipped.length}.
             </p>
           )}
           <div className="modal-footer">
             <Button onClick={() => setPreview(null)}>
-              Вернуться к настройкам
+              {t("Вернуться к настройкам")}
             </Button>
             <Button
               kind="primary"
@@ -650,28 +684,29 @@ export default function WorkspaceDialogs({ ctx }) {
               }}
             >
               <Play size={16} />
-              Запустить отправку
+              {t("Запустить отправку")}
             </Button>
           </div>
         </Modal>
       )}
       {confirmation && (
         <Modal
-          title="Изменить утверждённую кампанию?"
-          subtitle="Текущий план будет остановлен"
+          title={t("Изменить утверждённую кампанию?")}
+          subtitle={t("Текущий план будет остановлен")}
           onClose={() => {
             confirmation.resolve(false);
             setConfirmation(null);
           }}
         >
           <p>
-            Изменение списка, правил или текстов остановит проверки принятия
-            приглашений и дальнейшую отправку по текущему плану. Уже выполненные
-            действия сохранятся в истории.
+            {t(
+              "Изменение списка, правил или текстов остановит проверки принятия приглашений и дальнейшую отправку по текущему плану. Уже выполненные действия сохранятся в истории.",
+            )}
           </p>
           <p className="confirmation-next">
-            После изменений проверьте новый план и утвердите запуск в разделе
-            «Автоматизация».
+            {t(
+              "После изменений проверьте новый план и утвердите запуск в разделе «Автоматизация».",
+            )}
           </p>
           <div className="modal-footer">
             <Button
@@ -680,7 +715,7 @@ export default function WorkspaceDialogs({ ctx }) {
                 setConfirmation(null);
               }}
             >
-              Оставить текущий план
+              {t("Оставить текущий план")}
             </Button>
             <Button
               kind="primary"
@@ -689,7 +724,7 @@ export default function WorkspaceDialogs({ ctx }) {
                 setConfirmation(null);
               }}
             >
-              Изменить план
+              {t("Изменить план")}
             </Button>
           </div>
         </Modal>

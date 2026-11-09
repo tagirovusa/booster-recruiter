@@ -13,6 +13,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { plural } from "../text";
+import { t, hourLabel } from "../i18n";
 import { LivePlanPanel } from "./LivePlanPanel";
 import { PlanSummary } from "./PlanSummary";
 import { ContactModeStep } from "./ContactModeStep";
@@ -93,35 +94,35 @@ export function Automation({
     {
       id: "free",
       icon: UserRoundPlus,
-      title: "Без InMail",
-      tag: "Рекомендуем",
+      title: t("Без InMail"),
+      tag: t("Рекомендуем"),
       description: rules.allow_invites
-        ? "Бесплатное сообщение, а если нельзя — приглашение в контакты."
-        : "Только бесплатное сообщение. Приглашения выключены.",
+        ? t("Бесплатное сообщение, а если нельзя — приглашение в контакты.")
+        : t("Только бесплатное сообщение. Приглашения выключены."),
     },
     {
       id: "inmail",
       icon: Wallet,
-      title: "С InMail",
-      tag: "Расходует кредиты",
+      title: t("С InMail"),
+      tag: t("Расходует кредиты"),
       description:
-        "Если бесплатно написать нельзя, используем InMail вашей подписки.",
+        t("Если бесплатно написать нельзя, используем InMail вашей подписки."),
     },
   ];
   const inmailTimings = [
     {
       id: "economy",
       icon: Clock3,
-      title: "Экономить кредиты",
+      title: t("Экономить кредиты"),
       description: rules.allow_invites
-        ? "Сначала приглашение. InMail — если не примут или пригласить нельзя."
-        : "InMail, если бесплатно написать нельзя.",
+        ? t("Сначала приглашение. InMail — если не примут или пригласить нельзя.")
+        : t("InMail, если бесплатно написать нельзя."),
     },
     {
       id: "fast",
       icon: Zap,
-      title: "Связаться быстрее",
-      description: "Сразу InMail, без ожидания приглашения.",
+      title: t("Связаться быстрее"),
+      description: t("Сразу InMail, без ожидания приглашения."),
     },
   ];
   const choose = (id) =>
@@ -171,11 +172,11 @@ export function Automation({
     campaign.template_open,
     campaign.template_neutral,
   ]);
-  const peopleLabel = plural(selected.length, [
-    "кандидат",
-    "кандидата",
-    "кандидатов",
-  ]);
+  const peopleLabel = plural(
+    selected.length,
+    ["кандидат", "кандидата", "кандидатов"], // i18n-ignore
+    ["candidate", "candidates"],
+  );
   const openCount = selected.filter((p) => p.segment === "open").length;
   const neutralCount = selected.filter((p) => p.segment === "neutral").length;
   const fieldChecks = {
@@ -205,17 +206,17 @@ export function Automation({
   }
   const checkedFields = [
     ...(rules.allow_invites
-      ? [["Текст приглашения", fieldChecks.invitation]]
+      ? [[t("Текст приглашения"), fieldChecks.invitation]]
       : []),
     ...["open", "neutral"].flatMap((segment) => {
       if (!selected.some((person) => person.segment === segment)) return [];
-      const label = segment === "open" ? "Open to Work" : "Обычный текст";
+      const label = segment === "open" ? "Open to Work" : t("Обычный текст");
       return [
         [label, fieldChecks[segment]],
         ...(rules.allow_inmail
           ? [
-              [`Тема InMail · ${label}`, fieldChecks["subject_" + segment]],
-              [`InMail · ${label}`, fieldChecks["inmail_" + segment]],
+              [t("Тема InMail · {label}", { label }), fieldChecks["subject_" + segment]],
+              [t("InMail · {label}", { label }), fieldChecks["inmail_" + segment]],
             ]
           : []),
       ];
@@ -226,7 +227,7 @@ export function Automation({
     step === 1
       ? invalidText
       : rules.allow_invites && fieldChecks.invitation.error
-        ? ["Текст приглашения", fieldChecks.invitation]
+        ? [t("Текст приглашения"), fieldChecks.invitation]
         : null;
   const unsavableTemplate = [
     texts.open,
@@ -246,9 +247,9 @@ export function Automation({
     monitor_days: [1, 90],
   };
   const numberLabels = {
-    wait_days: "Ждать принятия · дней",
-    check_hours: "Проверять контакты каждые · ч",
-    monitor_days: "Следить за ответами · дней",
+    wait_days: t("Ждать принятия · дней"),
+    check_hours: t("Проверять контакты каждые · ч"),
+    monitor_days: t("Следить за ответами · дней"),
   };
   const invalidNumber = Object.entries(limits).find(
     ([key, [min, max]]) =>
@@ -264,7 +265,7 @@ export function Automation({
     (!rules.allow_inmail ||
       rules.inmail_channel !== "recruiter" ||
       recruiterReady);
-  const times = (n) => String(n).padStart(2, "0") + ":00";
+  const times = hourLabel;
   const zones = [
     ...new Set([
       rules.timezone,
@@ -292,27 +293,27 @@ export function Automation({
   );
   const flow = [
     {
-      title: "Бесплатное сообщение",
+      title: t("Бесплатное сообщение"),
       text: rules.allow_inmail
-        ? "Обычное сообщение или доступный InMail без списания кредита."
-        : "Если можно написать бесплатно — используем ваш текст.",
+        ? t("Обычное сообщение или доступный InMail без списания кредита.")
+        : t("Если можно написать бесплатно — используем ваш текст."),
     },
     ...(mode === "fast"
       ? [
           {
-            title: "Платный InMail",
-            text: "Без ожидания приглашения, если есть кредиты подписки.",
+            title: t("Платный InMail"),
+            text: t("Без ожидания приглашения, если есть кредиты подписки."),
           },
         ]
       : []),
     ...(rules.allow_invites
       ? [
           {
-            title: "Пригласить в контакты",
+            title: t("Пригласить в контакты"),
             text:
               mode === "fast"
-                ? "Если InMail недоступен в LinkedIn или кредитов нет. После принятия — сообщение."
-                : "После принятия автоматически отправить сообщение.",
+                ? t("Если InMail недоступен в LinkedIn или кредитов нет. После принятия — сообщение.")
+                : t("После принятия автоматически отправить сообщение."),
           },
         ]
       : []),
@@ -320,17 +321,17 @@ export function Automation({
       ? [
           {
             title: rules.allow_invites
-              ? `Подождать ${rules.wait_days} дн. и отправить InMail`
-              : "Отправить InMail",
+              ? t("Подождать {days} дн. и отправить InMail", { days: rules.wait_days })
+              : t("Отправить InMail"),
             text: rules.allow_invites
-              ? "Если пригласить нельзя — проверим InMail без ожидания."
-              : "Если бесплатная связь недоступна и есть кредиты подписки.",
+              ? t("Если пригласить нельзя — проверим InMail без ожидания.")
+              : t("Если бесплатная связь недоступна и есть кредиты подписки."),
           },
         ]
       : []),
     {
-      title: "Дождаться ответа",
-      text: "Ответ появится в истории. Дальнейшие обращения остановятся.",
+      title: t("Дождаться ответа"),
+      text: t("Ответ появится в истории. Дальнейшие обращения остановятся."),
     },
   ];
   const reviewMembers =
@@ -371,14 +372,14 @@ export function Automation({
         <div className="automation-layout">
           <section className="panel setup-panel">
             <header className="setup-heading">
-              <span className="eyebrow">НАСТРОЙКА ОТПРАВКИ</span>
-              <h2>{step === 0 ? "Как связаться" : "Тексты сообщений"}</h2>
+              <span className="eyebrow">{t("НАСТРОЙКА ОТПРАВКИ")}</span>
+              <h2>{step === 0 ? t("Как связаться") : t("Тексты сообщений")}</h2>
             </header>
             <nav
               className="setup-steps"
-              aria-label="Шаги настройки автоматизации"
+              aria-label={t("Шаги настройки автоматизации")}
             >
-              {["Способ связи", "Тексты", "Запуск"].map((label, i) => (
+              {[t("Способ связи"), t("Тексты"), t("Запуск")].map((label, i) => (
                 <button
                   key={label}
                   className={
@@ -440,10 +441,10 @@ export function Automation({
                     {step ? (
                       <>
                         <ArrowLeft size={15} />
-                        Назад
+                        {t("Назад")}
                       </>
                     ) : (
-                      "Сохранить настройки"
+                      t("Сохранить настройки")
                     )}
                   </button>
                   {step === 1 && (
@@ -452,7 +453,7 @@ export function Automation({
                       disabled={!validRules}
                       onClick={() => onSave(rules, texts, false)}
                     >
-                      Сохранить без запуска
+                      {t("Сохранить без запуска")}
                     </button>
                   )}
                 </div>
@@ -466,11 +467,11 @@ export function Automation({
                   {previewing ? (
                     <>
                       <LoaderCircle className="spin" size={16} />
-                      Готовим тексты…
+                      {t("Готовим тексты…")}
                     </>
                   ) : (
                     <>
-                      {step ? "Посмотреть перед запуском" : "Далее: сообщения"}
+                      {step ? t("Посмотреть перед запуском") : t("Далее: сообщения")}
                       <ArrowRight size={16} />
                     </>
                   )}
@@ -478,8 +479,7 @@ export function Automation({
               </footer>
               {previewing && (
                 <p className="setup-validation" role="status">
-                  Готовим тексты для каждого получателя. Обычно это занимает
-                  несколько секунд, с Recruiter — до пары минут.
+                  {t("Готовим тексты для каждого получателя. Обычно это занимает несколько секунд, с Recruiter — до пары минут.")}
                 </p>
               )}
               {!previewing &&
@@ -488,21 +488,28 @@ export function Automation({
                   (step === 1 && !canReview)) && (
                   <p className="setup-validation" role="status">
                     {invalidHours
-                      ? "Время окончания должно быть позже начала в пределах суток."
+                      ? t("Время окончания должно быть позже начала в пределах суток.")
                       : invalidNumber
-                        ? `«${numberLabels[invalidNumber[0]]}»: укажите целое число от ${limits[invalidNumber[0]][0]} до ${limits[invalidNumber[0]][1]}.`
+                        ? t("«{label}»: укажите целое число от {min} до {max}.", {
+                            label: numberLabels[invalidNumber[0]],
+                            min: limits[invalidNumber[0]][0],
+                            max: limits[invalidNumber[0]][1],
+                          })
                         : unsavableTemplate
-                          ? "Сократите шаблоны до 4000 символов, чтобы сохранить настройки."
+                          ? t("Сократите шаблоны до 4000 символов, чтобы сохранить настройки.")
                           : stepTextError
-                            ? `«${stepTextError[0]}»: ${stepTextError[1].error}`
+                            ? t("«{label}»: {error}", {
+                                label: stepTextError[0],
+                                error: stepTextError[1].error,
+                              })
                             : account?.status !== "ready"
-                              ? "Подключите аккаунт отправителя на вкладке «Аккаунты»."
+                              ? t("Подключите аккаунт отправителя на вкладке «Аккаунты».")
                               : !selected.length
-                                ? "Сначала выберите кандидатов для этой кампании."
+                                ? t("Сначала выберите кандидатов для этой кампании.")
                                 : rules.inmail_channel === "recruiter" &&
                                     !recruiterReady
-                                  ? "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя."
-                                  : "Проверьте настройки способа связи."}
+                                  ? t("Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.")
+                                  : t("Проверьте настройки способа связи.")}
                   </p>
                 )}
             </fieldset>
