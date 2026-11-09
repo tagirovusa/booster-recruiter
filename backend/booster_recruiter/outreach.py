@@ -200,7 +200,12 @@ class OutreachStore:
                 "WHERE status='checking' AND NOT EXISTS (SELECT 1 FROM outreach_runs r WHERE r.campaign_id=campaigns.id AND r.status='active')"
             )
             self.db.execute(
-                "UPDATE campaigns SET status='waiting',progress='Утверждённая очередь восстановлена. Ожидаем расписания.' WHERE status IN ('automating','checking')"
+                "UPDATE campaigns SET status='waiting',progress='Утверждённая очередь восстановлена. Ожидаем расписания.' WHERE status IN ('automating','checking') "
+                "AND EXISTS (SELECT 1 FROM outreach_runs r WHERE r.campaign_id=campaigns.id AND r.status='active')"
+            )
+            # A plan paused while it was sending stays paused after a restart.
+            self.db.execute(
+                "UPDATE campaigns SET status='paused',progress='Работа приостановлена после перезапуска.' WHERE status='automating'"
             )
 
     def rules(self, cid):
