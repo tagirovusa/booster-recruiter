@@ -694,7 +694,7 @@ class Store:
                 (status, str(detail)[:1000], thread_id, now(), did),
             )
 
-    def export(self, cid, fmt):
+    def export(self, cid, fmt, language="ru"):
         from .export import export_campaign
 
-        return export_campaign(self, cid, fmt)
+        return export_campaign(self, cid, fmt, language)

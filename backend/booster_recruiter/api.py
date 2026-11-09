@@ -252,7 +252,11 @@ def create_app(store, runtime, token, desktop_token=None):
             elif op == "campaign.export":
                 fmt = p.get("format", "xlsx")
                 result = {
-                    "data": base64.b64encode(store.export(p["id"], fmt)).decode(),
+                    "data": base64.b64encode(
+                        store.export(
+                            p["id"], fmt, "en" if p.get("language") == "en" else "ru"
+                        )
+                    ).decode(),
                     "filename": f"candidates-{p['id'][:8]}.{fmt}",
                 }
             elif op == "diagnostics":

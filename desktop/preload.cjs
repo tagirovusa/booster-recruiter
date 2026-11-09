@@ -15,7 +15,15 @@ async function invoke(channel, ...args) {
   }
 }
 
+// Interface language chosen in Settings; read again on every window reload.
+let language = "en";
+try {
+  const value = ipcRenderer.sendSync("desktop-language");
+  if (value === "ru" || value === "en") language = value;
+} catch {}
+
 contextBridge.exposeInMainWorld("booster", {
+  language,
   command: (operation, params = {}) => invoke("command", operation, params),
   export: (campaignId, format) => invoke("export", campaignId, format),
   openProfile: (url) => invoke("open-profile", url),
@@ -27,4 +35,5 @@ contextBridge.exposeInMainWorld("booster", {
     return () => ipcRenderer.removeListener("workspace-attention", handler);
   },
   desktopSettings: (patch) => invoke("desktop-settings", patch),
+  setLanguage: (language) => invoke("set-language", language),
 });
