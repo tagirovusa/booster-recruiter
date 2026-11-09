@@ -11,7 +11,10 @@ from legacy_history import legacy_approve, legacy_claim, legacy_preview  # noqa:
 
 def seed(data: Path):
     # Keep this helper away from a real workspace even if run by hand.
-    if not data.name.startswith("booster-ui-") or any(data.iterdir()):
+    # The interface language preference may be written first by the UI test.
+    if not data.name.startswith("booster-ui-") or any(
+        p.name != "desktop-preferences.json" for p in data.iterdir()
+    ):
         raise ValueError("Use an empty booster-ui-* temporary directory.")
     store = Store(data)
     try:

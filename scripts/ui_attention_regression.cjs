@@ -43,6 +43,11 @@ s.db.close()
     },
   );
   const env = { ...process.env, BOOSTER_DATA_DIR: data };
+  // These checks read the Russian interface; English is the default.
+  fs.writeFileSync(
+    path.join(data, "desktop-preferences.json"),
+    JSON.stringify({ language: "ru" }),
+  );
   if (!process.env.BOOSTER_EXECUTABLE)
     env.PYTHONPATH = path.join(root, "backend");
   delete env.ELECTRON_RUN_AS_NODE;
