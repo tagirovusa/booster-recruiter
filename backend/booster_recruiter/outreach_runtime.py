@@ -85,7 +85,7 @@ class OutreachRuntime:
                 cid, "checking", "Проверяем аккаунт перед проверкой контактов…"
             ):
                 if cid in self.rt.pause_flags:
-                    self.store.progress(
+                    self.store.settle(
                         cid, "paused", "Проверка контактов приостановлена."
                     )
                     return
@@ -112,7 +112,7 @@ class OutreachRuntime:
                             (json.dumps(data, ensure_ascii=False), p["id"]),
                         )
                     self.repo.refresh_unattempted(cid, p["id"], observation)
-            self.store.progress(
+            self.store.settle(
                 cid,
                 "paused" if cid in self.rt.pause_flags else "ready",
                 "Проверка контактов приостановлена."
@@ -120,7 +120,7 @@ class OutreachRuntime:
                 else "Состояние контактов проверено. Приглашения и сообщения не отправлялись.",
             )
         except Exception as exc:
-            self.store.progress(cid, "paused", self.rt.friendly(exc))
+            self.store.settle(cid, "paused", self.rt.friendly(exc))
 
     async def process(self, rid):
         run = self.repo.run(rid)
