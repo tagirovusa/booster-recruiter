@@ -256,7 +256,12 @@ export function Automation({
       !Number.isInteger(rules[key]) || rules[key] < min || rules[key] > max,
   );
   const invalidHours = rules.start_hour >= rules.end_hour;
-  const validRules = !invalidNumber && !invalidHours && !unsavableTemplate;
+  // Same rule as the service: otherwise the InMail step after the wait
+  // could never happen.
+  const invalidPeriod =
+    !invalidNumber && rules.monitor_days <= rules.wait_days;
+  const validRules =
+    !invalidNumber && !invalidHours && !invalidPeriod && !unsavableTemplate;
   const canReview =
     account?.status === "ready" &&
     validRules &&
@@ -495,7 +500,9 @@ export function Automation({
                             min: limits[invalidNumber[0]][0],
                             max: limits[invalidNumber[0]][1],
                           })
-                        : unsavableTemplate
+                        : invalidPeriod
+                          ? t("Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения.")
+                          : unsavableTemplate
                           ? t("Сократите шаблоны до 4000 символов, чтобы сохранить настройки.")
                           : stepTextError
                             ? t("«{label}»: {error}", {
