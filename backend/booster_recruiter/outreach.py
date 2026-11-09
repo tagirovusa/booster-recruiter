@@ -64,6 +64,11 @@ def validate_rules(value):
     ):
         if type(rules[key]) is not int or not low <= rules[key] <= high:
             raise AppError(f"Параметр {key}: допустимо от {low} до {high}.")
+    if rules["monitor_days"] <= rules["wait_days"]:
+        # Otherwise the InMail step after the wait could never happen.
+        raise AppError(
+            "Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения."
+        )
     if rules["strategy"] not in ("economy", "fast"):
         raise AppError("Выберите экономный или быстрый режим.")
     if rules["inmail_channel"] not in ("linkedin", "recruiter"):
