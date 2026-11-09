@@ -217,6 +217,8 @@ export const strings = {
   "Выберите экономный или быстрый режим.": "Choose economy or fast mode.",
   "Выберите LinkedIn Premium или Recruiter для InMail.":
     "Choose LinkedIn Premium or Recruiter for InMail.",
+  "Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения.":
+    "The reply-watching period must be longer than the wait for an invitation to be accepted.",
   "Время окончания должно быть позже начала в пределах суток.":
     "The end time must be later than the start time within the same day.",
   "Неизвестный часовой пояс.": "Unknown time zone.",

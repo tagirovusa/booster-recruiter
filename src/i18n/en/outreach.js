@@ -225,6 +225,8 @@ export const strings = {
   "Далее: сообщения": "Next: messages",
   "Готовим тексты для каждого получателя. Обычно это занимает несколько секунд, с Recruiter — до пары минут.":
     "Preparing texts for each recipient. This usually takes a few seconds, or up to a couple of minutes with Recruiter.",
+  "Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения.":
+    "The reply-watching period must be longer than the wait for an invitation to be accepted.",
   "Время окончания должно быть позже начала в пределах суток.":
     "The end time must be later than the start time within the same day.",
   "«{label}»: укажите целое число от {min} до {max}.":
