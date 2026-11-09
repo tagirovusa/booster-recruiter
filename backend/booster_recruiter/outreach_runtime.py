@@ -171,7 +171,9 @@ class OutreachRuntime:
                                 detail="Получатель исключён или уже обработан в другой кампании.",
                             )
                             continue
-                        if utc() >= utc(
+                        # Nobody has written to a planned member yet, so
+                        # there is nothing to watch and nothing to finish.
+                        if member["status"] != "planned" and utc() >= utc(
                             member["sent_at"] or run["created"]
                         ) + timedelta(days=rules["monitor_days"]):
                             self.repo.update_member(
