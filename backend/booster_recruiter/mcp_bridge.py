@@ -16,7 +16,9 @@ def create_server(root: Path):
 
     def call(op, params=None):
         try:
-            connection = json.loads((root / "connection.json").read_text())
+            connection = json.loads(
+                (root / "connection.json").read_text(encoding="utf-8")
+            )
         except (OSError, ValueError):
             raise ValueError("Сначала откройте Booster Recruiter.")
         request = urllib.request.Request(

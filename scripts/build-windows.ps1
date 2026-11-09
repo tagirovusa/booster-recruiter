@@ -1,4 +1,5 @@
-# Windows build launcher revision 2: checksum manifests are read as UTF-8 files.
+# Windows build launcher revision 3: checksum manifests are read as UTF-8 files,
+# downloads land in a .part file first, and every step's output reaches the log.
 param([switch]$UseInstalledTools)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -8,13 +9,19 @@ $LogDirectory = Join-Path $ProjectRoot 'build-logs'
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
 $LogFile = Join-Path $LogDirectory ('windows-build-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt')
 Start-Transcript -Path $LogFile | Out-Null
-Write-Host 'Windows build launcher: revision 2'
+Write-Host 'Windows build launcher: revision 3'
 $BuildSucceeded = $false
 $script:BuildStage = 'Check build environment'
 function Run-Step([string]$Label, [string]$Executable, [string[]]$CommandArguments) {
     $script:BuildStage = $Label
     Write-Host "`n$Label" -ForegroundColor Cyan
-    & $Executable @CommandArguments
+    # Windows PowerShell 5.1 does not record native programs in the transcript.
+    # Echo their output so a failing test or build is visible in the log.
+    # Native stderr must not become a terminating error while it is echoed.
+    $PreviousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Executable @CommandArguments 2>&1 | ForEach-Object { Write-Host "$_" } }
+    finally { $ErrorActionPreference = $PreviousPreference }
     if ($LASTEXITCODE -ne 0) { throw "$Label failed (exit $LASTEXITCODE)." }
 }
 function Read-ReleaseManifest([string]$Url, [string]$Destination) {
@@ -24,13 +31,22 @@ function Read-ReleaseManifest([string]$Url, [string]$Destination) {
     Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -TimeoutSec 60
     return [System.IO.File]::ReadAllText($Destination, [System.Text.Encoding]::UTF8)
 }
+function Test-Checksum([string]$File, [string]$ExpectedHash) {
+    return (Get-FileHash $File -Algorithm SHA256).Hash.ToLowerInvariant() -eq $ExpectedHash.ToLowerInvariant()
+}
 function Download-Checked([string]$Url, [string]$Destination, [string]$ExpectedHash) {
-    if (-not (Test-Path $Destination)) { Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing }
-    $ActualHash = (Get-FileHash $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($ActualHash -ne $ExpectedHash.ToLowerInvariant()) {
-        Remove-Item -LiteralPath $Destination
-        throw 'Download checksum mismatch. The archive was removed; run the build again.'
+    # A verified archive from an earlier run is reused; anything else is fetched again.
+    if ((Test-Path $Destination) -and (Test-Checksum $Destination $ExpectedHash)) { return }
+    Remove-Item -LiteralPath $Destination -ErrorAction SilentlyContinue
+    # An interrupted download stays in the .part file and never looks complete.
+    $Partial = "$Destination.part"
+    Remove-Item -LiteralPath $Partial -ErrorAction SilentlyContinue
+    Invoke-WebRequest -Uri $Url -OutFile $Partial -UseBasicParsing
+    if (-not (Test-Checksum $Partial $ExpectedHash)) {
+        Remove-Item -LiteralPath $Partial
+        throw 'Download checksum mismatch. Check the internet connection and run the build again.'
     }
+    Move-Item -LiteralPath $Partial -Destination $Destination
 }
 try {
     if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) { throw 'Windows 10/11 x64 is required.' }

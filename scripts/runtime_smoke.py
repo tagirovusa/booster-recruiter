@@ -52,11 +52,11 @@ async def check():
                 assert response["result"]["accounts"] == 0
                 assert (
                     response["result"]["version"]
-                    == json.loads((root / "package.json").read_text())["version"]
+                    == json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
                 ), "Frozen runtime version does not match the desktop release"
                 locked_engine = next(
                     package["version"]
-                    for package in tomllib.loads((root / "uv.lock").read_text())[
+                    for package in tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))[
                         "package"
                     ]
                     if package["name"] == "patchright"

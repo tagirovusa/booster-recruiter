@@ -15,7 +15,7 @@ root = Path(__file__).resolve().parents[1]
 stale_metadata = root / "backend/booster_recruiter.egg-info"
 if stale_metadata.is_dir():
     shutil.rmtree(stale_metadata)
-expected_version = tomllib.loads((root / "pyproject.toml").read_text())["project"][
+expected_version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
     "version"
 ]
 if importlib.metadata.version("booster-recruiter") != expected_version:

@@ -251,7 +251,7 @@ def browser_roots(browser: str | None = None) -> list[tuple[str, Path]]:
 
 def _read_info_cache(local_state_path: Path) -> dict[str, dict[str, object]]:
     try:
-        payload = json.loads(local_state_path.read_text())
+        payload = json.loads(local_state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
     if not isinstance(payload, dict):

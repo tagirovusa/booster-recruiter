@@ -18,10 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_shipped_engine_matches_exact_lock_and_vendor_factory():
     info = browser_engine.verify_browser_engine()
-    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     package = next(p for p in lock["package"] if p["name"] == "patchright")
     vendor = tomllib.loads(
-        (ROOT / "vendor/booster-linkedin/pyproject.toml").read_text()
+        (ROOT / "vendor/booster-linkedin/pyproject.toml").read_text(encoding="utf-8")
     )
     assert info["version"] == package["version"] == browser_engine.PATCHRIGHT_VERSION
     assert f"patchright=={info['version']}" in vendor["project"]["dependencies"]
