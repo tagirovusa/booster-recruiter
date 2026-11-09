@@ -322,7 +322,9 @@ class Runtime:
         sender_ids = self.store.outreach.sender_ids(aid)
         placeholders = ",".join("?" for _ in sender_ids)
         for campaign in self.store.rows(
-            f"SELECT id FROM campaigns WHERE account_id IN ({placeholders})",
+            # Archived campaigns keep their status: their history is read-only.
+            f"SELECT id FROM campaigns WHERE account_id IN ({placeholders}) "
+            "AND status != 'archived'",
             sender_ids,
         ):
             cid = campaign["id"]
