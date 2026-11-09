@@ -90,6 +90,12 @@
     "homepage": ""
   },
   {
+    "name": "booster-recruiter",
+    "version": "0.4.0",
+    "license": "",
+    "homepage": ""
+  },
+  {
     "name": "Pygments",
     "version": "2.21.0",
     "license": "BSD-2-Clause",
@@ -166,12 +172,6 @@
     "version": "2.0.0",
     "license": "MIT",
     "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile"
-  },
-  {
-    "name": "booster-recruiter",
-    "version": "0.3.2",
-    "license": "",
-    "homepage": ""
   },
   {
     "name": "wcwidth",
@@ -613,7 +613,7 @@
   },
   {
     "name": "booster-recruiter",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "license": "",
     "homepage": ""
   }

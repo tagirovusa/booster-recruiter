@@ -4,14 +4,15 @@ import { ArrowRight } from "lucide-react";
 import { Button, Modal } from "./ui";
 import { SearchBuilder } from "./Workspace";
 import { labels } from "./labels";
+import { t } from "./i18n";
 
 export function AccountForm({ onClose, onSubmit, busy, error }) {
   const [label, setLabel] = useState("");
   return (
     <Modal
       error={error}
-      title="Подключить LinkedIn"
-      subtitle="Отдельная сессия для каждого аккаунта"
+      title={t("Подключить LinkedIn")}
+      subtitle={t("Отдельная сессия для каждого аккаунта")}
       onClose={onClose}
     >
       <form
@@ -22,32 +23,32 @@ export function AccountForm({ onClose, onSubmit, busy, error }) {
         }}
       >
         <label className="field">
-          Название аккаунта
+          {t("Название аккаунта")}
           <input
             required
             maxLength={100}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Например, Recruiting · Основной"
+            placeholder={t("Например, Recruiting · Основной")}
           />
         </label>
         <div className="steps">
           <p>
-            <span>1</span>Откроется окно LinkedIn.
+            <span>1</span>{t("Откроется окно LinkedIn.")}
           </p>
           <p>
-            <span>2</span>Войдите и подтвердите вход, если потребуется.
+            <span>2</span>{t("Войдите и подтвердите вход, если потребуется.")}
           </p>
           <p>
-            <span>3</span>Вернитесь в приложение и проверьте подключение.
+            <span>3</span>{t("Вернитесь в приложение и проверьте подключение.")}
           </p>
         </div>
         <div className="modal-footer">
           <Button type="button" onClick={onClose}>
-            Отмена
+            {t("Отмена")}
           </Button>
           <Button kind="primary" disabled={busy || !label.trim()}>
-            Открыть вход <ArrowRight size={17} />
+            {t("Открыть вход")} <ArrowRight size={17} />
           </Button>
         </div>
       </form>
@@ -68,27 +69,27 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
   });
   const change = (key, v) => setD({ ...d, [key]: v });
   const errors = {
-    name: !d.name.trim() ? "Введите название кампании." : "",
+    name: !d.name.trim() ? t("Введите название кампании.") : "",
     keywords: !d.keywords.trim()
-      ? "Введите ключевые слова или ссылку на профиль LinkedIn."
+      ? t("Введите ключевые слова или ссылку на профиль LinkedIn.")
       : d.keywords.length > 1000
-        ? "Сократите поисковый запрос до 1000 символов."
+        ? t("Сократите поисковый запрос до 1000 символов.")
         : "",
     account_id: !accounts.some((a) => a.id === d.account_id)
-      ? "Выберите аккаунт отправителя."
+      ? t("Выберите аккаунт отправителя.")
       : "",
     max_profiles:
       !Number.isInteger(d.max_profiles) ||
       d.max_profiles < 1 ||
       d.max_profiles > 100
-        ? "Укажите целое число от 1 до 100."
+        ? t("Укажите целое число от 1 до 100.")
         : "",
   };
   return (
     <Modal
       error={error}
-      title="Новая кампания"
-      subtitle="Начните с поиска. Сообщения можно заполнить после сбора профилей."
+      title={t("Новая кампания")}
+      subtitle={t("Начните с поиска. Сообщения можно заполнить после сбора профилей.")}
       onClose={onClose}
     >
       <form
@@ -120,7 +121,7 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
         }}
       >
         <label className="field">
-          Название кампании
+          {t("Название кампании")}
           <input
             name="name"
             aria-invalid={attempted && !!errors.name}
@@ -130,7 +131,7 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
             required
             value={d.name}
             onChange={(e) => change("name", e.target.value)}
-            placeholder="Например, Head of Recruitment · Logistics"
+            placeholder={t("Например, Head of Recruitment · Logistics")}
             maxLength={150}
           />
           {attempted && errors.name && (
@@ -140,7 +141,7 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
           )}
         </label>
         <label className="field">
-          Аккаунт отправителя
+          {t("Аккаунт отправителя")}
           <select
             name="account_id"
             aria-invalid={attempted && !!errors.account_id}
@@ -169,7 +170,7 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
           </small>
         )}
         <label className="field">
-          Сколько профилей собрать
+          {t("Сколько профилей собрать")}
           <input
             name="max_profiles"
             aria-invalid={attempted && !!errors.max_profiles}
@@ -193,10 +194,10 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
         </label>
         <div className="modal-footer">
           <Button type="button" onClick={onClose}>
-            Отмена
+            {t("Отмена")}
           </Button>
           <Button kind="primary" disabled={busy}>
-            Создать кампанию <ArrowRight size={17} />
+            {t("Создать кампанию")} <ArrowRight size={17} />
           </Button>
         </div>
       </form>

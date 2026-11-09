@@ -2,6 +2,7 @@
 import React from "react";
 import { actionKinds, personStates } from "../labels";
 import { DetailMessage, date } from "./parts";
+import { t } from "../i18n";
 
 export function OutreachHistory({
   runs,
@@ -17,7 +18,7 @@ export function OutreachHistory({
   const visible = runs.filter((r) => r.status !== "preview");
   if (!visible.length) return null;
   return (
-    <section className="outreach-history" aria-label="Приглашения и сообщения">
+    <section className="outreach-history" aria-label={t("Приглашения и сообщения")}>
       {visible.map((run) => (
         <div key={run.id} className="outreach-run">
           <div className="toolbar">
@@ -25,9 +26,14 @@ export function OutreachHistory({
               {personStates[run.status]} · {date(run.created)}
             </b>
             <span>
-              Получателей: {run.members.length}
+              {t("Получателей: {count}", { count: run.members.length })}
               {(run.rules.allow_inmail || run.credits_reserved > 0) && (
-                <> · Учтено InMail-кредитов: {run.credits_reserved}</>
+                <>
+                  {" · "}
+                  {t("Учтено InMail-кредитов: {count}", {
+                    count: run.credits_reserved,
+                  })}
+                </>
               )}
             </span>
             {run.status === "paused" && (
@@ -36,7 +42,7 @@ export function OutreachHistory({
                 disabled={disabled}
                 onClick={() => onResume(run.id)}
               >
-                Продолжить кампанию
+                {t("Продолжить кампанию")}
               </button>
             )}
           </div>
@@ -50,10 +56,10 @@ export function OutreachHistory({
               </colgroup>
               <thead>
                 <tr>
-                  <th>Человек</th>
-                  <th>Состояние</th>
-                  <th>Следующая проверка</th>
-                  <th>Причина</th>
+                  <th>{t("Человек")}</th>
+                  <th>{t("Состояние")}</th>
+                  <th>{t("Следующая проверка")}</th>
+                  <th>{t("Причина")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -80,7 +86,7 @@ export function OutreachHistory({
                       </td>
                       <td>
                         {stoppedKnown
-                          ? "План остановлен"
+                          ? t("План остановлен")
                           : personStates[m.status] || m.status}
                       </td>
                       <td>
@@ -92,7 +98,7 @@ export function OutreachHistory({
                           "planned",
                         ].includes(m.status)
                           ? run.status === "paused"
-                            ? "После возобновления"
+                            ? t("После возобновления")
                             : run.status === "active"
                               ? date(m.next_check)
                               : "—"
@@ -110,7 +116,7 @@ export function OutreachHistory({
                             disabled={checkDisabled}
                             onClick={() => onRepair(repairs[m.id])}
                           >
-                            Отправить приглашение
+                            {t("Отправить приглашение")}
                           </button>
                         )}
                         {m.status === "needs_review" &&
@@ -122,7 +128,7 @@ export function OutreachHistory({
                               disabled={checkDisabled ?? disabled}
                               onClick={() => onCheck(m.id)}
                             >
-                              Уточнить статус
+                              {t("Уточнить статус")}
                             </button>
                           )}
                         {m.reply_text && (
@@ -147,15 +153,13 @@ export function OutreachHistory({
                 <summary>
                   {actionKinds[a.kind]} · {m?.name || a.url} ·{" "}
                   {a.repair_replaced_by
-                    ? "Старая попытка"
+                    ? t("Старая попытка")
                     : personStates[a.status]}{" "}
                   · {date(a.created)}
                 </summary>
                 {a.repair_replaced_by ? (
                   <p className="hint">
-                    Исход старой попытки не подтверждён. Новая проверка
-                    подтвердила актуальное состояние приглашения или связи;
-                    повторная проверка этой старой записи не требуется.
+                    {t("Исход старой попытки не подтверждён. Новая проверка подтвердила актуальное состояние приглашения или связи; повторная проверка этой старой записи не требуется.")}
                   </p>
                 ) : (
                   <DetailMessage
@@ -168,10 +172,14 @@ export function OutreachHistory({
                     }
                   />
                 )}
-                {a.kind === "inmail" && <b>Тема: {m?.subject}</b>}
+                {a.kind === "inmail" && (
+                  <b>
+                    {t("Тема:")} {m?.subject}
+                  </b>
+                )}
                 <pre>
                   {a.kind === "invite"
-                    ? m?.invitation || "Приглашение без заметки"
+                    ? m?.invitation || t("Приглашение без заметки")
                     : a.kind === "inmail"
                       ? m?.inmail_message
                       : m?.message}
@@ -180,9 +188,7 @@ export function OutreachHistory({
                   <div className="actions">
                     {a.kind === "inmail" && (run.context || m?.subject) && (
                       <p className="hint">
-                        Эту старую отправку InMail нельзя надёжно проверить
-                        автоматически. Откройте переписку в LinkedIn и укажите
-                        результат вручную.
+                        {t("Эту старую отправку InMail нельзя надёжно проверить автоматически. Откройте переписку в LinkedIn и укажите результат вручную.")}
                       </p>
                     )}
                     {onCheck &&
@@ -193,27 +199,27 @@ export function OutreachHistory({
                           disabled={checkDisabled ?? disabled}
                           onClick={() => onCheck(m.id)}
                         >
-                          Уточнить статус
+                          {t("Уточнить статус")}
                         </button>
                       )}
                     <button className="button" onClick={() => onOpen(a.url)}>
-                      Открыть LinkedIn
+                      {t("Открыть LinkedIn")}
                     </button>
                     <button
                       className="button"
                       disabled={disabled}
                       onClick={() => onResolve(a.id, true)}
                     >
-                      Проверено:{" "}
-                      {a.kind === "invite" ? "приглашение" : "сообщение"}{" "}
-                      отправлено
+                      {a.kind === "invite"
+                        ? t("Проверено: приглашение отправлено")
+                        : t("Проверено: сообщение отправлено")}
                     </button>
                     <button
                       className="button"
                       disabled={disabled}
                       onClick={() => onResolve(a.id, false)}
                     >
-                      Проверено: не отправлено
+                      {t("Проверено: не отправлено")}
                     </button>
                   </div>
                 )}

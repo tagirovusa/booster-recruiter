@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowRight, Check, Inbox, RefreshCw, Trash2 } from "lucide-react";
 import "./workspace.css";
 import { attentionKinds } from "./labels";
+import { formatDateTime, t, tr } from "./i18n";
 
 export function AttentionPanel({
   summary,
@@ -25,38 +26,37 @@ export function AttentionPanel({
   return (
     <section
       className="panel workspace-attention"
-      aria-label="Требуют внимания"
+      aria-label={t("Требуют внимания")}
     >
       {summary?.backup_error && (
         <div className="workspace-empty" role="alert">
           <p>
-            Не удалось создать автоматическую резервную копию. Откройте
-            настройки и сохраните копию вручную.
+            {t("Не удалось создать автоматическую резервную копию. Откройте настройки и сохраните копию вручную.")}
           </p>
           <button className="button" onClick={onSettings}>
-            Открыть настройки
+            {t("Открыть настройки")}
           </button>
         </div>
       )}
       {error ? (
         <div className="workspace-empty" role="status">
-          <p>Не удалось обновить список внимания. Кампании сохранены.</p>
+          <p>{t("Не удалось обновить список внимания. Кампании сохранены.")}</p>
           <button className="button" onClick={onRetry}>
             <RefreshCw size={16} />
-            Повторить
+            {t("Повторить")}
           </button>
         </div>
       ) : !summary ? (
-        <p className="workspace-empty">Обновляем список…</p>
+        <p className="workspace-empty">{t("Обновляем список…")}</p>
       ) : (
         <>
-          <div className="attention-filters" aria-label="Фильтр внимания">
+          <div className="attention-filters" aria-label={t("Фильтр внимания")}>
             <button
               aria-pressed={filter === "all"}
               className={filter === "all" ? "chosen" : ""}
               onClick={() => setFilter("all")}
             >
-              <span>Все</span>
+              <span>{t("Все")}</span>
               <b>{summary.items.length}</b>
             </button>
             {Object.entries(attentionKinds).map(([kind, label]) => (
@@ -76,8 +76,8 @@ export function AttentionPanel({
               <Inbox size={24} />
               <p>
                 {filter === "all"
-                  ? "Всё в порядке. Новые ответы и действия появятся здесь."
-                  : "В этой группе пока нет действий."}
+                  ? t("Всё в порядке. Новые ответы и действия появятся здесь.")
+                  : t("В этой группе пока нет действий.")}
               </p>
             </div>
           ) : (
@@ -91,7 +91,7 @@ export function AttentionPanel({
                     <strong>{item.name}</strong>
                     <small>
                       {item.kind === "login"
-                        ? "Аккаунт LinkedIn"
+                        ? t("Аккаунт LinkedIn")
                         : [
                             campaigns.find((c) => c.id === item.campaign_id)
                               ?.name,
@@ -101,28 +101,27 @@ export function AttentionPanel({
                             .filter(Boolean)
                             .join(" · ")}
                     </small>
-                    <p>{item.detail}</p>
+                    <p>{tr(item.detail)}</p>
                     {item.repairing && (
                       <p role="status" className="repair-ready">
-                        Проверяем профиль и отправляем приглашение…
+                        {t("Проверяем профиль и отправляем приглашение…")}
                       </p>
                     )}
                     {item.repair_error && (
-                      <p className="hint warning">{item.repair_error}</p>
+                      <p className="hint warning">{tr(item.repair_error)}</p>
                     )}
                     {item.repair && (
                       <p className="repair-ready">
-                        Сейчас доступно новое приглашение. Отправьте его после
-                        проверки получателя и текста.
+                        {t("Сейчас доступно новое приглашение. Отправьте его после проверки получателя и текста.")}
                       </p>
                     )}
                     {item.check_error && (
-                      <p className="hint warning">{item.check_error}</p>
+                      <p className="hint warning">{tr(item.check_error)}</p>
                     )}
                     {item.kind === "review" && item.can_recheck === false && (
                       <p className="hint">
-                        {item.recheck_unavailable_reason ||
-                          "Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории."}
+                        {tr(item.recheck_unavailable_reason) ||
+                          t("Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории.")}
                       </p>
                     )}
                     {item.kind === "review" &&
@@ -130,13 +129,12 @@ export function AttentionPanel({
                       !item.repair &&
                       !item.repairing && (
                         <small>
-                          Приложение посмотрит в LinkedIn, дошло ли сообщение.
-                          Ничего не отправит.
+                          {t("Приложение посмотрит в LinkedIn, дошло ли сообщение. Ничего не отправит.")}
                         </small>
                       )}
                     {item.updated && (
                       <small>
-                        {new Date(item.updated).toLocaleString("ru-RU")}
+                        {formatDateTime(item.updated)}
                       </small>
                     )}
                   </div>
@@ -148,8 +146,8 @@ export function AttentionPanel({
                         onClick={() => onRepair(item)}
                       >
                         {item.repairing
-                          ? "Проверяем и отправляем…"
-                          : "Отправить приглашение"}
+                          ? t("Проверяем и отправляем…")
+                          : t("Отправить приглашение")}
                       </button>
                     )}
                     {item.kind === "review" &&
@@ -168,8 +166,8 @@ export function AttentionPanel({
                         >
                           <RefreshCw size={16} />
                           {checkingItem === item.id || item.checking
-                            ? "Проверяем…"
-                            : "Уточнить статус"}
+                            ? t("Проверяем…")
+                            : t("Уточнить статус")}
                         </button>
                       )}
                     {item.kind === "reply" && item.url && onReply && (
@@ -178,7 +176,7 @@ export function AttentionPanel({
                         disabled={disabled}
                         onClick={() => onReply(item)}
                       >
-                        Ответить в LinkedIn
+                        {t("Ответить в LinkedIn")}
                       </button>
                     )}
                     <button
@@ -187,12 +185,12 @@ export function AttentionPanel({
                       onClick={() => onOpen(item)}
                     >
                       {item.kind === "login" || item.needs_sign_in
-                        ? "Открыть аккаунт"
+                        ? t("Открыть аккаунт")
                         : item.kind === "reply"
-                          ? "Открыть ответ"
+                          ? t("Открыть ответ")
                           : item.can_recheck === false
-                            ? "Посмотреть историю"
-                            : "Подробности"}
+                            ? t("Посмотреть историю")
+                            : t("Подробности")}
                       <ArrowRight size={16} />
                     </button>
                     {item.kind === "reply" && (
@@ -202,7 +200,7 @@ export function AttentionPanel({
                         onClick={() => onRead(item.id)}
                       >
                         <Check size={14} />
-                        Прочитано
+                        {t("Прочитано")}
                       </button>
                     )}
                   </div>
@@ -266,9 +264,9 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
     onChange(buildSearch(next));
   };
   return (
-    <section className="search-builder" aria-label="Настройка поиска">
+    <section className="search-builder" aria-label={t("Настройка поиска")}>
       <div className="workspace-inline-heading">
-        <strong>Кого ищем?</strong>
+        <strong>{t("Кого ищем?")}</strong>
         <button
           type="button"
           className="text-link"
@@ -278,18 +276,17 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             else setAdvanced(!advanced);
           }}
         >
-          {advanced ? "Простой поиск" : "Запрос или ссылка"}
+          {advanced ? t("Простой поиск") : t("Запрос или ссылка")}
         </button>
       </div>
       {resetPending && (
         <div
           className="template-delete-confirm"
           role="group"
-          aria-label="Сброс поискового запроса"
+          aria-label={t("Сброс поискового запроса")}
         >
           <p>
-            Отредактированный запрос нельзя перенести в поля автоматически.
-            Начать простой поиск заново?
+            {t("Отредактированный запрос нельзя перенести в поля автоматически. Начать простой поиск заново?")}
           </p>
           <button
             type="button"
@@ -307,50 +304,49 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
               setResetPending(false);
             }}
           >
-            Начать заново
+            {t("Начать заново")}
           </button>
           <button
             type="button"
             className="text-button"
             onClick={() => setResetPending(false)}
           >
-            Сохранить запрос
+            {t("Сохранить запрос")}
           </button>
         </div>
       )}
       {advanced ? (
         <label className="field">
-          Ключевые слова или ссылка на профиль
+          {t("Ключевые слова или ссылка на профиль")}
           <textarea
             name="keywords"
-            aria-label="Ключевые слова или ссылка на профиль"
+            aria-label={t("Ключевые слова или ссылка на профиль")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             rows={3}
             maxLength={1000}
             aria-invalid={invalid}
             aria-describedby={invalid ? errorId : undefined}
-            placeholder='Например: "driver recruitment" manager'
+            placeholder={t('Например: "driver recruitment" manager')}
           />
           <small>
-            Можно вставить ссылку на один профиль или готовый поисковый запрос
-            LinkedIn.
+            {t("Можно вставить ссылку на один профиль или готовый поисковый запрос LinkedIn.")}
           </small>
         </label>
       ) : (
         <>
           <label className="field">
-            Должности
+            {t("Должности")}
             <textarea
               rows={2}
-              aria-label="Должности"
+              aria-label={t("Должности")}
               aria-invalid={invalid}
               aria-describedby={invalid ? errorId : undefined}
               value={fields.roles}
-              placeholder="Например: driver recruiter, recruitment manager"
+              placeholder={t("Например: driver recruiter, recruitment manager")}
               onChange={(e) => update("roles", e.target.value)}
             />
-            <small>Несколько вариантов — через запятую.</small>
+            <small>{t("Несколько вариантов — через запятую.")}</small>
           </label>
           <details
             className="search-refine"
@@ -358,55 +354,55 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             onToggle={(e) => setRefineOpen(e.currentTarget.open)}
           >
             <summary>
-              Уточнить поиск: отрасль, ключевые фразы, исключения
+              {t("Уточнить поиск: отрасль, ключевые фразы, исключения")}
             </summary>
             <div className="search-builder-grid">
               <label className="field">
-                Отрасль
+                {t("Отрасль")}
                 <textarea
                   rows={2}
-                  aria-label="Отрасль"
+                  aria-label={t("Отрасль")}
                   value={fields.industry}
                   placeholder="Trucking, transportation"
                   onChange={(e) => update("industry", e.target.value)}
                 />
               </label>
               <label className="field">
-                Ключевые фразы
+                {t("Ключевые фразы")}
                 <textarea
                   rows={2}
-                  aria-label="Ключевые фразы"
+                  aria-label={t("Ключевые фразы")}
                   value={fields.phrases}
                   placeholder="Driver retention, CDL drivers"
                   onChange={(e) => update("phrases", e.target.value)}
                 />
               </label>
               <label className="field">
-                Исключить
+                {t("Исключить")}
                 <textarea
                   rows={2}
-                  aria-label="Исключить"
+                  aria-label={t("Исключить")}
                   value={fields.excluded}
-                  placeholder="Например, internship"
+                  placeholder={t("Например, internship")}
                   onChange={(e) => update("excluded", e.target.value)}
                 />
               </label>
               <label className="field">
-                Совпадение ключевых фраз
+                {t("Совпадение ключевых фраз")}
                 <select
                   value={fields.all ? "all" : "any"}
                   onChange={(e) => update("all", e.target.value === "all")}
                 >
-                  <option value="any">Хотя бы одна фраза</option>
-                  <option value="all">Все фразы</option>
+                  <option value="any">{t("Хотя бы одна фраза")}</option>
+                  <option value="all">{t("Все фразы")}</option>
                 </select>
               </label>
             </div>
           </details>
           <input type="hidden" name="keywords" value={value} />
           <details className="search-query-preview">
-            <summary>Показать итоговый запрос</summary>
-            <code>{value || "Заполните хотя бы одно поле выше"}</code>
+            <summary>{t("Показать итоговый запрос")}</summary>
+            <code>{value || t("Заполните хотя бы одно поле выше")}</code>
           </details>
         </>
       )}
@@ -427,35 +423,34 @@ export function TemplatePicker({
   );
   const [name, setName] = useState("");
   const valid =
-    templates.some((t) => t.id === selected) &&
+    templates.some((tpl) => tpl.id === selected) &&
     accounts.some((a) => a.id === account);
   const [confirmDelete, setConfirmDelete] = useState(false);
   return (
     <div className="template-picker">
       <p>
-        Шаблон переносит поиск, тексты и расписание. Кандидатов нужно выбрать
-        заново и подтвердить отправку.
+        {t("Шаблон переносит поиск, тексты и расписание. Кандидатов нужно выбрать заново и подтвердить отправку.")}
       </p>
       <label className="field">
-        Шаблон
+        {t("Шаблон")}
         <select
-          aria-label="Шаблон"
+          aria-label={t("Шаблон")}
           value={selected}
           onChange={(e) => {
             setSelected(e.target.value);
             setConfirmDelete(false);
           }}
         >
-          <option value="">Выберите шаблон</option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          <option value="">{t("Выберите шаблон")}</option>
+          {templates.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>
+              {tpl.name}
             </option>
           ))}
         </select>
       </label>
       <label className="field">
-        Аккаунт отправителя
+        {t("Аккаунт отправителя")}
         <select value={account} onChange={(e) => setAccount(e.target.value)}>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -465,12 +460,12 @@ export function TemplatePicker({
         </select>
       </label>
       <label className="field">
-        Название новой кампании
+        {t("Название новой кампании")}
         <input
           value={name}
           maxLength={150}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Оставьте пустым, чтобы использовать название шаблона"
+          placeholder={t("Оставьте пустым, чтобы использовать название шаблона")}
         />
       </label>
       <div className="template-footer">
@@ -485,7 +480,7 @@ export function TemplatePicker({
             })
           }
         >
-          Создать черновик
+          {t("Создать черновик")}
           <ArrowRight size={16} />
         </button>
         {selected && (
@@ -495,13 +490,13 @@ export function TemplatePicker({
             onClick={() => setConfirmDelete(!confirmDelete)}
           >
             <Trash2 size={14} />
-            Удалить шаблон
+            {t("Удалить шаблон")}
           </button>
         )}
       </div>
       {confirmDelete && (
         <div className="template-delete-confirm">
-          <p>Удалить этот шаблон? Созданные кампании сохранятся.</p>
+          <p>{t("Удалить этот шаблон? Созданные кампании сохранятся.")}</p>
           <button
             className="button"
             disabled={disabled}
@@ -512,13 +507,13 @@ export function TemplatePicker({
               }
             }}
           >
-            Подтвердить удаление
+            {t("Подтвердить удаление")}
           </button>
           <button
             className="text-button"
             onClick={() => setConfirmDelete(false)}
           >
-            Отмена
+            {t("Отмена")}
           </button>
         </div>
       )}

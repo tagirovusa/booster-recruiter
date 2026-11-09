@@ -20,6 +20,7 @@ import AccountsPage from "./pages/AccountsPage";
 import CampaignsPage from "./pages/CampaignsPage";
 import CampaignPage from "./pages/CampaignPage";
 import WorkspaceDialogs from "./dialogs";
+import { t, tr } from "./i18n";
 
 const api = window.booster;
 function App() {
@@ -37,7 +38,16 @@ function App() {
   const [checkingItem, setCheckingItem] = useState(null);
   const [invitationRepair, setInvitationRepair] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [page, setPage] = useState("campaigns");
+  // After a language switch the window reloads and returns to Settings.
+  const [page, setPage] = useState(() => {
+    try {
+      const back = window.sessionStorage.getItem("booster.returnPage");
+      window.sessionStorage.removeItem("booster.returnPage");
+      return back === "settings" ? "settings" : "campaigns";
+    } catch {
+      return "campaigns";
+    }
+  });
   const [cid, setCid] = useState(null);
   const currentCampaign = useRef(cid);
   currentCampaign.current = cid;
@@ -106,7 +116,7 @@ function App() {
     } catch {
       setDraftPersisted(false);
       setError(
-        "Не удалось сохранить черновик на компьютере. Сохраните настройки перед закрытием приложения.",
+        t("Не удалось сохранить черновик на компьютере. Сохраните настройки перед закрытием приложения."),
       );
     }
   };
@@ -193,7 +203,7 @@ function App() {
   const refresh = useCallback(async () => {
     if (!api) {
       setLoading(false);
-      setWorkspaceError("Откройте Booster Recruiter как приложение.");
+      setWorkspaceError(t("Откройте Booster Recruiter как приложение."));
       return;
     }
     const seq = ++refreshSeq.current;
@@ -275,7 +285,7 @@ function App() {
       await act(
         "workspace.recheck",
         { id },
-        "Проверка запущена. Активный план продолжает работу; план на паузе не возобновляется.",
+        t("Проверка запущена. Активный план продолжает работу; план на паузе не возобновляется."),
       );
     } finally {
       setCheckingItem(null);
@@ -327,7 +337,7 @@ function App() {
       : act(
           "account.open_profile",
           { id: campaign.account_id, url },
-          "Профиль открыт в сессии отправителя.",
+          t("Профиль открыт в сессии отправителя."),
         );
   const goTo = (target) => {
     setPage(target);
@@ -351,7 +361,7 @@ function App() {
     const notificationRevision = noticeScope.current.revision;
     try {
       if (await api.export(cid, format))
-        notify("Список сохранён.", notificationRevision);
+        notify(t("Список сохранён."), notificationRevision);
     } catch (e) {
       if (notificationRevision === noticeScope.current.revision)
         setError(e.message);
@@ -410,8 +420,8 @@ function App() {
       } else
         notify(
           !changed && approvedPlan
-            ? "Текущий план сохранён без изменений."
-            : "Настройки и тексты сохранены. Кампания не запущена.",
+            ? t("Текущий план сохранён без изменений.")
+            : t("Настройки и тексты сохранены. Кампания не запущена."),
           notificationRevision,
         );
       await refresh();
@@ -437,14 +447,14 @@ function App() {
         <aside className="sidebar">
           <img className="brand" src="/brand/logo.svg" alt="Business Booster" />
           <div className="product">
-            Подбор <span>персонала</span>
+            {t("Подбор")} <span>{t("персонала")}</span>
           </div>
           <nav>
             {[
-              [LayoutGrid, "campaigns", "Кампании"],
-              [Inbox, "attention", "Требует внимания"],
-              [Users, "accounts", "Аккаунты"],
-              [Settings, "settings", "Настройки"],
+              [LayoutGrid, "campaigns", t("Кампании")],
+              [Inbox, "attention", t("Требует внимания")],
+              [Users, "accounts", t("Аккаунты")],
+              [Settings, "settings", t("Настройки")],
             ].map(([Icon, id, text]) => (
               <button
                 key={id}
@@ -471,28 +481,28 @@ function App() {
           <div className="sidebar-bottom">
             <ShieldCheck size={19} />
             <div>
-              <b>Ваше рабочее пространство</b>
-              <small>Данные сохраняются на компьютере</small>
+              <b>{t("Ваше рабочее пространство")}</b>
+              <small>{t("Данные сохраняются на компьютере")}</small>
             </div>
           </div>
         </aside>
         <main>
           <div className="topbar">
             <span>
-              Подбор персонала <ChevronRight size={14} />{" "}
+              {t("Подбор персонала")} <ChevronRight size={14} />{" "}
               {page === "campaigns"
-                ? "Кампании"
+                ? t("Кампании")
                 : page === "attention"
-                  ? "Требует внимания"
+                  ? t("Требует внимания")
                   : page === "accounts"
-                    ? "Аккаунты"
-                    : "Настройки"}{" "}
+                    ? t("Аккаунты")
+                    : t("Настройки")}{" "}
               {cid && (
                 <>
                   <ChevronRight size={14} />
                   {campaign?.name ||
                     state.campaigns.find((c) => c.id === cid)?.name ||
-                    "Кампания"}
+                    t("Кампания")}
                 </>
               )}
             </span>
@@ -500,8 +510,8 @@ function App() {
           {error && !modal && !person && !preview && !confirmation && (
             <div className="alert error app-alert" role="alert" tabIndex={-1}>
               <AlertCircle size={18} />
-              <span>{error}</span>
-              <button onClick={() => setError("")} aria-label="Скрыть ошибку">
+              <span>{tr(error)}</span>
+              <button onClick={() => setError("")} aria-label={t("Скрыть ошибку")}>
                 <X size={16} />
               </button>
             </div>
@@ -509,10 +519,10 @@ function App() {
           {notice && notice.revision === noticeScope.current.revision && (
             <div className="alert success" role="status">
               <CheckCircle2 size={18} />
-              <span>{notice.text}</span>
+              <span>{tr(notice.text)}</span>
               <button
                 onClick={() => setNotice("")}
-                aria-label="Скрыть уведомление"
+                aria-label={t("Скрыть уведомление")}
               >
                 <X size={16} />
               </button>
@@ -523,11 +533,10 @@ function App() {
               <div className="alert warning refresh-warning" role="status">
                 <AlertCircle size={18} />
                 <span>
-                  Не удалось обновить данные. Показана последняя загруженная
-                  версия.
+                  {t("Не удалось обновить данные. Показана последняя загруженная версия.")}
                 </span>
                 <Button onClick={retryLoad} disabled={retrying}>
-                  {retrying ? "Обновляем…" : "Обновить данные"}
+                  {retrying ? t("Обновляем…") : t("Обновить данные")}
                 </Button>
               </div>
             )}
@@ -535,12 +544,12 @@ function App() {
             {loading ? (
               <div className="empty">
                 <LoaderCircle className="spin" />
-                <h2>Открываем рабочее пространство…</h2>
+                <h2>{t("Открываем рабочее пространство…")}</h2>
               </div>
             ) : !workspaceLoaded ? (
               <LoadFailure
-                title="Не удалось открыть рабочее пространство"
-                text="Не удалось загрузить аккаунты и кампании. Повторите попытку."
+                title={t("Не удалось открыть рабочее пространство")}
+                text={t("Не удалось загрузить аккаунты и кампании. Повторите попытку.")}
                 detail={workspaceError}
                 onRetry={retryLoad}
                 retrying={retrying}
@@ -549,10 +558,9 @@ function App() {
               <>
                 <div className="page-heading">
                   <div>
-                    <h1>Требует внимания</h1>
+                    <h1>{t("Требует внимания")}</h1>
                     <p>
-                      Ответы и следующие действия по всем кампаниям. Исправляйте
-                      отдельные профили, сохраняя общий план.
+                      {t("Ответы и следующие действия по всем кампаниям. Исправляйте отдельные профили, сохраняя общий план.")}
                     </p>
                   </div>
                 </div>
@@ -576,7 +584,7 @@ function App() {
                     act(
                       "account.open_profile",
                       { id: item.account_id, url: item.url },
-                      "Профиль кандидата открыт в браузере отправителя. Нажмите «Сообщение», чтобы ответить.",
+                      t("Профиль кандидата открыт в браузере отправителя. Нажмите «Сообщение», чтобы ответить."),
                     )
                   }
                   onOpen={(item) => {
@@ -633,8 +641,8 @@ function App() {
               />
             ) : !detail && detailError ? (
               <LoadFailure
-                title="Не удалось открыть кампанию"
-                text="Данные кампании не загрузились. Повторите попытку или вернитесь к списку."
+                title={t("Не удалось открыть кампанию")}
+                text={t("Данные кампании не загрузились. Повторите попытку или вернитесь к списку.")}
                 detail={detailError}
                 onRetry={retryLoad}
                 retrying={retrying}
@@ -643,7 +651,7 @@ function App() {
             ) : !detail ? (
               <div className="empty">
                 <LoaderCircle className="spin" />
-                <h2>Открываем кампанию…</h2>
+                <h2>{t("Открываем кампанию…")}</h2>
               </div>
             ) : (
               <CampaignPage

@@ -20,6 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { labels } from "../labels";
+import { t, tr } from "../i18n";
 import { Automation } from "../outreach/Automation";
 import { OutreachHistory } from "../outreach/OutreachHistory";
 import { ContactState, DetailMessage } from "../outreach/parts";
@@ -77,7 +78,7 @@ export default function CampaignPage({ ctx }) {
     <>
       <button className="text-button muted" onClick={() => setCid(null)}>
         <ArrowLeft size={16} />
-        Все кампании
+        {t("Все кампании")}
       </button>
       <div className="page-heading detail">
         <div>
@@ -87,7 +88,7 @@ export default function CampaignPage({ ctx }) {
             {account?.label && (
               <span className="muted-inline">
                 {" "}
-                · отправитель: {account.label}
+                · {t("отправитель:")} {account.label}
               </span>
             )}
           </p>
@@ -102,12 +103,12 @@ export default function CampaignPage({ ctx }) {
                     act(
                       "campaign.restore",
                       { id: cid },
-                      "Кампания возвращена из архива.",
+                      t("Кампания возвращена из архива."),
                     )
                   }
                 >
                   <RotateCcw size={17} />
-                  Вернуть из архива
+                  {t("Вернуть из архива")}
                 </Button>
               )}
               <Button
@@ -118,7 +119,7 @@ export default function CampaignPage({ ctx }) {
                 }}
               >
                 <Trash2 size={17} />
-                Удалить
+                {t("Удалить")}
               </Button>
             </>
           ) : (
@@ -135,16 +136,16 @@ export default function CampaignPage({ ctx }) {
               }}
             >
               <Pencil size={17} />
-              Изменить
+              {t("Изменить")}
             </Button>
           )}
           <Button
             disabled={archived || active || busy}
             title={
               active
-                ? "Шаблон можно сохранить, когда кампания на паузе."
+                ? t("Шаблон можно сохранить, когда кампания на паузе.")
                 : archived
-                  ? "Кампания в архиве."
+                  ? t("Кампания в архиве.")
                   : undefined
             }
             onClick={() => {
@@ -152,13 +153,13 @@ export default function CampaignPage({ ctx }) {
               setModal("save-template");
             }}
           >
-            Сохранить шаблон
+            {t("Сохранить шаблон")}
           </Button>
           <Button
             disabled={active || busy}
             title={
               active
-                ? "Выгрузка доступна, когда кампания на паузе или завершена."
+                ? t("Выгрузка доступна, когда кампания на паузе или завершена.")
                 : undefined
             }
             onClick={() => doExport("xlsx")}
@@ -167,27 +168,31 @@ export default function CampaignPage({ ctx }) {
             Excel
           </Button>
           {archived ? (
-            <span className="search-complete">В архиве · только история</span>
+            <span className="search-complete">
+              {t("В архиве · только история")}
+            </span>
           ) : active || liveRun ? (
             <Button
               onClick={() =>
                 act(
                   "campaign.pause",
                   { id: cid },
-                  "Пауза запрошена. Завершаем текущую операцию.",
+                  t("Пауза запрошена. Завершаем текущую операцию."),
                 )
               }
             >
               <Pause size={17} />
-              Пауза
+              {t("Пауза")}
             </Button>
           ) : detail.candidates.length >= campaign.max_profiles ? (
             <span
               className="search-complete"
-              title="Чтобы найти больше людей, нажмите «Изменить» и увеличьте число профилей."
+              title={t(
+                "Чтобы найти больше людей, нажмите «Изменить» и увеличьте число профилей.",
+              )}
             >
               <CheckCircle2 size={17} />
-              Поиск завершён
+              {t("Поиск завершён")}
             </span>
           ) : (
             <Button
@@ -197,8 +202,8 @@ export default function CampaignPage({ ctx }) {
             >
               <Search size={17} />
               {detail.candidates.length
-                ? "Продолжить поиск"
-                : "Найти кандидатов"}
+                ? t("Продолжить поиск")
+                : t("Найти кандидатов")}
             </Button>
           )}
         </div>
@@ -206,17 +211,32 @@ export default function CampaignPage({ ctx }) {
       {archived && (
         <div className="hint">
           {account?.status === "deleted"
-            ? "Аккаунт удалён. История и экспорт сохранены; новые отправки из этой кампании недоступны."
-            : "Кампания в архиве. История и экспорт сохранены. Чтобы продолжить работу, верните её из архива."}
+            ? t(
+                "Аккаунт удалён. История и экспорт сохранены; новые отправки из этой кампании недоступны.",
+              )
+            : t(
+                "Кампания в архиве. История и экспорт сохранены. Чтобы продолжить работу, верните её из архива.",
+              )}
         </div>
       )}
       {!archived && account?.status !== "ready" && (
         <div className="hint warning">
           {account?.status === "new"
-            ? `Подключите аккаунт ${account.label}, чтобы искать кандидатов и запускать кампанию.`
-            : `Аккаунт ${account?.label || "отправителя"} не готов: ${labels[account?.status]?.toLowerCase() || "проверьте вход"}. Поиск и отправка продолжатся после входа.`}{" "}
+            ? t(
+                "Подключите аккаунт {label}, чтобы искать кандидатов и запускать кампанию.",
+                { label: account.label },
+              )
+            : t(
+                "Аккаунт {label} не готов: {status}. Поиск и отправка продолжатся после входа.",
+                {
+                  label: account?.label || t("отправителя"),
+                  status:
+                    labels[account?.status]?.toLowerCase() ||
+                    t("проверьте вход"),
+                },
+              )}{" "}
           <button className="text-link" onClick={() => goTo("accounts")}>
-            Открыть аккаунты
+            {t("Открыть аккаунты")}
           </button>
         </div>
       )}
@@ -229,8 +249,10 @@ export default function CampaignPage({ ctx }) {
               <CheckCircle2 size={20} />
             )}
             <p>
-              {campaign.progress ||
-                "Кампания готова. Нажмите «Найти кандидатов», чтобы начать сбор."}
+              {tr(campaign.progress) ||
+                t(
+                  "Кампания готова. Нажмите «Найти кандидатов», чтобы начать сбор.",
+                )}
             </p>
           </div>
           <Badge value={campaign.status} />
@@ -238,26 +260,28 @@ export default function CampaignPage({ ctx }) {
       )}
       {tab === "people" && (
         <div className="stats compact">
-          <Stat label="Найдено профилей" value={detail.candidates.length} />
+          <Stat label={t("Найдено профилей")} value={detail.candidates.length} />
           <Stat
             label="Open to Work"
             value={detail.candidates.filter((p) => p.segment === "open").length}
           />
           <Stat
-            label="Обычный текст"
+            label={t("Обычный текст")}
             value={
               detail.candidates.filter((p) => p.segment === "neutral").length
             }
           />
-          {unassigned > 0 && <Stat label="Без группы" value={unassigned} />}
-          <Stat label="Выбрано для сообщения" value={selected.length} />
+          {unassigned > 0 && (
+            <Stat label={t("Без группы")} value={unassigned} />
+          )}
+          <Stat label={t("Выбрано для сообщения")} value={selected.length} />
         </div>
       )}
       <div className="tabs">
         {[
-          ["people", "Кандидаты", Users],
-          ["automation", "Отправка", Settings],
-          ["history", "История", Inbox],
+          ["people", t("Кандидаты"), Users],
+          ["automation", t("Отправка"), Settings],
+          ["history", t("История"), Inbox],
         ]
           .filter(([id]) => !archived || id === "history")
           .map(([id, name, Icon]) => (
@@ -298,15 +322,16 @@ export default function CampaignPage({ ctx }) {
         <div className="panel">
           <div className="panel-title">
             <div>
-              <h2>История контактов</h2>
+              <h2>{t("История контактов")}</h2>
               <p>
-                Приглашения, сообщения и ответы. Статус «Отправлено»
-                подтверждает отправку в LinkedIn, но не прочтение.
+                {t(
+                  "Приглашения, сообщения и ответы. Статус «Отправлено» подтверждает отправку в LinkedIn, но не прочтение.",
+                )}
               </p>
             </div>
             <Button onClick={() => doExport("csv")}>
               <Download size={16} />
-              Список в CSV
+              {t("Список в CSV")}
             </Button>
           </div>
           <OutreachHistory
@@ -331,9 +356,11 @@ export default function CampaignPage({ ctx }) {
             disabled={archived || active || busy}
             title={
               active
-                ? "Пока кампания работает, список кандидатов не меняется. Поставьте её на паузу."
+                ? t(
+                    "Пока кампания работает, список кандидатов не меняется. Поставьте её на паузу.",
+                  )
                 : archived
-                  ? "Кампания в архиве."
+                  ? t("Кампания в архиве.")
                   : undefined
             }
             onResolve={(id, confirmed) =>
@@ -353,15 +380,17 @@ export default function CampaignPage({ ctx }) {
           {hasMessageHistory && (
             <>
               {hasOutreachHistory && (
-                <h3 className="history-message-title">Другие сообщения</h3>
+                <h3 className="history-message-title">
+                  {t("Другие сообщения")}
+                </h3>
               )}
               <div className="table-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th>Получатель</th>
-                      <th>Результат</th>
-                      <th>Подробности</th>
+                      <th>{t("Получатель")}</th>
+                      <th>{t("Результат")}</th>
+                      <th>{t("Подробности")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -398,7 +427,7 @@ export default function CampaignPage({ ctx }) {
                             />
                             <small>{fmt(p.delivery[0].updated)}</small>
                             <details>
-                              <summary>Текст сообщения</summary>
+                              <summary>{t("Текст сообщения")}</summary>
                               <p className="message-text">
                                 {p.delivery[0].message}
                               </p>
@@ -406,8 +435,9 @@ export default function CampaignPage({ ctx }) {
                             {p.delivery[0].status === "unknown" && (
                               <div className="resolution">
                                 <p>
-                                  Откройте диалог и проверьте, появилось ли это
-                                  сообщение.
+                                  {t(
+                                    "Откройте диалог и проверьте, появилось ли это сообщение.",
+                                  )}
                                 </p>
                                 <Button
                                   disabled={archived || active || busy}
@@ -417,7 +447,7 @@ export default function CampaignPage({ ctx }) {
                                     )
                                   }
                                 >
-                                  Уточнить статус
+                                  {t("Уточнить статус")}
                                 </Button>
                                 <Button
                                   onClick={() =>
@@ -428,7 +458,7 @@ export default function CampaignPage({ ctx }) {
                                       : openInSenderAccount(p.url)
                                   }
                                 >
-                                  Открыть LinkedIn
+                                  {t("Открыть LinkedIn")}
                                 </Button>
                                 <Button
                                   disabled={archived || active || busy}
@@ -439,7 +469,7 @@ export default function CampaignPage({ ctx }) {
                                     })
                                   }
                                 >
-                                  Сообщение есть
+                                  {t("Сообщение есть")}
                                 </Button>
                                 <Button
                                   disabled={archived || active || busy}
@@ -450,7 +480,7 @@ export default function CampaignPage({ ctx }) {
                                     })
                                   }
                                 >
-                                  Сообщения нет
+                                  {t("Сообщения нет")}
                                 </Button>
                               </div>
                             )}
@@ -465,13 +495,14 @@ export default function CampaignPage({ ctx }) {
           {!hasMessageHistory && !hasOutreachHistory && (
             <div className="empty compact">
               <Inbox />
-              <h3>Обращений пока нет</h3>
+              <h3>{t("Обращений пока нет")}</h3>
               <p>
-                После запуска здесь появятся приглашения, сообщения и результаты
-                по каждому кандидату.
+                {t(
+                  "После запуска здесь появятся приглашения, сообщения и результаты по каждому кандидату.",
+                )}
               </p>
               <Button onClick={() => setTab("automation")}>
-                Настроить автоматизацию
+                {t("Настроить автоматизацию")}
               </Button>
             </div>
           )}
@@ -484,19 +515,19 @@ export default function CampaignPage({ ctx }) {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Найти в списке"
-                aria-label="Найти кандидата"
+                placeholder={t("Найти в списке")}
+                aria-label={t("Найти кандидата")}
               />
             </label>
             <select
-              aria-label="Группа кандидатов"
+              aria-label={t("Группа кандидатов")}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             >
-              <option value="all">Все группы</option>
+              <option value="all">{t("Все группы")}</option>
               <option value="open">Open to Work</option>
-              <option value="neutral">Обычный текст</option>
-              <option value="review">Без группы</option>
+              <option value="neutral">{t("Обычный текст")}</option>
+              <option value="review">{t("Без группы")}</option>
             </select>
             <div className="spacer" />
             <Button
@@ -505,14 +536,17 @@ export default function CampaignPage({ ctx }) {
               onClick={() => setTab("automation")}
             >
               <MessageSquare size={17} />
-              Настроить отправку {selected.length > 0 && `(${selected.length})`}
+              {t("Настроить отправку")}{" "}
+              {selected.length > 0 && `(${selected.length})`}
             </Button>
           </div>
           {people.length > 0 && (
             <div className="selection-toolbar">
               <span>
-                Показано: {people.length} · Доступно для выбора:{" "}
-                {people.filter(eligible).length}
+                {t("Показано: {shown} · Доступно для выбора: {available}", {
+                  shown: people.length,
+                  available: people.filter(eligible).length,
+                })}
               </span>
               <div>
                 <button
@@ -524,7 +558,7 @@ export default function CampaignPage({ ctx }) {
                   }
                   onClick={() => selectVisible(true)}
                 >
-                  Выбрать доступных
+                  {t("Выбрать доступных")}
                 </button>
                 <button
                   className="text-link"
@@ -535,7 +569,7 @@ export default function CampaignPage({ ctx }) {
                   }
                   onClick={() => selectVisible(false)}
                 >
-                  Снять выбор
+                  {t("Снять выбор")}
                 </button>
               </div>
             </div>
@@ -545,10 +579,10 @@ export default function CampaignPage({ ctx }) {
               <table className="people">
                 <thead>
                   <tr>
-                    <th>Выбор</th>
-                    <th>Кандидат</th>
-                    <th>Группа сообщения</th>
-                    <th>Состояние</th>
+                    <th>{t("Выбор")}</th>
+                    <th>{t("Кандидат")}</th>
+                    <th>{t("Группа сообщения")}</th>
+                    <th>{t("Состояние")}</th>
                     <th />
                   </tr>
                 </thead>
@@ -561,10 +595,11 @@ export default function CampaignPage({ ctx }) {
                       <td>
                         <input
                           type="checkbox"
-                          aria-label={"Выбрать " + (p.data.name || p.url)}
+                          aria-label={t("Выбрать {name}", { name: p.data.name || p.url })}
                           checked={!!p.selected && eligible(p)}
                           title={
-                            p.outreach_exclusion || "Выбрать для этой кампании"
+                            tr(p.outreach_exclusion) ||
+                            t("Выбрать для этой кампании")
                           }
                           aria-describedby={
                             !eligible(p) ? `eligibility-${p.id}` : undefined
@@ -583,7 +618,7 @@ export default function CampaignPage({ ctx }) {
                           {p.data.photo ? (
                             <img
                               src={"data:image/png;base64," + p.data.photo}
-                              alt="Аватар кандидата"
+                              alt={t("Аватар кандидата")}
                             />
                           ) : (
                             <div className="avatar small">
@@ -591,10 +626,10 @@ export default function CampaignPage({ ctx }) {
                             </div>
                           )}
                           <span>
-                            <b>{p.data.name || "Имя не определено"}</b>
+                            <b>{p.data.name || t("Имя не определено")}</b>
                             <small>
                               {p.data.headline ||
-                                "Откройте профиль для проверки данных"}
+                                t("Откройте профиль для проверки данных")}
                             </small>
                           </span>
                         </button>
@@ -603,7 +638,7 @@ export default function CampaignPage({ ctx }) {
                         <select
                           value={p.segment}
                           disabled={archived || active || busy}
-                          aria-label={"Группа " + (p.data.name || p.url)}
+                          aria-label={t("Группа {name}", { name: p.data.name || p.url })}
                           onChange={(e) =>
                             review(
                               p,
@@ -612,20 +647,20 @@ export default function CampaignPage({ ctx }) {
                             )
                           }
                         >
-                          <option value="review">Без группы</option>
+                          <option value="review">{t("Без группы")}</option>
                           <option value="open">Open to Work</option>
-                          <option value="neutral">Обычный текст</option>
+                          <option value="neutral">{t("Обычный текст")}</option>
                         </select>
                       </td>
                       <td>
                         {!eligible(p) && (
                           <span className="sr-only" id={`eligibility-${p.id}`}>
-                            {p.outreach_exclusion}
+                            {tr(p.outreach_exclusion)}
                           </span>
                         )}
                         {p.blocked ? (
                           <span className="badge blocked">
-                            Не контактировать
+                            {t("Не контактировать")}
                           </span>
                         ) : contactMembers.has(p.id) || p.data.contact ? (
                           <ContactState
@@ -638,19 +673,19 @@ export default function CampaignPage({ ctx }) {
                         ) : (
                           <span className="muted">
                             {p.data.photo_frame?.status === "hiring"
-                              ? "Рамка Hiring"
+                              ? t("Рамка Hiring")
                               : p.segment === "review"
-                                ? "Выберите группу"
+                                ? t("Выберите группу")
                                 : eligible(p)
-                                  ? "Готов к выбору"
-                                  : p.outreach_exclusion}
+                                  ? t("Готов к выбору")
+                                  : tr(p.outreach_exclusion)}
                           </span>
                         )}
                       </td>
                       <td>
                         <button
                           className="icon"
-                          aria-label="Открыть в LinkedIn"
+                          aria-label={t("Открыть в LinkedIn")}
                           onClick={() => openInSenderAccount(p.url)}
                         >
                           <ExternalLink size={17} />
@@ -666,14 +701,15 @@ export default function CampaignPage({ ctx }) {
               <Search />
               <h3>
                 {detail.candidates.length
-                  ? "Нет совпадений"
-                  : "Профили появятся после поиска"}
+                  ? t("Нет совпадений")
+                  : t("Профили появятся после поиска")}
               </h3>
               {detail.candidates.length ? (
                 <>
                   <p>
-                    Поиск и фильтр скрыли профили. Измените запрос или сбросьте
-                    фильтры.
+                    {t(
+                      "Поиск и фильтр скрыли профили. Измените запрос или сбросьте фильтры.",
+                    )}
                   </p>
                   <Button
                     onClick={() => {
@@ -681,23 +717,27 @@ export default function CampaignPage({ ctx }) {
                       setFilter("all");
                     }}
                   >
-                    Сбросить фильтры
+                    {t("Сбросить фильтры")}
                   </Button>
                 </>
               ) : (
                 <p>
-                  Нажмите «Найти кандидатов», чтобы собрать профили по вашему
-                  запросу.
+                  {t(
+                    "Нажмите «Найти кандидатов», чтобы собрать профили по вашему запросу.",
+                  )}
                 </p>
               )}
             </div>
           )}
           <div className="table-footer">
             <span>
-              Показано: {people.length} {profileWord(people.length)} · Всего
-              выбрано: {selected.length}
+              {t("Показано: {count} {word} · Всего выбрано: {selected}", {
+                count: people.length,
+                word: profileWord(people.length),
+                selected: selected.length,
+              })}
             </span>
-            <span>Изменение группы сохраняется автоматически</span>
+            <span>{t("Изменение группы сохраняется автоматически")}</span>
           </div>
         </div>
       )}

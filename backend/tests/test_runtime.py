@@ -82,12 +82,66 @@ async def test_collection_resumes_past_an_already_saved_first_page(tmp_path):
                 }
                 return {"profiles": pages[p["page"]]}
             if action == "profile":
-                return {"url": p["url"], "name": "Second Person"}
+                return {
+                    "url": p["url"],
+                    "name": "Second Person",
+                    "headline": "CDL Recruiter",
+                }
             return await super().call(action, p)
 
     runtime = Runtime(store, SearchWorker)
     await runtime.collect(c["id"])
     assert len(store.detail(c["id"])["candidates"]) == 2
+    store.db.close()
+
+
+async def test_collection_skips_profiles_that_do_not_match_the_query(tmp_path):
+    store = Store(tmp_path)
+    a, c, _ = prepared(store)
+    opened = []
+
+    class SearchWorker(FakeWorker):
+        async def call(self, action, p=None):
+            if action == "search":
+                pages = {
+                    1: [
+                        {"url": "alice-example"},
+                        {"url": "off-topic"},
+                        {"url": "hidden-match"},
+                    ],
+                    2: [],
+                }
+                return {"profiles": pages[p["page"]]}
+            if action == "profile":
+                opened.append(p["url"])
+                return {
+                    "url": p["url"],
+                    "name": p["url"],
+                    "headline": "Love Always Wins",
+                    "sections": {
+                        "main_profile": "Love Always Wins\nExplore Premium profiles\nCDL Recruiter"
+                    },
+                }
+            if action == "profile_details":
+                if p["url"].endswith("hidden-match"):
+                    return {"sections": {"experience": "Senior CDL Recruiting lead"}}
+                return {"sections": {"experience": "Florist"}}
+            return await super().call(action, p)
+
+    runtime = Runtime(store, SearchWorker)
+    await runtime.collect(c["id"])
+    urls = {x["url"] for x in store.detail(c["id"])["candidates"]}
+    assert urls == {
+        "https://www.linkedin.com/in/alice-example",
+        "https://www.linkedin.com/in/hidden-match",
+    }
+    progress = store.campaign(c["id"])["progress"]
+    assert "Пропущено несоответствующих запросу: 1" in progress
+    assert "LinkedIn больше не находит" in progress
+    # A rejected profile is not opened again when the limit is raised.
+    opened.clear()
+    await runtime.collect(c["id"])
+    assert opened == []
     store.db.close()
 
 

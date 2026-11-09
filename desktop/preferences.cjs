@@ -17,6 +17,10 @@ function createPreferencesStore({
     committed = {
       background: saved.background !== false,
       autoStart: saved.autoStart === true,
+      // Interface language is stored only once chosen; English is the default.
+      ...(saved.language === "en" || saved.language === "ru"
+        ? { language: saved.language }
+        : {}),
     };
   } catch {}
   let queue = Promise.resolve();
@@ -124,6 +128,9 @@ function createPreferencesStore({
     get background() {
       return committed.background;
     },
+    get language() {
+      return committed.language === "ru" ? "ru" : "en";
+    },
     get isSaving() {
       return pendingWrites.size > 0;
     },
@@ -140,10 +147,11 @@ function createPreferencesStore({
           !patch ||
           typeof patch !== "object" ||
           Array.isArray(patch) ||
-          Object.keys(patch).some(
-            (key) =>
-              !["background", "autoStart"].includes(key) ||
-              typeof patch[key] !== "boolean",
+          Object.keys(patch).some((key) =>
+            key === "language"
+              ? !["en", "ru"].includes(patch[key])
+              : !["background", "autoStart"].includes(key) ||
+                typeof patch[key] !== "boolean",
           )
         )
           throw Error("Неизвестная настройка приложения.");

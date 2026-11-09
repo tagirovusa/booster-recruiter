@@ -19,6 +19,8 @@ const readline = require("node:readline");
 const { createPreferencesStore } = require("./preferences.cjs");
 const { createPauseAllHandler } = require("./tray_pause.cjs");
 const { createCloseHandler } = require("./window_lifecycle.cjs");
+const i18n = require("./i18n.cjs");
+const { t } = i18n;
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "booster",
@@ -30,7 +32,7 @@ let win,
   connection,
   tray,
   exiting = false;
-let desktopPreferences, attentionNotifications, notificationTimer;
+let desktopPreferences, attentionNotifications, notificationTimer, trayMenu;
 const {
   createAttentionNotifications,
 } = require("./attention_notifications.cjs");
@@ -40,55 +42,55 @@ function createApplicationMenu() {
     items.push({
       label: "Booster Recruiter",
       submenu: [
-        { role: "about", label: "О Booster Recruiter" },
+        { role: "about", label: t("О Booster Recruiter") },
         { type: "separator" },
-        { role: "services", label: "Службы" },
+        { role: "services", label: t("Службы") },
         { type: "separator" },
-        { role: "hide", label: "Скрыть Booster Recruiter" },
-        { role: "hideOthers", label: "Скрыть остальные" },
-        { role: "unhide", label: "Показать все" },
+        { role: "hide", label: t("Скрыть Booster Recruiter") },
+        { role: "hideOthers", label: t("Скрыть остальные") },
+        { role: "unhide", label: t("Показать все") },
         { type: "separator" },
-        { role: "quit", label: "Завершить Booster Recruiter" },
+        { role: "quit", label: t("Завершить Booster Recruiter") },
       ],
     });
   else
     items.push({
       label: "Booster Recruiter",
       submenu: [
-        { role: "about", label: "О Booster Recruiter" },
+        { role: "about", label: t("О Booster Recruiter") },
         { type: "separator" },
-        { role: "quit", label: "Выход" },
+        { role: "quit", label: t("Выход") },
       ],
     });
   items.push(
     {
-      label: "Правка",
+      label: t("Правка"),
       submenu: [
-        { role: "undo", label: "Отменить" },
-        { role: "redo", label: "Повторить" },
+        { role: "undo", label: t("Отменить") },
+        { role: "redo", label: t("Повторить") },
         { type: "separator" },
-        { role: "cut", label: "Вырезать" },
-        { role: "copy", label: "Копировать" },
-        { role: "paste", label: "Вставить" },
-        { role: "selectAll", label: "Выделить всё" },
+        { role: "cut", label: t("Вырезать") },
+        { role: "copy", label: t("Копировать") },
+        { role: "paste", label: t("Вставить") },
+        { role: "selectAll", label: t("Выделить всё") },
       ],
     },
     {
-      label: "Окно",
+      label: t("Окно"),
       submenu: [
-        { role: "minimize", label: "Свернуть" },
-        { role: "zoom", label: "Изменить размер" },
-        { role: "togglefullscreen", label: "Полный экран" },
-        { role: "close", label: "Закрыть окно" },
+        { role: "minimize", label: t("Свернуть") },
+        { role: "zoom", label: t("Изменить размер") },
+        { role: "togglefullscreen", label: t("Полный экран") },
+        { role: "close", label: t("Закрыть окно") },
       ],
     },
   );
   if (!app.isPackaged)
     items.push({
-      label: "Разработка",
+      label: t("Разработка"),
       submenu: [
-        { role: "reload", label: "Перезагрузить" },
-        { role: "toggleDevTools", label: "Инструменты разработчика" },
+        { role: "reload", label: t("Перезагрузить") },
+        { role: "toggleDevTools", label: t("Инструменты разработчика") },
       ],
     });
   Menu.setApplicationMenu(Menu.buildFromTemplate(items));
@@ -111,12 +113,13 @@ function createTray() {
   tray.setToolTip("Booster Recruiter");
   const pauseAll = createPauseAllHandler({
     call,
+    t,
     report: async (result) => {
       if (exiting) return;
       showWindow();
       const options = {
         ...result,
-        buttons: ["Понятно"],
+        buttons: [t("Понятно")],
         defaultId: 0,
         noLink: true,
       };
@@ -124,17 +127,17 @@ function createTray() {
       else await dialog.showMessageBox(options);
     },
   });
-  tray.setContextMenu(
+  trayMenu = () =>
     Menu.buildFromTemplate([
-      { label: "Открыть Booster Recruiter", click: showWindow },
+      { label: t("Открыть Booster Recruiter"), click: showWindow },
       {
-        label: "Приостановить все кампании",
+        label: t("Приостановить все кампании"),
         click: pauseAll,
       },
       { type: "separator" },
-      { label: "Завершить работу", click: () => app.quit() },
-    ]),
-  );
+      { label: t("Завершить работу"), click: () => app.quit() },
+    ]);
+  tray.setContextMenu(trayMenu());
   tray.on("click", showWindow);
 }
 const operations = new Set([
@@ -249,11 +252,12 @@ async function start() {
   app.setName("Booster Recruiter");
   if (process.platform === "win32")
     app.setAppUserModelId("io.bbooster.recruiter");
-  createApplicationMenu();
   desktopPreferences = createPreferencesStore({
     app,
     filename: preferencesPath(),
   });
+  i18n.setLanguage(desktopPreferences.language);
+  createApplicationMenu();
   const { exe, args } = backend();
   const root = process.env.BOOSTER_DATA_DIR || app.getPath("userData");
   const env = { ...process.env };
@@ -366,14 +370,25 @@ async function start() {
         if (!running.length) return "close";
         const { response } = await dialog.showMessageBox(win, {
           type: "question",
-          title: "Кампании остановятся",
+          title: t("Кампании остановятся"),
           message:
             running.length === 1
-              ? `Кампания «${running[0].name}» работает. Если закрыть приложение, она остановится.`
-              : `Работают кампании: ${running.length}. Если закрыть приложение, они остановятся.`,
-          detail:
+              ? t(
+                  "Кампания «{name}» работает. Если закрыть приложение, она остановится.",
+                  { name: running[0].name },
+                )
+              : t(
+                  "Работают кампании: {count}. Если закрыть приложение, они остановятся.",
+                  { count: running.length },
+                ),
+          detail: t(
             "Можно оставить приложение работать в фоне — значок останется в строке меню, а окно откроется по щелчку.",
-          buttons: ["Работать в фоне", "Закрыть и остановить", "Отмена"],
+          ),
+          buttons: [
+            t("Работать в фоне"),
+            t("Закрыть и остановить"),
+            t("Отмена"),
+          ],
           defaultId: 0,
           cancelId: 2,
           noLink: true,
@@ -383,11 +398,15 @@ async function start() {
       reportFailure: async (error) => {
         await dialog.showMessageBox(win, {
           type: "error",
-          title: "Настройки не сохранены",
-          message:
+          title: t("Настройки не сохранены"),
+          message: t(
             "Не удалось подтвердить сохранение настроек. Окно оставлено открытым.",
-          detail: `Закрытие отменено, чтобы работа кампаний не прервалась. Проверьте настройки и попробуйте ещё раз.\n\nТехнические подробности: ${error.message}`,
-          buttons: ["Понятно"],
+          ),
+          detail: t(
+            "Закрытие отменено, чтобы работа кампаний не прервалась. Проверьте настройки и попробуйте ещё раз.\n\nТехнические подробности: {detail}",
+            { detail: error.message },
+          ),
+          buttons: [t("Понятно")],
           defaultId: 0,
           noLink: true,
         });
@@ -405,8 +424,8 @@ async function start() {
       const notification = new Notification({
         title: "Booster Recruiter",
         body: items.some((i) => i.kind === "reply")
-          ? "Есть новые ответы. Откройте рабочее пространство."
-          : "Кампаниям нужна ваша помощь. Откройте рабочее пространство.",
+          ? t("Есть новые ответы. Откройте рабочее пространство.")
+          : t("Кампаниям нужна ваша помощь. Откройте рабочее пространство."),
         silent: true,
       });
       notification.on("click", () => {
@@ -435,8 +454,10 @@ async function start() {
     connection = null;
     if (!exiting && win && !win.isDestroyed())
       dialog.showErrorBox(
-        "Сервис остановлен",
-        "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
+        t("Сервис остановлен"),
+        t(
+          "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
+        ),
       );
   });
 }
@@ -455,10 +476,33 @@ ipcMain.handle("desktop-settings", async (event, patch) => {
   trusted(event);
   return desktopPreferences.access(patch);
 });
+// The window reads the language synchronously while its preload runs, so the
+// first render is already in the chosen language. Never throws.
+ipcMain.on("desktop-language", (event) => {
+  try {
+    event.returnValue = desktopPreferences?.language || "en";
+  } catch {
+    event.returnValue = "en";
+  }
+});
+ipcMain.handle("set-language", async (event, language) => {
+  trusted(event);
+  if (!["en", "ru"].includes(language))
+    throw Error("Неизвестная настройка приложения.");
+  await desktopPreferences.access({ language });
+  i18n.setLanguage(language);
+  createApplicationMenu();
+  if (tray && trayMenu) tray.setContextMenu(trayMenu());
+  return language;
+});
 ipcMain.handle("export", async (event, cid, format) => {
   trusted(event);
   if (!["csv", "xlsx"].includes(format)) throw Error("Неверный формат.");
-  const result = await call("campaign.export", { id: cid, format });
+  const result = await call("campaign.export", {
+    id: cid,
+    format,
+    language: i18n.getLanguage(),
+  });
   const target = await dialog.showSaveDialog(win, {
     defaultPath: result.filename,
     filters: [{ name: format.toUpperCase(), extensions: [format] }],
@@ -515,7 +559,7 @@ if (!app.requestSingleInstanceLock()) {
     .then(start)
     .catch((error) => {
       dialog.showErrorBox(
-        "Не удалось открыть Booster Recruiter",
+        t("Не удалось открыть Booster Recruiter"),
         error.message,
       );
       app.quit();

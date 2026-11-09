@@ -6,9 +6,14 @@ const vm = require("node:vm");
 const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-// Pure outreach rules live in one module without imports.
+// Pure outreach rules: the only import is the i18n helper, stubbed here.
 const source = fs
   .readFileSync(path.join(root, "src/outreach/rules.js"), "utf8")
+  .replace(
+    /^import \{[^}]*\} from "\.\.\/i18n";$/m,
+    // Russian source text: t() only fills {placeholders}.
+    'var t = (s, v) => (v ? s.replace(/\\{(\\w+)\\}/g, (w, k) => (k in v ? String(v[k]) : w)) : s); var locale = () => "ru-RU";',
+  )
   .replace(/\bexport\s+(?=(?:function|const))/g, "");
 const start = 0;
 const end = source.length;
@@ -316,13 +321,27 @@ async function main() {
   );
   // Shared wording modules are plain constants and functions; inline them so
   // the sandbox sees the same labels the app imports.
-  const shared = ["src/labels.js", "src/text.js"]
-    .map((file) =>
-      fs
-        .readFileSync(path.join(root, file), "utf8")
-        .replace(/\bexport\s+(?=(?:function|const))/g, ""),
-    )
-    .join("\n");
+  // The i18n helpers are stubbed with the Russian (source-text) behavior.
+  const i18nStub = `
+    var t = (s, v) => (v ? s.replace(/\\{(\\w+)\\}/g, (w, k) => (k in v ? String(v[k]) : w)) : s);
+    var tr = (s) => s;
+    var locale = () => "ru-RU";
+    var formatDateTime = (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—");
+    var formatNumber = (v, o) => Number(v).toLocaleString("ru-RU", o);
+    var hourLabel = (h) => { const n = Number(h); if (n === 24) return "12:00 AM (полночь)"; const x = ((n % 24) + 24) % 24; return (x % 12 === 0 ? 12 : x % 12) + ":00 " + (x < 12 ? "AM" : "PM"); };
+    var plural = (count, [one, few, many]) => { const f = new Intl.PluralRules("ru").select(count); return f === "one" ? one : f === "few" ? few : f === "many" ? many : few; };
+  `;
+  const shared =
+    i18nStub +
+    ["src/labels.js"]
+      .map((file) =>
+        fs
+          .readFileSync(path.join(root, file), "utf8")
+          .replace(/^import[\s\S]*?from\s*["'][^"']+["'];?$/gm, "")
+          .replace(/^export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?$/gm, "")
+          .replace(/\bexport\s+(?=(?:function|const))/g, ""),
+      )
+      .join("\n");
   const componentCode =
     shared +
     "\n" +

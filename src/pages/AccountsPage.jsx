@@ -9,6 +9,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Badge, Button, Empty, initials } from "../ui";
+import { formatNumber, plural, t, tr } from "../i18n";
 
 const api = window.booster;
 
@@ -24,25 +25,24 @@ export default function AccountsPage({
     <>
       <div className="page-heading">
         <div>
-          <h1>LinkedIn-аккаунты</h1>
+          <h1>{t("LinkedIn-аккаунты")}</h1>
           <p>
-            Подключите аккаунт один раз. Для каждой кампании выбирайте нужного
-            отправителя.
+            {t("Подключите аккаунт один раз. Для каждой кампании выбирайте нужного отправителя.")}
           </p>
         </div>
         <Button kind="primary" onClick={() => onAdd()}>
           <Plus size={18} />
-          Добавить аккаунт
+          {t("Добавить аккаунт")}
         </Button>
       </div>
       {!accounts.length ? (
         <Empty
           icon={UserPlus}
-          title="Начните с подключения LinkedIn"
-          text="Войдите в своём обычном окне LinkedIn. Пароль и код подтверждения вводятся на стороне LinkedIn."
+          title={t("Начните с подключения LinkedIn")}
+          text={t("Войдите в своём обычном окне LinkedIn. Пароль и код подтверждения вводятся на стороне LinkedIn.")}
           action={
             <Button kind="primary" onClick={() => onAdd()}>
-              Подключить аккаунт <ArrowRight size={18} />
+              {t("Подключить аккаунт")} <ArrowRight size={18} />
             </Button>
           }
         />
@@ -63,14 +63,12 @@ export default function AccountsPage({
               <p>
                 {a.url
                   ? a.url.replace("https://www.linkedin.com/in/", "")
-                  : "Вход ещё не выполнен"}
+                  : t("Вход ещё не выполнен")}
               </p>
-              {a.error && <div className="hint warning">{a.error}</div>}
+              {a.error && <div className="hint warning">{tr(a.error)}</div>}
               {a.status === "restricted" && (
                 <div className="hint warning">
-                  LinkedIn ограничил действия аккаунта. Откройте LinkedIn,
-                  проверьте уведомления и выполните требования сервиса.
-                  Повторный вход сам по себе не снимает ограничение.
+                  {t("LinkedIn ограничил действия аккаунта. Откройте LinkedIn, проверьте уведомления и выполните требования сервиса. Повторный вход сам по себе не снимает ограничение.")}
                 </div>
               )}
               <div className="account-actions">
@@ -81,25 +79,25 @@ export default function AccountsPage({
                 >
                   <RefreshCw size={16} />
                   {a.status === "ready"
-                    ? "Проверить вход"
+                    ? t("Проверить вход")
                     : a.status === "connecting"
-                      ? "Завершите вход в браузере"
+                      ? t("Завершите вход в браузере")
                       : a.status === "new"
-                        ? "Войти в LinkedIn"
-                        : "Проверить вход"}
+                        ? t("Войти в LinkedIn")
+                        : t("Проверить вход")}
                 </Button>
                 {a.url && (
                   <button
                     className="icon"
-                    title="Открыть профиль в обычном браузере"
-                    aria-label={
-                      "Открыть профиль " + a.label + " в обычном браузере"
-                    }
+                    title={t("Открыть профиль в обычном браузере")}
+                    aria-label={t("Открыть профиль {name} в обычном браузере", {
+                      name: a.label,
+                    })}
                     onClick={async () => {
                       try {
                         await api.openProfile(a.url);
                       } catch (e) {
-                        onError(e.message);
+                        onError(tr(e.message));
                       }
                     }}
                   >
@@ -114,18 +112,21 @@ export default function AccountsPage({
                     <p>
                       {a.services.recruiter.contract}
                       <br />
-                      Общий баланс:{" "}
-                      {a.services.recruiter.credits.toLocaleString(
-                        "ru-RU",
-                      )}{" "}
-                      кредитов
+                      {t("Общий баланс: {credits} {word}", {
+                        credits: formatNumber(a.services.recruiter.credits),
+                        word: plural(
+                          a.services.recruiter.credits,
+                          ["кредит", "кредита", "кредитов"], // i18n-ignore
+                          ["credit", "credits"],
+                        ),
+                      })}
                     </p>
                   ) : (
-                    <p>Дополнительно, если у вас есть подписка Recruiter.</p>
+                    <p>{t("Дополнительно, если у вас есть подписка Recruiter.")}</p>
                   )}
                   {a.services?.recruiter?.error && (
                     <div className="hint warning">
-                      {a.services.recruiter.error}
+                      {tr(a.services.recruiter.error)}
                     </div>
                   )}
                   <Button
@@ -136,17 +137,16 @@ export default function AccountsPage({
                   >
                     <RefreshCw size={15} />
                     {a.services?.recruiter?.status === "connecting"
-                      ? "Проверяем Recruiter…"
+                      ? t("Проверяем Recruiter…")
                       : a.services?.recruiter?.status === "ready"
-                        ? "Обновить Recruiter"
-                        : "Подключить Recruiter"}
+                        ? t("Обновить Recruiter")
+                        : t("Подключить Recruiter")}
                   </Button>
                   {a.services?.recruiter?.status === "ready" &&
                     !a.services.recruiter.manual_texts && (
                       <>
                         <p>
-                          LinkedIn автоматически меняет черновики. Отключите
-                          это, чтобы отправлять ваши точные тексты.
+                          {t("LinkedIn автоматически меняет черновики. Отключите это, чтобы отправлять ваши точные тексты.")}
                         </p>
                         <Button
                           onClick={() =>
@@ -156,7 +156,7 @@ export default function AccountsPage({
                           }
                           disabled={busy}
                         >
-                          Использовать мои тексты
+                          {t("Использовать мои тексты")}
                         </Button>
                       </>
                     )}
@@ -169,7 +169,7 @@ export default function AccountsPage({
                     disabled={busy}
                     onClick={() => act("account.disconnect", { id: a.id })}
                   >
-                    Отключить сессию
+                    {t("Отключить сессию")}
                   </button>
                 )}
                 <div className="account-removal">
@@ -178,7 +178,7 @@ export default function AccountsPage({
                     disabled={busy}
                     onClick={() => onDelete(a.id)}
                   >
-                    Удалить аккаунт
+                    {t("Удалить аккаунт")}
                   </button>
                 </div>
               </div>
@@ -189,10 +189,9 @@ export default function AccountsPage({
       <div className="info-card">
         <ShieldCheck />
         <div>
-          <h3>Каждому аккаунту — отдельная сессия</h3>
+          <h3>{t("Каждому аккаунту — отдельная сессия")}</h3>
           <p>
-            Кампания всегда сохраняет своего отправителя. Переключение аккаунтов
-            не меняет уже подготовленные сообщения.
+            {t("Кампания всегда сохраняет своего отправителя. Переключение аккаунтов не меняет уже подготовленные сообщения.")}
           </p>
         </div>
       </div>

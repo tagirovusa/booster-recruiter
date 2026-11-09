@@ -239,3 +239,17 @@ def test_export_speaks_the_recruiters_language(store):
     assert row["Состояние контакта"] == "Не подтверждена"
     # Local "дд.мм.гггг чч:мм", never a raw UTC ISO timestamp.
     assert re.fullmatch(r"\d\d\.\d\d\.\d{4} \d\d:\d\d", row["Проверено"])
+
+
+def test_export_in_english_uses_english_headers_and_us_dates(store):
+    _, c, _ = prepared(store)
+    workbook = load_workbook(io.BytesIO(store.export(c["id"], "xlsx", "en")))
+    assert workbook.sheetnames == ["Candidates", "Outreach history"]
+    sheet = workbook.active
+    header = [cell.value for cell in sheet[1]]
+    assert header[:3] == ["Name", "Profile", "Headline"]
+    row = dict(zip(header, (cell.value for cell in sheet[2])))
+    assert row["Contact status"] == "Not confirmed"
+    assert re.fullmatch(r"\d\d/\d\d/\d{4} \d\d:\d\d (AM|PM)", row["Checked"])
+    csv = store.export(c["id"], "csv", "en").decode("utf-8-sig")
+    assert csv.startswith("Name,Profile,Headline")
