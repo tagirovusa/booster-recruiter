@@ -357,6 +357,27 @@ class Store:
                 (status, text, cid),
             )
 
+    def has_active_plan(self, cid):
+        return bool(
+            self.rows(
+                "SELECT 1 FROM outreach_runs WHERE campaign_id=? AND status='active'",
+                (cid,),
+            )
+        )
+
+    def settle(self, cid, status, text):
+        """End a side operation without hiding an approved plan.
+
+        Finding candidates, checking contacts or a Recruiter preview may run
+        while an approved plan waits for its schedule. The plan keeps sending,
+        so the campaign must keep saying it waits for the schedule rather than
+        "ready" or "paused". A user pause pauses the plan first, so it ends
+        here as "paused".
+        """
+        if self.has_active_plan(cid):
+            status = "waiting"
+        self.progress(cid, status, text)
+
     def add_candidate(self, cid, person):
         url = canonical(person["url"])
         status = (person.get("photo_frame") or {}).get("status", "unknown")
