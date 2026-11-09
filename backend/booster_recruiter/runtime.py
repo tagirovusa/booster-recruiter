@@ -250,11 +250,22 @@ class Runtime:
         # browser lock, even when this campaign was already paused.
         self.pause_generations[cid] = self.pause_generations.get(cid, 0) + 1
         self.pause_flags.add(cid)
+        had_plan = False
         for run in self.store.outreach.detail(cid)["runs"]:
             if run["status"] == "active":
+                had_plan = True
                 self.store.outreach.status(
                     run["id"], "paused", "Приостановлено пользователем."
                 )
+        campaign = self.store.campaign(cid)
+        if (
+            not had_plan
+            and not self._has_running_task(cid)
+            and campaign["status"] not in ACTIVE_STATUSES | {"waiting"}
+        ):
+            # Nothing runs here (for example "Pause all" from the tray over a
+            # draft or ready campaign): keep its status and text as they are.
+            return {"pause_requested": True, "paused": True}
         task = self.campaign_operations.get(cid) or self.jobs.get(cid)
         active = task in self.active_campaign_tasks
         if task and not task.done() and not active:
@@ -341,6 +352,13 @@ class Runtime:
         ):
             self.store.outreach.status(run["id"], "paused", detail)
         return detail
+
+    def _has_running_task(self, cid):
+        """Finished tasks stay in self.jobs; only unfinished ones count."""
+        return any(
+            task is not None and not task.done()
+            for task in (self.jobs.get(cid), self.campaign_operations.get(cid))
+        )
 
     def pause_for_challenge(self, aid, detail):
         for sender_id in self.store.outreach.sender_ids(aid):
