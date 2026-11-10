@@ -24,9 +24,15 @@ from .user_errors import record, user_text
 
 # Sending, deleting and restoring are confirmed by the recruiter in the
 # desktop window. An agent using the discoverable token (connection.json) can
-# prepare work but never approve it.
+# prepare work but never approve it. Resuming a plan starts real sends again,
+# and resolving an uncertain send removes the guard against messaging the
+# same person twice, so both are approvals too.
 DESKTOP_ONLY = {
     "outreach.approve",
+    "outreach.resume",
+    "outreach.check_now",
+    "outreach.resolve",
+    "delivery.resolve",
     "workspace.retry_invitation",
     "backup.restore",
     "account.delete",
