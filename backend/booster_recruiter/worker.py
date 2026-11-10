@@ -276,7 +276,10 @@ async def serve(profile: Path, *, visible=False):
                     # not confirm the campaign query.
                     raw, _ = await call(
                         "get_person_profile",
-                        {"linkedin_username": p["url"], "sections": "experience,skills"},
+                        {
+                            "linkedin_username": p["url"],
+                            "sections": "experience,skills",
+                        },
                     )
                     sections = dict(raw.get("sections") or {})
                     sections.pop("main_profile", None)
