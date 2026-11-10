@@ -533,6 +533,7 @@ class Runtime:
                 if rejected:
                     message += f" Пропущено несоответствующих запросу: {rejected}."
                 if not paused and count < limit and exhausted:
+                    self.store.mark_search_exhausted(cid, keywords)
                     message += (
                         f" LinkedIn больше не находит подходящих профилей по этому запросу "
                         f"(нужно было {limit}). Чтобы найти больше, упростите запрос: "

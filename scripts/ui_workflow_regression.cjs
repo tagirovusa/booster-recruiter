@@ -283,6 +283,25 @@ const { execFileSync } = require("node:child_process");
       "Russian form validation rejects empty, whitespace and fractional limits",
     );
 
+    await openCampaign("Поиск · больше не находит");
+    await expect(
+      page.getByText("Поиск завершён — LinkedIn больше ничего не находит", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Продолжить поиск", exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Изменить поиск", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    record(
+      "an exhausted LinkedIn search offers editing instead of another search",
+    );
+
     const demo = "Head of Recruitment · пример";
     await openCampaign(demo);
     await page.getByLabel("Группа Sam Taylor").selectOption("review");

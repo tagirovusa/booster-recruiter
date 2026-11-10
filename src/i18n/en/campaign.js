@@ -23,7 +23,7 @@ export const strings = {
   "Все группы": "All groups",
   "Все кампании": "All campaigns",
   "Выберите группу": "Choose a group",
-  "Выбор": "Select",
+  Выбор: "Select",
   "Выбрано для сообщения": "Selected to message",
   "Выбрать {name}": "Select {name}",
   "Выбрать для этой кампании": "Select for this campaign",
@@ -41,7 +41,7 @@ export const strings = {
   "Другие сообщения": "Other messages",
   "Если потребуется приглашение": "If an invitation is needed",
   "Заголовок не определён": "Headline not detected",
-  "Закрыть": "Close",
+  Закрыть: "Close",
   "Запрос касается только этого получателя. После подтверждения LinkedIn его статус обновится в той же кампании. Остальные получатели сохранят свой план.":
     "This request affects only this recipient. Once LinkedIn confirms, their status updates in the same campaign. Other recipients keep their plan.",
   "Запрос поиска": "Search query",
@@ -55,7 +55,7 @@ export const strings = {
   "Изменение списка, правил или текстов остановит проверки принятия приглашений и дальнейшую отправку по текущему плану. Уже выполненные действия сохранятся в истории.":
     "Changing the list, rules or texts stops invitation-acceptance checks and further sending under the current plan. Completed actions stay in the history.",
   "Изменения сохранены.": "Changes saved.",
-  "Изменить": "Edit",
+  Изменить: "Edit",
   "Изменить кампанию": "Edit campaign",
   "Изменить план": "Change plan",
   "Изменить утверждённую кампанию?": "Change the approved campaign?",
@@ -65,7 +65,7 @@ export const strings = {
   "Исключить во всех кампаниях": "Exclude from all campaigns",
   "Исключить этот профиль из будущих обращений во всех кампаниях и со всех аккаунтов? Уже отправленные сообщения и приглашения останутся в LinkedIn.":
     "Exclude this profile from future outreach in all campaigns and from all accounts? Messages and invitations already sent stay in LinkedIn.",
-  "История": "History",
+  История: "History",
   "История контактов": "Contact history",
   "Кампании перейдут в «Архив», их история сохранится, а обработка будет остановлена. Другие аккаунты, включая отдельные сессии того же профиля, останутся.":
     "Campaigns will move to the Archive with their history kept, and processing will stop. Other accounts, including separate sessions of the same profile, stay.",
@@ -80,14 +80,14 @@ export const strings = {
   "Кампания из шаблона": "Campaign from template",
   "Кампания перенесена в архив.": "Campaign moved to the archive.",
   "Кампания удалена.": "Campaign deleted.",
-  "Кандидат": "Candidate",
-  "Кандидаты": "Candidates",
+  Кандидат: "Candidate",
+  Кандидаты: "Candidates",
   "Контакт исключён": "Contact excluded",
   "Максимальный расход InMail:": "Maximum InMail spend:",
   "Нажмите «Найти кандидатов», чтобы собрать профили по вашему запросу.":
     "Click “Find candidates” to collect profiles for your query.",
-  "Назад": "Back",
-  "Название": "Name",
+  Назад: "Back",
+  Название: "Name",
   "Название шаблона": "Template name",
   "Найдено профилей": "Profiles found",
   "Найти в списке": "Search the list",
@@ -109,18 +109,19 @@ export const strings = {
   "Оставить текущий план": "Keep current plan",
   "Откройте диалог и проверьте, появилось ли это сообщение.":
     "Open the conversation and check whether this message appeared.",
-  "Откройте профиль для проверки данных": "Open the profile to check the details",
+  "Откройте профиль для проверки данных":
+    "Open the profile to check the details",
   "Открыть LinkedIn": "Open LinkedIn",
   "Открыть аккаунты": "Open accounts",
   "Открыть в LinkedIn": "Open in LinkedIn",
-  "Отмена": "Cancel",
-  "Отправитель": "Sender",
+  Отмена: "Cancel",
+  Отправитель: "Sender",
   "Отправитель:": "Sender:",
   "Отправить приглашение?": "Send the invitation?",
-  "Отправка": "Outreach",
+  Отправка: "Outreach",
   "Отсутствие подтверждения не означает, что человек не ищет работу.":
     "No confirmation does not mean the person is not looking for a job.",
-  "Пауза": "Pause",
+  Пауза: "Pause",
   "Пауза запрошена. Завершаем текущую операцию.":
     "Pause requested. Finishing the current operation.",
   "Перед запуском": "Before launch",
@@ -130,9 +131,14 @@ export const strings = {
     "Connect the account {label} to search for candidates and run the campaign.",
   "Подпись отправителя включена в текст ниже.":
     "The sender's signature is included in the text below.",
-  "Подробности": "Details",
+  Подробности: "Details",
   "Подтвердить приглашение": "Confirm invitation",
   "Поиск завершён": "Search complete",
+  "Поиск завершён — LinkedIn больше ничего не находит":
+    "Search complete — LinkedIn finds nothing more",
+  "Изменить поиск": "Edit search",
+  "Чтобы найти больше людей, упростите запрос в новой кампании или измените число профилей.":
+    "To find more people, simplify the query in a new campaign or change the number of profiles.",
   "Поиск и фильтр скрыли профили. Измените запрос или сбросьте фильтры.":
     "Your search and filter hide all profiles. Change the query or reset the filters.",
   "Пока кампания работает, можно изменить только название. Поставьте её на паузу, чтобы менять поиск или перенести в архив.":
@@ -143,7 +149,7 @@ export const strings = {
     "Showing: {count} {word} · Total selected: {selected}",
   "Показано: {shown} · Доступно для выбора: {available}":
     "Showing: {shown} · Available to select: {available}",
-  "Получатель": "Recipient",
+  Получатель: "Recipient",
   "После запуска здесь появятся приглашения, сообщения и результаты по каждому кандидату.":
     "After launch, invitations, messages and results for each candidate will appear here.",
   "После изменений проверьте новый план и утвердите запуск в разделе «Автоматизация».":
@@ -167,7 +173,7 @@ export const strings = {
   "Рамка Hiring": "Hiring frame",
   "Рамка:": "Frame:",
   "Расписание и проверки": "Schedule and checks",
-  "Результат": "Result",
+  Результат: "Result",
   "Результат старой попытки не подтверждён. Сейчас LinkedIn разрешает новое приглашение; перед отправкой ещё раз проверим профиль и доступность действия.":
     "The result of the earlier attempt was not confirmed. LinkedIn now allows a new invitation; before sending we will check the profile and the action again.",
   "Сбросить фильтры": "Reset filters",
@@ -177,8 +183,8 @@ export const strings = {
   "Снять выбор": "Clear selection",
   "Сообщение есть": "Message is there",
   "Сообщения нет": "Message is missing",
-  "Состояние": "Status",
-  "Сохранить": "Save",
+  Состояние: "Status",
+  Сохранить: "Save",
   "Сохранить шаблон": "Save template",
   "Сохраняются настройки кампании. Сначала сохраните изменения в автоматизации. Кандидаты и разрешение на отправку не переносятся.":
     "Campaign settings are saved. Save your automation changes first. Candidates and sending approval are not carried over.",
@@ -191,7 +197,7 @@ export const strings = {
     "The current approved plan is kept. It is replaced only after you click “Start sending”.",
   "Только для этих получателей, если бесплатная связь недоступна. Используем доступные кредиты подписки; дополнительные не покупаем.":
     "Only for these recipients, and only if free contact is unavailable. Available subscription credits are used; no extra credits are bought.",
-  "Удалить": "Delete",
+  Удалить: "Delete",
   "Удалить аккаунт и сессию": "Delete account and session",
   "Удалить аккаунт из приложения?": "Remove the account from the app?",
   "Удалить кампанию": "Delete campaign",
@@ -206,7 +212,7 @@ export const strings = {
   "Этот профиль исключён из будущих обращений во всех кампаниях и со всех аккаунтов.":
     "This profile is excluded from future outreach in all campaigns and from all accounts.",
   "отправитель:": "sender:",
-  "отправителя": "sender",
+  отправителя: "sender",
   "проверьте вход": "check sign-in",
 };
 export const templates = {};

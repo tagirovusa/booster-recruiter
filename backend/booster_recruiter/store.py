@@ -101,6 +101,7 @@ class Store:
           PRAGMA user_version=1;
         """)
         self._ensure_account_status_time()
+        self._ensure_search_exhausted()
         # Recovery never retries an operation which may already have sent.
         with self.db:
             self.db.execute(
@@ -141,6 +142,24 @@ class Store:
         with self.db:
             self.db.execute("ALTER TABLE accounts ADD COLUMN status_changed TEXT")
             self.db.execute("UPDATE accounts SET status_changed=created")
+
+    def _ensure_search_exhausted(self):
+        """Remember the query for which LinkedIn had no more results, so the
+        campaign stops offering a search that walks the same empty pages."""
+        columns = {r["name"] for r in self.rows("PRAGMA table_info(campaigns)")}
+        if "search_exhausted_keywords" in columns:
+            return
+        with self.db:
+            self.db.execute(
+                "ALTER TABLE campaigns ADD COLUMN search_exhausted_keywords TEXT"
+            )
+
+    def mark_search_exhausted(self, cid, keywords):
+        with self.db:
+            self.db.execute(
+                "UPDATE campaigns SET search_exhausted_keywords=? WHERE id=?",
+                (keywords, cid),
+            )
 
     def _migrate_neutral_default(self):
         """Move only old automatic review assignments; keep manual decisions."""
@@ -440,11 +459,18 @@ class Store:
                 raise AppError("Укажите поисковый запрос (до 1000 символов).")
         if limit != campaign["max_profiles"] or keywords != campaign["keywords"]:
             self.ensure_idle(cid)
+        changed = limit != campaign["max_profiles"] or keywords != campaign["keywords"]
         with self.db:
             self.db.execute(
                 "UPDATE campaigns SET name=?,max_profiles=?,keywords=? WHERE id=?",
                 (name, limit, keywords, cid),
             )
+            if changed:
+                # A new query or size deserves a fresh search.
+                self.db.execute(
+                    "UPDATE campaigns SET search_exhausted_keywords=NULL WHERE id=?",
+                    (cid,),
+                )
         return self.campaign(cid)
 
     def archive_campaign(self, cid):

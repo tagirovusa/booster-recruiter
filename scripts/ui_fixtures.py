@@ -80,6 +80,11 @@ def seed(data: Path):
         )
         campaign("История · без обращений")
 
+        # LinkedIn ran out of results for this query before the limit.
+        exhausted = campaign("Поиск · больше не находит")
+        candidate(exhausted["id"], "Riley Brooks", "demo-riley")
+        store.mark_search_exhausted(exhausted["id"], exhausted["keywords"])
+
         for label, outreach, legacy in [
             ("История · автоматизация", True, False),
             ("История · сообщения", False, True),
