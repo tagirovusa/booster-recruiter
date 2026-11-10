@@ -192,7 +192,14 @@ export function outreachCounts(run) {
   };
 }
 
-export function campaignNextEvent(run, account, at = Date.now()) {
+// zoneNames maps zone IDs to readable names (src/labels.js); it is passed in
+// so this module stays free of other imports for its tests.
+export function campaignNextEvent(
+  run,
+  account,
+  at = Date.now(),
+  zoneNames = {},
+) {
   if (!run) return null;
   if (account?.status !== "ready")
     return {
@@ -262,7 +269,7 @@ export function campaignNextEvent(run, account, at = Date.now()) {
       ? ""
       : next <= at
         ? t("Проверим в ближайшие рабочие часы.")
-        : t("Следующая проверка — не раньше {when} ({zone}).", { when: new Intl.DateTimeFormat(locale(), { timeZone: zone, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(next), zone });
+        : t("Следующая проверка — не раньше {when} ({zone}).", { when: new Intl.DateTimeFormat(locale(), { timeZone: zone, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(next), zone: zoneNames[zone] || zone });
   return {
     kind: "scheduled",
     title: waiting

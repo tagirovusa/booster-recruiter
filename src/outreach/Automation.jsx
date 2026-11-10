@@ -349,7 +349,12 @@ export function Automation({
       ["unknown", "submitting"].includes(a.status) && !a.repair_replaced_by,
   );
   const counts = outreachCounts(active);
-  const nextEvent = campaignNextEvent(active, account);
+  const nextEvent = campaignNextEvent(
+    active,
+    account,
+    Date.now(),
+    zoneNames,
+  );
   return (
     <div className="automation-workspace">
       {active && (
