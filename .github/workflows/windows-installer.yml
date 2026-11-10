@@ -21,6 +21,9 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen --python 3.13.16 --group dev
       - run: npm ci
+      # Electron fetches its binary on first use, which the skipped UI
+      # tests normally trigger; electron-builder needs it in place.
+      - run: node node_modules/electron/install.js
       - run: npm run build
       - run: uv run python scripts/collect_licenses.py
       - run: uv run python scripts/build_runtime.py
