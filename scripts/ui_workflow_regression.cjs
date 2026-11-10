@@ -88,6 +88,14 @@ const { execFileSync } = require("node:child_process");
         if (operation === "campaign.save_automation")
           global.__uiWorkflowLastSavedRules = structuredClone(params.rules);
         const result = await original(event, operation, params);
+        if (operation === "campaign.detail" && global.__uiWorkflowRetiredRules)
+          // An older service could still return the retired quota fields.
+          Object.assign(result.outreach.rules, {
+            daily_invites: 10,
+            daily_messages: 20,
+            daily_inmails: 5,
+            inmail_budget: 0,
+          });
         if (operation === "campaign.detail") {
           // Read-only response fixture for the real dialog's long-source layout.
           const sample = result.candidates.find(
@@ -692,6 +700,60 @@ const { execFileSync } = require("node:child_process");
     ])
       assert.equal(Object.hasOwn(sentRules, field), false);
     record("saving a restored legacy draft never submits retired quota fields");
+
+    // Rules that reload while the form is open are cleaned the same way.
+    const openText = page.getByLabel("Сообщение · Open to Work", {
+      exact: true,
+    });
+    const toMessages = async () => {
+      await page.getByRole("button", { name: "Отправка", exact: true }).click();
+      const next = page.getByRole("button", {
+        name: "Далее: сообщения",
+        exact: true,
+      });
+      if (await next.count()) await next.click();
+      await expect(openText).toBeVisible();
+    };
+    const saveDraft = async () => {
+      await app.evaluate(() => {
+        global.__uiWorkflowLastSavedRules = null;
+      });
+      await page
+        .getByRole("button", { name: "Сохранить без запуска", exact: true })
+        .click();
+      await expect
+        .poll(() => app.evaluate(() => global.__uiWorkflowLastSavedRules))
+        .toBeTruthy();
+      return app.evaluate(() => global.__uiWorkflowLastSavedRules);
+    };
+    await app.evaluate(() => {
+      global.__uiWorkflowRetiredRules = true;
+    });
+    // A changed text reaches the service; the campaign then reloads with
+    // rules that still carry the retired fields.
+    await toMessages();
+    await openText.fill(durableText + " Updated.");
+    await saveDraft();
+    await expect
+      .poll(async () => (await detail(demo)).outreach.rules.daily_invites)
+      .toBe(10);
+    // Saving again must send the cleaned rules, not the reloaded ones.
+    await toMessages();
+    const reloadedRules = await saveDraft();
+    await app.evaluate(() => {
+      global.__uiWorkflowRetiredRules = false;
+    });
+    for (const field of [
+      "daily_invites",
+      "daily_messages",
+      "daily_inmails",
+      "inmail_budget",
+    ])
+      assert.equal(Object.hasOwn(reloadedRules, field), false, field);
+    await toMessages();
+    await openText.fill(durableText);
+    await saveDraft();
+    record("rules reloaded from the service never bring back retired quotas");
 
     await page.getByRole("button", { name: /^Кампании/ }).click();
     await page

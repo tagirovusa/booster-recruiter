@@ -66,7 +66,7 @@ export function Automation({
     const next = JSON.stringify(data.rules);
     if (serverRules.current !== next) {
       serverRules.current = next;
-      setRules(data.rules);
+      setRules(currentRules(data.rules));
     }
   }, [JSON.stringify(data.rules)]);
   useEffect(() => {
