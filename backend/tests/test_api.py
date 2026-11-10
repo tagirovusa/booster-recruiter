@@ -62,3 +62,39 @@ async def test_agent_token_cannot_approve_sending_or_delete(tmp_path):
             assert (await call("wrong", "state")).status_code == 401
     finally:
         store.db.close()
+
+
+async def test_agent_token_cannot_resume_plans_or_resolve_sends(tmp_path):
+    """Resuming starts real sends; resolving drops the duplicate-send guard."""
+    store = Store(tmp_path)
+    app = create_app(store, Runtime(store), "agent", "desktop")
+    ops = {
+        "outreach.resume": {"id": "x"},
+        "outreach.check_now": {"id": "x"},
+        "outreach.resolve": {"id": "x", "confirmed": False},
+        "delivery.resolve": {"id": "x", "status": "blocked"},
+    }
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+
+            async def call(token, op, params):
+                return await client.post(
+                    "/command",
+                    json={"op": op, "params": params},
+                    headers={"Authorization": "Bearer " + token},
+                )
+
+            for op, params in ops.items():
+                refused = await call("agent", op, params)
+                assert refused.status_code == 403, op
+                assert refused.json()["error"] == (
+                    "Это действие подтверждается только в окне Booster Recruiter."
+                )
+                # The desktop window reaches the operation itself; the made-up
+                # id is then rejected by the operation, not by the token gate.
+                desktop = await call("desktop", op, params)
+                assert desktop.status_code not in (401, 403), op
+    finally:
+        store.db.close()
