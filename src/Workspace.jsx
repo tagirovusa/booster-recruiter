@@ -45,6 +45,10 @@ export function AttentionPanel({
             <RefreshCw size={16} />
             {t("Повторить")}
           </button>
+          <details className="technical-details">
+            <summary>{t("Технические подробности")}</summary>
+            <pre>{tr(error)}</pre>
+          </details>
         </div>
       ) : !summary ? (
         <p className="workspace-empty">{t("Обновляем список…")}</p>
