@@ -162,3 +162,29 @@ test("a dialog failure releases the guard for a later request", async () => {
   await handler(menu);
   assert.equal(reports, 2);
 });
+
+test("in English, service failures are shown in English", async () => {
+  const i18n = require("../desktop/i18n.cjs");
+  i18n.setLanguage("en");
+  try {
+    const reports = [];
+    const handler = createPauseAllHandler({
+      async call(op) {
+        if (op === "state") return { campaigns: [{ id: "a", name: "Test" }] };
+        throw Error("Кампания в архиве. Сначала верните её из архива.");
+      },
+      async report(result) {
+        reports.push(result);
+      },
+      t: i18n.t,
+      tr: i18n.tr,
+    });
+    await handler();
+    const [report] = reports;
+    assert.equal(report.title, "Pause not confirmed for all campaigns");
+    assert.match(report.detail, /Test: The campaign is archived\./);
+    assert.doesNotMatch(report.detail, /[А-Яа-яЁё]/);
+  } finally {
+    i18n.setLanguage("ru");
+  }
+});
