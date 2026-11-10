@@ -5,12 +5,11 @@
 // Usage: node scripts/i18n_check.mjs [--strict]
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const root = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
-  "..",
-);
+// fileURLToPath, not URL.pathname: on Windows the pathname is "/D:/…" and
+// path.resolve turns it into "D:\D:\…".
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = path.join(root, "src");
 const catalogDir = path.join(src, "i18n", "en");
 
