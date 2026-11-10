@@ -238,7 +238,7 @@ const { execFileSync } = require("node:child_process");
       page.getByRole("button", { name: "Список в CSV" }),
     ).toBeVisible();
     await page
-      .getByRole("button", { name: "Настроить автоматизацию", exact: true })
+      .getByRole("button", { name: "Настроить отправку", exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: "Как связаться" }),
