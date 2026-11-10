@@ -197,3 +197,52 @@ async def test_manual_review_does_not_interrupt_active_browser(tmp_path):
     finally:
         runtime.browser_lock.release()
         store.db.close()
+
+
+async def test_exhausted_search_is_remembered_until_the_search_changes(tmp_path):
+    """LinkedIn running out of results stops the "continue search" offer."""
+    store = Store(tmp_path)
+    a, c, _ = prepared(store)
+
+    class EmptySearch(FakeWorker):
+        async def call(self, action, p=None):
+            if action == "search":
+                return {"profiles": []}
+            return await super().call(action, p)
+
+    await Runtime(store, EmptySearch).collect(c["id"])
+    assert store.campaign(c["id"])["search_exhausted_keywords"] == "CDL recruiter"
+    # Renaming keeps it; a new number of profiles deserves a fresh search.
+    store.update_campaign(c["id"], {"name": "Renamed"})
+    assert store.campaign(c["id"])["search_exhausted_keywords"] == "CDL recruiter"
+    store.update_campaign(c["id"], {"max_profiles": 30})
+    assert store.campaign(c["id"])["search_exhausted_keywords"] is None
+
+    # A changed query (allowed before anything was collected) clears it too.
+    fresh = store.create_campaign(
+        {
+            "name": "Fresh",
+            "account_id": a["id"],
+            "keywords": "driver recruiter",
+            "max_profiles": 5,
+            "template_open": "Hello {first_name}",
+            "template_neutral": "Hello",
+        }
+    )
+    await Runtime(store, EmptySearch).collect(fresh["id"])
+    assert store.campaign(fresh["id"])["search_exhausted_keywords"] == (
+        "driver recruiter"
+    )
+    store.update_campaign(fresh["id"], {"keywords": "truck driver recruiter"})
+    assert store.campaign(fresh["id"])["search_exhausted_keywords"] is None
+    store.db.close()
+
+
+async def test_paused_search_is_not_marked_exhausted(tmp_path):
+    store = Store(tmp_path)
+    _, c, _ = prepared(store)
+    runtime = Runtime(store, FakeWorker)
+    runtime.pause_flags.add(c["id"])
+    await runtime.collect(c["id"])
+    assert store.campaign(c["id"])["search_exhausted_keywords"] is None
+    store.db.close()
