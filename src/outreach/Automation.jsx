@@ -349,7 +349,12 @@ export function Automation({
       ["unknown", "submitting"].includes(a.status) && !a.repair_replaced_by,
   );
   const counts = outreachCounts(active);
-  const nextEvent = campaignNextEvent(active, account);
+  const nextEvent = campaignNextEvent(
+    active,
+    account,
+    Date.now(),
+    zoneNames,
+  );
   return (
     <div className="automation-workspace">
       {active && (
@@ -382,7 +387,7 @@ export function Automation({
             </header>
             <nav
               className="setup-steps"
-              aria-label={t("Шаги настройки автоматизации")}
+              aria-label={t("Шаги настройки отправки")}
             >
               {[t("Способ связи"), t("Тексты"), t("Запуск")].map((label, i) => (
                 <button

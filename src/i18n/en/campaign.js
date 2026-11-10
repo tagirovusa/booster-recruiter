@@ -93,7 +93,7 @@ export const strings = {
   "Найти в списке": "Search the list",
   "Найти кандидата": "Find a candidate",
   "Найти кандидатов": "Find candidates",
-  "Настроить автоматизацию": "Set up automation",
+  "Настроить отправку": "Set up outreach",
   "Настроить отправку": "Set up outreach",
   "Начните новую кампанию с сохранёнными настройками.":
     "Start a new campaign with saved settings.",
@@ -186,8 +186,8 @@ export const strings = {
   Состояние: "Status",
   Сохранить: "Save",
   "Сохранить шаблон": "Save template",
-  "Сохраняются настройки кампании. Сначала сохраните изменения в автоматизации. Кандидаты и разрешение на отправку не переносятся.":
-    "Campaign settings are saved. Save your automation changes first. Candidates and sending approval are not carried over.",
+  "Сохраняются настройки кампании. Сначала сохраните изменения во вкладке «Отправка». Кандидаты и разрешение на отправку не переносятся.":
+    "Campaign settings are saved. Save your changes on the Outreach tab first. Candidates and sending approval are not carried over.",
   "Список в CSV": "Export CSV",
   "Текст недоступен": "Text unavailable",
   "Текст приглашения": "Invitation text",

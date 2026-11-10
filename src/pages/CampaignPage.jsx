@@ -524,7 +524,7 @@ export default function CampaignPage({ ctx }) {
                 )}
               </p>
               <Button onClick={() => setTab("automation")}>
-                {t("Настроить автоматизацию")}
+                {t("Настроить отправку")}
               </Button>
             </div>
           )}

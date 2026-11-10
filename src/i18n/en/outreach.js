@@ -214,7 +214,7 @@ export const strings = {
   "НАСТРОЙКА ОТПРАВКИ": "OUTREACH SETUP",
   "Как связаться": "How to reach out",
   "Тексты сообщений": "Message texts",
-  "Шаги настройки автоматизации": "Automation setup steps",
+  "Шаги настройки отправки": "Outreach setup steps",
   Тексты: "Texts",
   Запуск: "Launch",
   Назад: "Back",

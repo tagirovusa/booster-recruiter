@@ -57,6 +57,18 @@ test("ordinary manual pause never advertises a stale automatic check", () => {
   assert.match(value.text, /Продолжить/);
   assert.doesNotMatch(value.text, /14:00/);
 });
+test("the next check names the zone readably when a name is known", () => {
+  const waiting = run({
+    members: [
+      { status: "waiting_acceptance", next_check: "2026-11-04T16:00:00Z" },
+    ],
+  });
+  const named = next(waiting, ready, now, { "America/New_York": "Нью-Йорк" });
+  assert.match(named.text, /\(Нью-Йорк\)/);
+  assert.doesNotMatch(named.text, /America\/New_York/);
+  // Without a name the zone ID is still shown rather than nothing.
+  assert.match(next(waiting, ready, now).text, /America\/New_York/);
+});
 test("future checks use run timezone and a lower bound rather than guaranteed delivery time", () => {
   const value = next(
     run({
