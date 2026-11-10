@@ -1,10 +1,16 @@
-// Russian wording by default; the desktop shell passes its translator.
+// Russian wording by default; the desktop shell passes its translators:
+// t() for this file's own text, tr() for messages that came from the service.
 const fill = (text, vars = {}) =>
   text.replace(/\{(\w+)\}/g, (whole, key) =>
     Object.hasOwn(vars, key) ? String(vars[key]) : whole,
   );
 
-function createPauseAllHandler({ call, report, t = fill }) {
+function createPauseAllHandler({
+  call,
+  report,
+  t = fill,
+  tr = (text) => text,
+}) {
   let running = false;
   return async function pauseAll(menuItem) {
     if (running) return;
@@ -24,7 +30,7 @@ function createPauseAllHandler({ call, report, t = fill }) {
           message: t("Не удалось получить список кампаний и запросить паузу."),
           detail: t(
             "Работа кампаний могла продолжиться. Проверьте состояние в приложении. Чтобы остановить приложение полностью, выберите «Завершить работу» в меню его значка.\n\nТехнические подробности: {detail}",
-            { detail: error.message },
+            { detail: tr(error.message) },
           ),
         });
         return;
@@ -46,7 +52,9 @@ function createPauseAllHandler({ call, report, t = fill }) {
             throw Error(t("Сервис не подтвердил запрос паузы."));
           requested++;
         } catch (error) {
-          failures.push(`${campaign.name || campaign.id}: ${error.message}`);
+          failures.push(
+            `${campaign.name || campaign.id}: ${tr(error.message)}`,
+          );
         }
       }
       const incomplete = failures.length > 0;
