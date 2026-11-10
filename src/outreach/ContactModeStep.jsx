@@ -94,7 +94,9 @@ export function ContactModeStep({ ctx }) {
             ))}
           </div>
           <p className="field-note">
-            {t("Дополнительные кредиты не покупаем. Если кредиты закончатся, оставшиеся кандидаты подождут в очереди.")}
+            {t(
+              "Дополнительные кредиты не покупаем. Если кредиты закончатся, оставшиеся кандидаты подождут в очереди.",
+            )}
           </p>
           <label className="field">
             <span>{t("Подписка для InMail")}</span>
@@ -108,7 +110,9 @@ export function ContactModeStep({ ctx }) {
           </label>
           {rules.inmail_channel === "recruiter" && !recruiterReady && (
             <div className="hint warning">
-              {t("Подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.")}{" "}
+              {t(
+                "Подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.",
+              )}{" "}
               <button className="text-link" onClick={onAccounts}>
                 {t("Открыть аккаунты")}
               </button>

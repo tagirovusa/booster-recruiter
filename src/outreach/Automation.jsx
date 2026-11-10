@@ -105,8 +105,9 @@ export function Automation({
       icon: Wallet,
       title: t("С InMail"),
       tag: t("Расходует кредиты"),
-      description:
-        t("Если бесплатно написать нельзя, используем InMail вашей подписки."),
+      description: t(
+        "Если бесплатно написать нельзя, используем InMail вашей подписки.",
+      ),
     },
   ];
   const inmailTimings = [
@@ -115,7 +116,9 @@ export function Automation({
       icon: Clock3,
       title: t("Экономить кредиты"),
       description: rules.allow_invites
-        ? t("Сначала приглашение. InMail — если не примут или пригласить нельзя.")
+        ? t(
+            "Сначала приглашение. InMail — если не примут или пригласить нельзя.",
+          )
         : t("InMail, если бесплатно написать нельзя."),
     },
     {
@@ -215,8 +218,14 @@ export function Automation({
         [label, fieldChecks[segment]],
         ...(rules.allow_inmail
           ? [
-              [t("Тема InMail · {label}", { label }), fieldChecks["subject_" + segment]],
-              [t("InMail · {label}", { label }), fieldChecks["inmail_" + segment]],
+              [
+                t("Тема InMail · {label}", { label }),
+                fieldChecks["subject_" + segment],
+              ],
+              [
+                t("InMail · {label}", { label }),
+                fieldChecks["inmail_" + segment],
+              ],
             ]
           : []),
       ];
@@ -258,8 +267,7 @@ export function Automation({
   const invalidHours = rules.start_hour >= rules.end_hour;
   // Same rule as the service: otherwise the InMail step after the wait
   // could never happen.
-  const invalidPeriod =
-    !invalidNumber && rules.monitor_days <= rules.wait_days;
+  const invalidPeriod = !invalidNumber && rules.monitor_days <= rules.wait_days;
   const validRules =
     !invalidNumber && !invalidHours && !invalidPeriod && !unsavableTemplate;
   const canReview =
@@ -317,7 +325,9 @@ export function Automation({
             title: t("Пригласить в контакты"),
             text:
               mode === "fast"
-                ? t("Если InMail недоступен в LinkedIn или кредитов нет. После принятия — сообщение.")
+                ? t(
+                    "Если InMail недоступен в LinkedIn или кредитов нет. После принятия — сообщение.",
+                  )
                 : t("После принятия автоматически отправить сообщение."),
           },
         ]
@@ -326,7 +336,9 @@ export function Automation({
       ? [
           {
             title: rules.allow_invites
-              ? t("Подождать {days} дн. и отправить InMail", { days: rules.wait_days })
+              ? t("Подождать {days} дн. и отправить InMail", {
+                  days: rules.wait_days,
+                })
               : t("Отправить InMail"),
             text: rules.allow_invites
               ? t("Если пригласить нельзя — проверим InMail без ожидания.")
@@ -349,12 +361,7 @@ export function Automation({
       ["unknown", "submitting"].includes(a.status) && !a.repair_replaced_by,
   );
   const counts = outreachCounts(active);
-  const nextEvent = campaignNextEvent(
-    active,
-    account,
-    Date.now(),
-    zoneNames,
-  );
+  const nextEvent = campaignNextEvent(active, account, Date.now(), zoneNames);
   return (
     <div className="automation-workspace">
       {active && (
@@ -481,7 +488,9 @@ export function Automation({
                     </>
                   ) : (
                     <>
-                      {step ? t("Посмотреть перед запуском") : t("Далее: сообщения")}
+                      {step
+                        ? t("Посмотреть перед запуском")
+                        : t("Далее: сообщения")}
                       <ArrowRight size={16} />
                     </>
                   )}
@@ -489,7 +498,9 @@ export function Automation({
               </footer>
               {previewing && (
                 <p className="setup-validation" role="status">
-                  {t("Готовим тексты для каждого получателя. Обычно это занимает несколько секунд, с Recruiter — до пары минут.")}
+                  {t(
+                    "Готовим тексты для каждого получателя. Обычно это занимает несколько секунд, с Recruiter — до пары минут.",
+                  )}
                 </p>
               )}
               {!previewing &&
@@ -498,30 +509,45 @@ export function Automation({
                   (step === 1 && !canReview)) && (
                   <p className="setup-validation" role="status">
                     {invalidHours
-                      ? t("Время окончания должно быть позже начала в пределах суток.")
+                      ? t(
+                          "Время окончания должно быть позже начала в пределах суток.",
+                        )
                       : invalidNumber
-                        ? t("«{label}»: укажите целое число от {min} до {max}.", {
-                            label: numberLabels[invalidNumber[0]],
-                            min: limits[invalidNumber[0]][0],
-                            max: limits[invalidNumber[0]][1],
-                          })
+                        ? t(
+                            "«{label}»: укажите целое число от {min} до {max}.",
+                            {
+                              label: numberLabels[invalidNumber[0]],
+                              min: limits[invalidNumber[0]][0],
+                              max: limits[invalidNumber[0]][1],
+                            },
+                          )
                         : invalidPeriod
-                          ? t("Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения.")
+                          ? t(
+                              "Срок наблюдения за ответами должен быть больше срока ожидания принятия приглашения.",
+                            )
                           : unsavableTemplate
-                          ? t("Сократите шаблоны до 4000 символов, чтобы сохранить настройки.")
-                          : stepTextError
-                            ? t("«{label}»: {error}", {
-                                label: stepTextError[0],
-                                error: stepTextError[1].error,
-                              })
-                            : account?.status !== "ready"
-                              ? t("Подключите аккаунт отправителя на вкладке «Аккаунты».")
-                              : !selected.length
-                                ? t("Сначала выберите кандидатов для этой кампании.")
-                                : rules.inmail_channel === "recruiter" &&
-                                    !recruiterReady
-                                  ? t("Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.")
-                                  : t("Проверьте настройки способа связи.")}
+                            ? t(
+                                "Сократите шаблоны до 4000 символов, чтобы сохранить настройки.",
+                              )
+                            : stepTextError
+                              ? t("«{label}»: {error}", {
+                                  label: stepTextError[0],
+                                  error: stepTextError[1].error,
+                                })
+                              : account?.status !== "ready"
+                                ? t(
+                                    "Подключите аккаунт отправителя на вкладке «Аккаунты».",
+                                  )
+                                : !selected.length
+                                  ? t(
+                                      "Сначала выберите кандидатов для этой кампании.",
+                                    )
+                                  : rules.inmail_channel === "recruiter" &&
+                                      !recruiterReady
+                                    ? t(
+                                        "Откройте «Способ связи»: подключите Recruiter и разрешите отправку ваших текстов в аккаунте отправителя.",
+                                      )
+                                    : t("Проверьте настройки способа связи.")}
                   </p>
                 )}
             </fieldset>

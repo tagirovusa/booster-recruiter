@@ -8,13 +8,13 @@ const source = fs.readFileSync(
   "utf8",
 );
 const next = vm.runInNewContext(
-  source.replace(
-    /^import \{[^}]*\} from "\.\.\/i18n";$/m,
-    // Russian source text: t() only fills {placeholders}.
-    'var t = (s, v) => (v ? s.replace(/\\{(\\w+)\\}/g, (w, k) => (k in v ? String(v[k]) : w)) : s); var locale = () => "ru-RU";',
-  )
-  .replace(/\bexport\s+(?=(?:function|const))/g, "") +
-    "\ncampaignNextEvent",
+  source
+    .replace(
+      /^import \{[^}]*\} from "\.\.\/i18n";$/m,
+      // Russian source text: t() only fills {placeholders}.
+      'var t = (s, v) => (v ? s.replace(/\\{(\\w+)\\}/g, (w, k) => (k in v ? String(v[k]) : w)) : s); var locale = () => "ru-RU";',
+    )
+    .replace(/\bexport\s+(?=(?:function|const))/g, "") + "\ncampaignNextEvent",
 );
 const ready = { status: "ready" };
 const now = Date.parse("2026-11-04T12:00:00Z");

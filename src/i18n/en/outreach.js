@@ -202,7 +202,8 @@ export const strings = {
     "If InMail isn't available on LinkedIn or there are no credits. Once accepted, a message.",
   "После принятия автоматически отправить сообщение.":
     "Send a message automatically once accepted.",
-  "Подождать {days} дн. и отправить InMail": "Wait {days} days, then send InMail",
+  "Подождать {days} дн. и отправить InMail":
+    "Wait {days} days, then send InMail",
   "Отправить InMail": "Send InMail",
   "Если пригласить нельзя — проверим InMail без ожидания.":
     "If an invitation can't be sent, we check InMail right away.",

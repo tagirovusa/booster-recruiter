@@ -20,7 +20,9 @@ export function TextsStep({ ctx }) {
       <div className="setup-section-title">
         <h3>{t("Что получат кандидаты?")}</h3>
         <p>
-          {t("Для каждой группы — свой текст. Программа подставит имя и покажет итог перед запуском.")}
+          {t(
+            "Для каждой группы — свой текст. Программа подставит имя и покажет итог перед запуском.",
+          )}
         </p>
       </div>
       <div className="setup-message-grid">
@@ -115,12 +117,16 @@ export function TextsStep({ ctx }) {
             <ChevronDown size={16} />
           </summary>
           <div className="details-body">
-            <p>{t("Оставьте поля пустыми, чтобы использовать сообщения выше.")}</p>
+            <p>
+              {t("Оставьте поля пустыми, чтобы использовать сообщения выше.")}
+            </p>
             <div className="setup-message-grid">
               {["open", "neutral"].map((s) => (
                 <label className="field" key={s}>
                   <span>
-                    {s === "open" ? "InMail · Open to Work" : t("Обычный InMail")}
+                    {s === "open"
+                      ? "InMail · Open to Work"
+                      : t("Обычный InMail")}
                   </span>
                   <textarea
                     aria-invalid={!!fieldChecks["inmail_" + s].error}
@@ -141,12 +147,16 @@ export function TextsStep({ ctx }) {
       )}
       {rules.allow_inmail && rules.inmail_channel === "recruiter" && (
         <p className="field-feedback">
-          {t("Подпись Recruiter входит в лимит 1900 символов. Точный текст вместе с подписью проверим перед запуском.")}
+          {t(
+            "Подпись Recruiter входит в лимит 1900 символов. Точный текст вместе с подписью проверим перед запуском.",
+          )}
         </p>
       )}
       {active && (
         <p className="setup-caution">
-          {t("Сохранение изменений заменит текущий план. Запуск нужно будет подтвердить заново.")}
+          {t(
+            "Сохранение изменений заменит текущий план. Запуск нужно будет подтвердить заново.",
+          )}
         </p>
       )}
     </>

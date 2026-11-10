@@ -335,7 +335,8 @@ export default function WorkspaceDialogs({ ctx }) {
                     disabled={busy || active}
                     onClick={async () => {
                       const done = await act("campaign.archive", { id: cid });
-                      if (done) leaveCampaign(t("Кампания перенесена в архив."));
+                      if (done)
+                        leaveCampaign(t("Кампания перенесена в архив."));
                     }}
                   >
                     <Archive size={16} />

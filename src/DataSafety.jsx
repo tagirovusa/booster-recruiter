@@ -35,7 +35,9 @@ export function NotificationsSettings() {
         <h2>{t("Уведомления")}</h2>
         <p>{t("Только новые ответы и ситуации, где нужна ваша помощь.")}</p>
       </header>
-      {!value && !error && <p className="safety-note">{t("Загружаем настройку…")}</p>}
+      {!value && !error && (
+        <p className="safety-note">{t("Загружаем настройку…")}</p>
+      )}
       {value && (
         <label className="safety-toggle">
           <input
@@ -61,7 +63,9 @@ export function NotificationsSettings() {
         </label>
       )}
       <p className="safety-note">
-        {t("Имена и тексты сообщений в уведомления не попадают. Если они не появляются, разрешите уведомления Booster Recruiter в настройках системы.")}
+        {t(
+          "Имена и тексты сообщений в уведомления не попадают. Если они не появляются, разрешите уведомления Booster Recruiter в настройках системы.",
+        )}
       </p>
       {error && (
         <div role="alert">
@@ -111,7 +115,9 @@ export function DataSafety({ onRestored }) {
       await load();
       setNotice(
         op === "backup.restore"
-          ? t("Данные восстановлены. Войдите в аккаунты заново; кампании оставлены на паузе.")
+          ? t(
+              "Данные восстановлены. Войдите в аккаунты заново; кампании оставлены на паузе.",
+            )
           : t("Резервная копия сохранена."),
       );
       if (op === "backup.restore") await onRestored?.();
@@ -125,17 +131,23 @@ export function DataSafety({ onRestored }) {
     <section className="panel settings-card">
       <header className="settings-card-heading">
         <h2>{t("Резервные копии")}</h2>
-        <p>{t("Кампании, профили и история сохраняются на этом компьютере.")}</p>
+        <p>
+          {t("Кампании, профили и история сохраняются на этом компьютере.")}
+        </p>
       </header>
       <p className="safety-note">
-        {t("Автоматическая копия создаётся ежедневно при работе приложения. Сессии LinkedIn и пароли в копии не входят. Копии на этом же диске не защищают от потери компьютера.")}
+        {t(
+          "Автоматическая копия создаётся ежедневно при работе приложения. Сессии LinkedIn и пароли в копии не входят. Копии на этом же диске не защищают от потери компьютера.",
+        )}
       </p>
       <button
         className="button"
         disabled={!!pending}
         onClick={() => run("backup.create")}
       >
-        {pending === "backup.create" ? t("Сохраняем…") : t("Создать копию сейчас")}
+        {pending === "backup.create"
+          ? t("Сохраняем…")
+          : t("Создать копию сейчас")}
       </button>
       {notice && <p role="status">{notice}</p>}
       {error && (
@@ -151,7 +163,9 @@ export function DataSafety({ onRestored }) {
       )}
       {backups?.length === 0 && (
         <p className="safety-note">
-          {t("Копий пока нет. Первая появится автоматически сегодня, или создайте её кнопкой выше.")}
+          {t(
+            "Копий пока нет. Первая появится автоматически сегодня, или создайте её кнопкой выше.",
+          )}
         </p>
       )}
       {backups?.length > 0 && (
@@ -190,7 +204,9 @@ export function DataSafety({ onRestored }) {
             })}
           </h3>
           <p>
-            {t("Данные приложения вернутся к этой дате. Текущие данные мы сначала сохраним отдельной копией. После восстановления кампании будут на паузе, а в аккаунты LinkedIn нужно будет войти заново.")}
+            {t(
+              "Данные приложения вернутся к этой дате. Текущие данные мы сначала сохраним отдельной копией. После восстановления кампании будут на паузе, а в аккаунты LinkedIn нужно будет войти заново.",
+            )}
           </p>
           <div className="actions">
             <button
