@@ -300,6 +300,18 @@ async function start() {
       log = (log + chunk.toString()).slice(-10000);
     });
   });
+  // Watch the service from the moment it is ready: if it stops while the
+  // window is still loading, the recruiter must still be told.
+  child.on("exit", () => {
+    connection = null;
+    if (!exiting)
+      dialog.showErrorBox(
+        t("Сервис остановлен"),
+        t(
+          "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
+        ),
+      );
+  });
   protocol.handle("booster", (request) => {
     const url = new URL(request.url);
     let file;
@@ -451,16 +463,6 @@ async function start() {
   notificationTimer = setInterval(pollAttention, 30000);
   notificationTimer.unref();
   await win.loadURL("booster://app/");
-  child.on("exit", () => {
-    connection = null;
-    if (!exiting && win && !win.isDestroyed())
-      dialog.showErrorBox(
-        t("Сервис остановлен"),
-        t(
-          "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
-        ),
-      );
-  });
 }
 ipcMain.handle("command", async (event, op, params) => {
   trusted(event);
