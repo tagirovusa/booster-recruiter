@@ -78,8 +78,9 @@ async def check():
                     tools = {t.name for t in await client.list_tools()}
                     assert "list_workspace" in tools
                     assert "resume_approved_batch" not in tools
+                    assert "resume_approved_outreach" not in tools
                     assert not any("approve" == t or "send_message" in t for t in tools)
-                    assert len(tools) == 16
+                    assert len(tools) == 15
                     assert {
                         "get_workspace_attention",
                         "list_campaign_templates",
@@ -101,7 +102,6 @@ async def check():
                         "configure_outreach",
                         "check_connections",
                         "preview_outreach",
-                        "resume_approved_outreach",
                     } <= tools
                     state = await client.call_tool("list_workspace", {})
                     assert state.structured_content["accounts"] == []
