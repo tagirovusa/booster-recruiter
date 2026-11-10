@@ -188,7 +188,7 @@ async def check():
                     assert fresh_detail.structured_content["outreach"]["runs"] == []
 
                 print(
-                    "PASS: frozen executable, local authenticated API, 16 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
+                    "PASS: frozen executable, local authenticated API, 15 MCP tools, draft create/configure/read roundtrip and shared workspace; no LinkedIn requests."
                 )
             finally:
                 process.terminate()
