@@ -10,6 +10,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .outreach import validate_rules
 from .store import AppError, now, uid
 
 
@@ -167,11 +168,14 @@ class Workspace:
     def create_from_template(self, identity, aid, name=None):
         row = self.s.one("SELECT * FROM campaign_templates WHERE id=?", (identity,))
         data = json.loads(row["data"])
+        # create_campaign commits on its own, so rules that no longer validate
+        # must be rejected before anything is inserted.
+        rules = validate_rules(data["rules"])
         with self.s.atomic():
             campaign = self.s.create_campaign(
                 data | {"name": name or row["name"], "account_id": aid}
             )
-            self.s.outreach.configure(campaign["id"], data["rules"])
+            self.s.outreach.configure(campaign["id"], rules)
         return campaign
 
     def delete_template(self, identity):
