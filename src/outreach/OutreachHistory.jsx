@@ -18,7 +18,10 @@ export function OutreachHistory({
   const visible = runs.filter((r) => r.status !== "preview");
   if (!visible.length) return null;
   return (
-    <section className="outreach-history" aria-label={t("Приглашения и сообщения")}>
+    <section
+      className="outreach-history"
+      aria-label={t("Приглашения и сообщения")}
+    >
       {visible.map((run) => (
         <div key={run.id} className="outreach-run">
           <div className="toolbar">
@@ -159,7 +162,9 @@ export function OutreachHistory({
                 </summary>
                 {a.repair_replaced_by ? (
                   <p className="hint">
-                    {t("Исход старой попытки не подтверждён. Новая проверка подтвердила актуальное состояние приглашения или связи; повторная проверка этой старой записи не требуется.")}
+                    {t(
+                      "Исход старой попытки не подтверждён. Новая проверка подтвердила актуальное состояние приглашения или связи; повторная проверка этой старой записи не требуется.",
+                    )}
                   </p>
                 ) : (
                   <DetailMessage
@@ -188,7 +193,9 @@ export function OutreachHistory({
                   <div className="actions">
                     {a.kind === "inmail" && (run.context || m?.subject) && (
                       <p className="hint">
-                        {t("Эту старую отправку InMail нельзя надёжно проверить автоматически. Откройте переписку в LinkedIn и укажите результат вручную.")}
+                        {t(
+                          "Эту старую отправку InMail нельзя надёжно проверить автоматически. Откройте переписку в LinkedIn и укажите результат вручную.",
+                        )}
                       </p>
                     )}
                     {onCheck &&

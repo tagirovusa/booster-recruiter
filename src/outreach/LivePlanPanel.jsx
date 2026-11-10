@@ -92,7 +92,9 @@ export function LivePlanPanel({ ctx }) {
       {active.status === "paused" && recoverableMembers.length > 0 && (
         <div className="recovery-check">
           <p>
-            {t("Приложение посмотрит в LinkedIn текущие статусы. Ничего не отправит.")}
+            {t(
+              "Приложение посмотрит в LinkedIn текущие статусы. Ничего не отправит.",
+            )}
           </p>
           <button className="button" disabled={disabled} onClick={onCheck}>
             <RefreshCw size={16} /> {t("Обновить статусы контактов")}
@@ -102,7 +104,9 @@ export function LivePlanPanel({ ctx }) {
       {(uncertainActions || reviewMembers.length > 0) && (
         <p className="recovery-history">
           {uncertainActions
-            ? t("Есть действия с неподтверждённым результатом. Проверьте их в LinkedIn и укажите результат в истории.")
+            ? t(
+                "Есть действия с неподтверждённым результатом. Проверьте их в LinkedIn и укажите результат в истории.",
+              )
             : t("Причины остановки каждого контакта доступны в истории.")}{" "}
           <button className="text-link" onClick={onHistory}>
             {t("Открыть историю")}

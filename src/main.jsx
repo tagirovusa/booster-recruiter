@@ -116,7 +116,9 @@ function App() {
     } catch {
       setDraftPersisted(false);
       setError(
-        t("Не удалось сохранить черновик на компьютере. Сохраните настройки перед закрытием приложения."),
+        t(
+          "Не удалось сохранить черновик на компьютере. Сохраните настройки перед закрытием приложения.",
+        ),
       );
     }
   };
@@ -285,7 +287,9 @@ function App() {
       await act(
         "workspace.recheck",
         { id },
-        t("Проверка запущена. Активный план продолжает работу; план на паузе не возобновляется."),
+        t(
+          "Проверка запущена. Активный план продолжает работу; план на паузе не возобновляется.",
+        ),
       );
     } finally {
       setCheckingItem(null);
@@ -511,7 +515,10 @@ function App() {
             <div className="alert error app-alert" role="alert" tabIndex={-1}>
               <AlertCircle size={18} />
               <span>{tr(error)}</span>
-              <button onClick={() => setError("")} aria-label={t("Скрыть ошибку")}>
+              <button
+                onClick={() => setError("")}
+                aria-label={t("Скрыть ошибку")}
+              >
                 <X size={16} />
               </button>
             </div>
@@ -533,7 +540,9 @@ function App() {
               <div className="alert warning refresh-warning" role="status">
                 <AlertCircle size={18} />
                 <span>
-                  {t("Не удалось обновить данные. Показана последняя загруженная версия.")}
+                  {t(
+                    "Не удалось обновить данные. Показана последняя загруженная версия.",
+                  )}
                 </span>
                 <Button onClick={retryLoad} disabled={retrying}>
                   {retrying ? t("Обновляем…") : t("Обновить данные")}
@@ -549,7 +558,9 @@ function App() {
             ) : !workspaceLoaded ? (
               <LoadFailure
                 title={t("Не удалось открыть рабочее пространство")}
-                text={t("Не удалось загрузить аккаунты и кампании. Повторите попытку.")}
+                text={t(
+                  "Не удалось загрузить аккаунты и кампании. Повторите попытку.",
+                )}
                 detail={workspaceError}
                 onRetry={retryLoad}
                 retrying={retrying}
@@ -560,7 +571,9 @@ function App() {
                   <div>
                     <h1>{t("Требует внимания")}</h1>
                     <p>
-                      {t("Ответы и следующие действия по всем кампаниям. Исправляйте отдельные профили, сохраняя общий план.")}
+                      {t(
+                        "Ответы и следующие действия по всем кампаниям. Исправляйте отдельные профили, сохраняя общий план.",
+                      )}
                     </p>
                   </div>
                 </div>
@@ -584,7 +597,9 @@ function App() {
                     act(
                       "account.open_profile",
                       { id: item.account_id, url: item.url },
-                      t("Профиль кандидата открыт в браузере отправителя. Нажмите «Сообщение», чтобы ответить."),
+                      t(
+                        "Профиль кандидата открыт в браузере отправителя. Нажмите «Сообщение», чтобы ответить.",
+                      ),
                     )
                   }
                   onOpen={(item) => {
@@ -642,7 +657,9 @@ function App() {
             ) : !detail && detailError ? (
               <LoadFailure
                 title={t("Не удалось открыть кампанию")}
-                text={t("Данные кампании не загрузились. Повторите попытку или вернитесь к списку.")}
+                text={t(
+                  "Данные кампании не загрузились. Повторите попытку или вернитесь к списку.",
+                )}
                 detail={detailError}
                 onRetry={retryLoad}
                 retrying={retrying}

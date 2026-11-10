@@ -34,13 +34,16 @@ export function AccountForm({ onClose, onSubmit, busy, error }) {
         </label>
         <div className="steps">
           <p>
-            <span>1</span>{t("Откроется окно LinkedIn.")}
+            <span>1</span>
+            {t("Откроется окно LinkedIn.")}
           </p>
           <p>
-            <span>2</span>{t("Войдите и подтвердите вход, если потребуется.")}
+            <span>2</span>
+            {t("Войдите и подтвердите вход, если потребуется.")}
           </p>
           <p>
-            <span>3</span>{t("Вернитесь в приложение и проверьте подключение.")}
+            <span>3</span>
+            {t("Вернитесь в приложение и проверьте подключение.")}
           </p>
         </div>
         <div className="modal-footer">
@@ -89,7 +92,9 @@ export function CampaignForm({ accounts, busy, onClose, onSubmit, error }) {
     <Modal
       error={error}
       title={t("Новая кампания")}
-      subtitle={t("Начните с поиска. Сообщения можно заполнить после сбора профилей.")}
+      subtitle={t(
+        "Начните с поиска. Сообщения можно заполнить после сбора профилей.",
+      )}
       onClose={onClose}
     >
       <form

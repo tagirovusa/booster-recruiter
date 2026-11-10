@@ -31,7 +31,9 @@ export function AttentionPanel({
       {summary?.backup_error && (
         <div className="workspace-empty" role="alert">
           <p>
-            {t("Не удалось создать автоматическую резервную копию. Откройте настройки и сохраните копию вручную.")}
+            {t(
+              "Не удалось создать автоматическую резервную копию. Откройте настройки и сохраните копию вручную.",
+            )}
           </p>
           <button className="button" onClick={onSettings}>
             {t("Открыть настройки")}
@@ -116,7 +118,9 @@ export function AttentionPanel({
                     )}
                     {item.repair && (
                       <p className="repair-ready">
-                        {t("Сейчас доступно новое приглашение. Отправьте его после проверки получателя и текста.")}
+                        {t(
+                          "Сейчас доступно новое приглашение. Отправьте его после проверки получателя и текста.",
+                        )}
                       </p>
                     )}
                     {item.check_error && (
@@ -125,7 +129,9 @@ export function AttentionPanel({
                     {item.kind === "review" && item.can_recheck === false && (
                       <p className="hint">
                         {tr(item.recheck_unavailable_reason) ||
-                          t("Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории.")}
+                          t(
+                            "Для этой записи автоматическая проверка недоступна. Проверьте переписку в LinkedIn и укажите результат в истории.",
+                          )}
                       </p>
                     )}
                     {item.kind === "review" &&
@@ -133,13 +139,13 @@ export function AttentionPanel({
                       !item.repair &&
                       !item.repairing && (
                         <small>
-                          {t("Приложение посмотрит в LinkedIn, дошло ли сообщение. Ничего не отправит.")}
+                          {t(
+                            "Приложение посмотрит в LinkedIn, дошло ли сообщение. Ничего не отправит.",
+                          )}
                         </small>
                       )}
                     {item.updated && (
-                      <small>
-                        {formatDateTime(item.updated)}
-                      </small>
+                      <small>{formatDateTime(item.updated)}</small>
                     )}
                   </div>
                   <div className="attention-actions">
@@ -290,7 +296,9 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
           aria-label={t("Сброс поискового запроса")}
         >
           <p>
-            {t("Отредактированный запрос нельзя перенести в поля автоматически. Начать простой поиск заново?")}
+            {t(
+              "Отредактированный запрос нельзя перенести в поля автоматически. Начать простой поиск заново?",
+            )}
           </p>
           <button
             type="button"
@@ -334,7 +342,9 @@ export function SearchBuilder({ value, onChange, invalid, errorId }) {
             placeholder={t('Например: "driver recruitment" manager')}
           />
           <small>
-            {t("Можно вставить ссылку на один профиль или готовый поисковый запрос LinkedIn.")}
+            {t(
+              "Можно вставить ссылку на один профиль или готовый поисковый запрос LinkedIn.",
+            )}
           </small>
         </label>
       ) : (
@@ -433,7 +443,9 @@ export function TemplatePicker({
   return (
     <div className="template-picker">
       <p>
-        {t("Шаблон переносит поиск, тексты и расписание. Кандидатов нужно выбрать заново и подтвердить отправку.")}
+        {t(
+          "Шаблон переносит поиск, тексты и расписание. Кандидатов нужно выбрать заново и подтвердить отправку.",
+        )}
       </p>
       <label className="field">
         {t("Шаблон")}
@@ -469,7 +481,9 @@ export function TemplatePicker({
           value={name}
           maxLength={150}
           onChange={(e) => setName(e.target.value)}
-          placeholder={t("Оставьте пустым, чтобы использовать название шаблона")}
+          placeholder={t(
+            "Оставьте пустым, чтобы использовать название шаблона",
+          )}
         />
       </label>
       <div className="template-footer">

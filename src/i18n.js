@@ -96,11 +96,18 @@ function compile() {
       }
       return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     });
-    const build = (slot) => new RegExp(`^${pieces.map((p) => p ?? slot).join("")}$`);
+    const build = (slot) =>
+      new RegExp(`^${pieces.map((p) => p ?? slot).join("")}$`);
     // Specificity is the fixed text only: placeholders must not make a
     // generic template like "{head}: {tail}" outrank "Проверяем: {name}".
     const fixed = ru.replace(/\{\w+\}/g, "").length;
-    compiled.push({ strict: build(STRICT), loose: build(LOOSE), names, english, fixed });
+    compiled.push({
+      strict: build(STRICT),
+      loose: build(LOOSE),
+      names,
+      english,
+      fixed,
+    });
   }
   // Longer, more specific templates first.
   compiled.sort((a, b) => b.fixed - a.fixed);
@@ -168,7 +175,7 @@ export function tr(text) {
 const ruRules = new Intl.PluralRules("ru");
 export function plural(count, [one, few, many], english) {
   if (current === "en" && english) {
-    return Math.abs(count) === 1 ? english[0] : english[1] ?? english[0];
+    return Math.abs(count) === 1 ? english[0] : (english[1] ?? english[0]);
   }
   const form = ruRules.select(count);
   return form === "one"
@@ -198,7 +205,8 @@ export function formatNumber(value, options) {
 // 13 → 1:00 PM, 24 (end of day) → 12:00 AM (midnight).
 export function hourLabel(hour) {
   const n = Number(hour);
-  if (n === 24) return current === "en" ? "12:00 AM (midnight)" : "12:00 AM (полночь)";
+  if (n === 24)
+    return current === "en" ? "12:00 AM (midnight)" : "12:00 AM (полночь)";
   const h = ((n % 24) + 24) % 24;
   const suffix = h < 12 ? "AM" : "PM";
   const twelve = h % 12 === 0 ? 12 : h % 12;

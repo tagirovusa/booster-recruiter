@@ -8,6 +8,7 @@ export const TEMPLATE_FIELDS = new Set([
   "headline",
   "company",
 ]);
+const LINK_PLACEHOLDER = /\[(?:link|ссылка)\]/i; // i18n-ignore
 export const characterCount = (value) => [...value].length;
 export const retiredQuotaFields = new Set([
   "daily_invites",
@@ -69,7 +70,9 @@ export function validateTemplate(
       const field = source.slice(index + 1, end).replace(/:$/, "");
       if (!TEMPLATE_FIELDS.has(field))
         return fail(
-          t("Используйте только {first_name}, {name}, {headline} или {company}. Для обычных скобок напишите {{ и }}."),
+          t(
+            "Используйте только {first_name}, {name}, {headline} или {company}. Для обычных скобок напишите {{ и }}.",
+          ),
         );
       parts.push({ field });
       index = end;
@@ -97,7 +100,13 @@ export function validateTemplate(
     const missing = parts.find((part) => part.field && !values[part.field]);
     if (missing)
       return fail(
-        t("У «{who}» нет значения {{field}}. Измените текст или выбор кандидатов.", { who: person.name || recipient.url || t("кандидата"), field: missing.field }),
+        t(
+          "У «{who}» нет значения {{field}}. Измените текст или выбор кандидатов.",
+          {
+            who: person.name || recipient.url || t("кандидата"),
+            field: missing.field,
+          },
+        ),
       );
     texts.push(evaluate(values).trim());
   }
@@ -111,19 +120,26 @@ export function validateTemplate(
     for (const text of texts) {
       if (!text || characterCount(text) > 1900)
         return fail(
-          t("После подстановки данных допустимо от 1 до {limit} символов.", { limit }),
+          t("После подстановки данных допустимо от 1 до {limit} символов.", {
+            limit,
+          }),
         );
       const normalized = text.replace(/\r\n?/g, "\n");
       if (characterCount(normalized) > limit)
         return fail(
-          t("После подстановки данных должно быть не больше {limit} символов.", { limit }),
+          t(
+            "После подстановки данных должно быть не больше {limit} символов.",
+            { limit },
+          ),
         );
       if (singleLine && normalized.includes("\n"))
         return fail(t("Тема InMail должна быть одной строкой."));
-      if (/\[(?:link|ссылка)\]/i.test(text)) // i18n-ignore
+      if (LINK_PLACEHOLDER.test(text))
         return fail(t("Замените [link] или [ссылка] настоящей ссылкой."));
       if (/[\u0000-\u0009\u000b\u000c\u000e-\u001f]/.test(text))
-        return fail(t("Удалите служебные символы из текста, например табуляцию."));
+        return fail(
+          t("Удалите служебные символы из текста, например табуляцию."),
+        );
     }
     if (limit < 1900)
       result.count = Math.max(
@@ -137,31 +153,46 @@ export function describeOutreach(rules) {
   const steps = [t("Сначала — доступное бесплатное сообщение.")];
   if (rules.allow_inmail)
     steps.push(
-      t("Если LinkedIn предлагает InMail без списания кредита, его можно отправить без ожидания."),
+      t(
+        "Если LinkedIn предлагает InMail без списания кредита, его можно отправить без ожидания.",
+      ),
     );
   if (rules.allow_inmail && rules.strategy === "fast") {
     steps.push(
-      t("Платный InMail — без ожидания приглашения, если есть кредиты подписки."),
+      t(
+        "Платный InMail — без ожидания приглашения, если есть кредиты подписки.",
+      ),
     );
     if (rules.allow_invites)
       steps.push(
-        t("Если InMail недоступен в LinkedIn или кредитов нет, используем доступное приглашение; после принятия — сообщение."),
+        t(
+          "Если InMail недоступен в LinkedIn или кредитов нет, используем доступное приглашение; после принятия — сообщение.",
+        ),
       );
   } else if (rules.allow_invites) {
     steps.push(
-      t("Если бесплатно написать нельзя, отправим доступное приглашение; после принятия — сообщение."),
+      t(
+        "Если бесплатно написать нельзя, отправим доступное приглашение; после принятия — сообщение.",
+      ),
     );
     if (rules.allow_inmail)
       steps.push(
-        t("Если приглашение не примут за {days} дн., проверим возможность InMail. Если пригласить нельзя, InMail возможен без ожидания.", { days: rules.wait_days }),
+        t(
+          "Если приглашение не примут за {days} дн., проверим возможность InMail. Если пригласить нельзя, InMail возможен без ожидания.",
+          { days: rules.wait_days },
+        ),
       );
   } else if (rules.allow_inmail) {
     steps.push(
-      t("Приглашения выключены: если бесплатная связь недоступна, используем доступный InMail."),
+      t(
+        "Приглашения выключены: если бесплатная связь недоступна, используем доступный InMail.",
+      ),
     );
   } else {
     steps.push(
-      t("Приглашения и InMail выключены: если бесплатное сообщение недоступно, отправки не будет."),
+      t(
+        "Приглашения и InMail выключены: если бесплатное сообщение недоступно, отправки не будет.",
+      ),
     );
   }
   steps.push(t("После ответа кандидата автоматические обращения прекратятся."));
@@ -217,7 +248,9 @@ export function campaignNextEvent(
     return {
       kind: "busy",
       title: t("Завершаем текущее действие"),
-      text: t("Подождите немного — после этого кампания встанет на паузу. Повторять ничего не нужно."),
+      text: t(
+        "Подождите немного — после этого кампания встанет на паузу. Повторять ничего не нужно.",
+      ),
     };
   const uncertain = (run.actions || []).some(
     (a) => a.status === "unknown" && !a.repair_replaced_by,
@@ -236,12 +269,17 @@ export function campaignNextEvent(
     return {
       kind: "paused",
       title: t("Кампания на паузе"),
-      text: t("Можно продолжить для остальных получателей ({count}). Тем, по кому результат неясен, повторно писать не будем.", { count: otherRecipients }),
+      text: t(
+        "Можно продолжить для остальных получателей ({count}). Тем, по кому результат неясен, повторно писать не будем.",
+        { count: otherRecipients },
+      ),
     };
   if (run.status === "paused")
     return {
       kind: uncertain ? "review" : "paused",
-      title: uncertain ? t("Проверьте результат в LinkedIn") : t("Кампания на паузе"),
+      title: uncertain
+        ? t("Проверьте результат в LinkedIn")
+        : t("Кампания на паузе"),
       text: uncertain
         ? t("Отметьте в истории, дошло ли сообщение. Повторно писать не будем.")
         : t("Нажмите «Продолжить», когда будете готовы."),
@@ -269,7 +307,16 @@ export function campaignNextEvent(
       ? ""
       : next <= at
         ? t("Проверим в ближайшие рабочие часы.")
-        : t("Следующая проверка — не раньше {when} ({zone}).", { when: new Intl.DateTimeFormat(locale(), { timeZone: zone, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(next), zone: zoneNames[zone] || zone });
+        : t("Следующая проверка — не раньше {when} ({zone}).", {
+            when: new Intl.DateTimeFormat(locale(), {
+              timeZone: zone,
+              day: "numeric",
+              month: "short",
+              hour: "numeric",
+              minute: "2-digit",
+            }).format(next),
+            zone: zoneNames[zone] || zone,
+          });
   return {
     kind: "scheduled",
     title: waiting
@@ -284,7 +331,11 @@ export function campaignNextEvent(
           ? t("Пишем кандидатам и следим за ответами.")
           : t("Результаты и ответы доступны в истории."),
       schedule,
-      parked ? t("Требуют внимания: {count}. Остальным пишем по плану.", { count: parked }) : "",
+      parked
+        ? t("Требуют внимания: {count}. Остальным пишем по плану.", {
+            count: parked,
+          })
+        : "",
     ]
       .filter(Boolean)
       .join(" "),

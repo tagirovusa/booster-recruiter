@@ -7,7 +7,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const root = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "..",
+);
 const src = path.join(root, "src");
 const catalogDir = path.join(src, "i18n", "en");
 
@@ -43,7 +46,9 @@ const CYR = /[А-Яа-яЁё]/;
 function unescape(raw, quote) {
   if (quote === "`") return raw.replace(/\\`/g, "`").replace(/\\\\/g, "\\");
   try {
-    return JSON.parse(`"${raw.replace(/\\'/g, "'").replace(/"/g, '\\"').replace(/\\\\"/g, '\\"')}"`);
+    return JSON.parse(
+      `"${raw.replace(/\\'/g, "'").replace(/"/g, '\\"').replace(/\\\\"/g, '\\"')}"`,
+    );
   } catch {
     return raw;
   }
@@ -58,10 +63,13 @@ for (const file of walk(src)) {
   for (const m of text.matchAll(CALL)) {
     const key = unescape(m[2], m[1]);
     if (m[1] === "`" && key.includes("${")) {
-      missing.push(`${rel}: template literal with \${} inside t(): ${key.slice(0, 80)}`);
+      missing.push(
+        `${rel}: template literal with \${} inside t(): ${key.slice(0, 80)}`,
+      );
       continue;
     }
-    if (CYR.test(key) && !Object.hasOwn(strings, key)) missing.push(`${rel}: ${key}`);
+    if (CYR.test(key) && !Object.hasOwn(strings, key))
+      missing.push(`${rel}: ${key}`);
   }
   // Russian outside t()/tr(): strip calls and comments, then look for Cyrillic.
   // Calls may span lines, so they are blanked in the whole text first

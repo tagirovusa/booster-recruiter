@@ -27,7 +27,9 @@ export default function AccountsPage({
         <div>
           <h1>{t("LinkedIn-аккаунты")}</h1>
           <p>
-            {t("Подключите аккаунт один раз. Для каждой кампании выбирайте нужного отправителя.")}
+            {t(
+              "Подключите аккаунт один раз. Для каждой кампании выбирайте нужного отправителя.",
+            )}
           </p>
         </div>
         <Button kind="primary" onClick={() => onAdd()}>
@@ -39,7 +41,9 @@ export default function AccountsPage({
         <Empty
           icon={UserPlus}
           title={t("Начните с подключения LinkedIn")}
-          text={t("Войдите в своём обычном окне LinkedIn. Пароль и код подтверждения вводятся на стороне LinkedIn.")}
+          text={t(
+            "Войдите в своём обычном окне LinkedIn. Пароль и код подтверждения вводятся на стороне LinkedIn.",
+          )}
           action={
             <Button kind="primary" onClick={() => onAdd()}>
               {t("Подключить аккаунт")} <ArrowRight size={18} />
@@ -68,7 +72,9 @@ export default function AccountsPage({
               {a.error && <div className="hint warning">{tr(a.error)}</div>}
               {a.status === "restricted" && (
                 <div className="hint warning">
-                  {t("LinkedIn ограничил действия аккаунта. Откройте LinkedIn, проверьте уведомления и выполните требования сервиса. Повторный вход сам по себе не снимает ограничение.")}
+                  {t(
+                    "LinkedIn ограничил действия аккаунта. Откройте LinkedIn, проверьте уведомления и выполните требования сервиса. Повторный вход сам по себе не снимает ограничение.",
+                  )}
                 </div>
               )}
               <div className="account-actions">
@@ -122,7 +128,9 @@ export default function AccountsPage({
                       })}
                     </p>
                   ) : (
-                    <p>{t("Дополнительно, если у вас есть подписка Recruiter.")}</p>
+                    <p>
+                      {t("Дополнительно, если у вас есть подписка Recruiter.")}
+                    </p>
                   )}
                   {a.services?.recruiter?.error && (
                     <div className="hint warning">
@@ -146,7 +154,9 @@ export default function AccountsPage({
                     !a.services.recruiter.manual_texts && (
                       <>
                         <p>
-                          {t("LinkedIn автоматически меняет черновики. Отключите это, чтобы отправлять ваши точные тексты.")}
+                          {t(
+                            "LinkedIn автоматически меняет черновики. Отключите это, чтобы отправлять ваши точные тексты.",
+                          )}
                         </p>
                         <Button
                           onClick={() =>
@@ -191,7 +201,9 @@ export default function AccountsPage({
         <div>
           <h3>{t("Каждому аккаунту — отдельная сессия")}</h3>
           <p>
-            {t("Кампания всегда сохраняет своего отправителя. Переключение аккаунтов не меняет уже подготовленные сообщения.")}
+            {t(
+              "Кампания всегда сохраняет своего отправителя. Переключение аккаунтов не меняет уже подготовленные сообщения.",
+            )}
           </p>
         </div>
       </div>
