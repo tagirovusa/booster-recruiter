@@ -46,6 +46,29 @@ def test_template_creates_fresh_draft_without_recipients_or_permission(tmp_path)
     s.db.close()
 
 
+def test_template_with_invalid_rules_leaves_no_campaign_behind(tmp_path):
+    """A template whose rules no longer validate creates nothing, even on retry."""
+    import json
+
+    s, a, c = seed(tmp_path)
+    t = s.workspace.save_template(c["id"], "US trucking")
+    data = json.loads(
+        s.one("SELECT data FROM campaign_templates WHERE id=?", (t["id"],))["data"]
+    )
+    data["rules"] = data["rules"] | {"monitor_days": 1, "wait_days": 7}
+    with s.db:
+        s.db.execute(
+            "UPDATE campaign_templates SET data=? WHERE id=?",
+            (json.dumps(data), t["id"]),
+        )
+    before = s.one("SELECT COUNT(*) AS n FROM campaigns")["n"]
+    for _ in range(2):
+        with pytest.raises(AppError):
+            s.workspace.create_from_template(t["id"], a["id"])
+    assert s.one("SELECT COUNT(*) AS n FROM campaigns")["n"] == before
+    s.db.close()
+
+
 def test_daily_backup_is_once_per_day_and_excludes_sessions(tmp_path):
     s, _, _ = seed(tmp_path)
     session = tmp_path / "accounts" / "secret"
