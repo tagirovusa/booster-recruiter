@@ -211,7 +211,9 @@ export const strings = {
     "Booster Recruiter is not responding. Check that the app is open.",
 
   // outreach.py
-  "Неизвестные настройки автоматизации.": "Unknown automation settings.",
+  "Неизвестные настройки отправки.": "Unknown outreach settings.",
+  // Earlier wording of the same message.
+  "Неизвестные настройки автоматизации.": "Unknown outreach settings.",
   "Параметр разрешения должен быть переключателем.":
     "The permission setting must be a switch.",
   "Выберите экономный или быстрый режим.": "Choose economy or fast mode.",

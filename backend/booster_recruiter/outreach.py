@@ -50,7 +50,7 @@ def validate_rules(value):
     if not isinstance(value, dict) or set(value) - (
         set(DEFAULT_RULES) | RETIRED_QUOTAS
     ):
-        raise AppError("Неизвестные настройки автоматизации.")
+        raise AppError("Неизвестные настройки отправки.")
     rules = current_rules(value)
     for key in ("allow_invites", "allow_inmail"):
         if type(rules[key]) is not bool:
