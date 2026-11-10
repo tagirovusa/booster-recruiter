@@ -88,8 +88,11 @@ s.db.close()
       global.__repairAttempts = [];
       global.__repairedItems = new Set();
       global.__repairTargets = {};
+      global.__summaryFailure = "";
       ipcMain.removeHandler("command");
       ipcMain.handle("command", async (event, op, p) => {
+        if (op === "workspace.summary" && global.__summaryFailure)
+          throw Error(global.__summaryFailure);
         if (op === "workspace.recheck") {
           global.__attentionChecks.push(p.id);
           global.__checkedItems.add(p.id);
@@ -192,6 +195,30 @@ s.db.close()
     await expect(
       page.getByRole("heading", { name: "Требует внимания", exact: true }),
     ).toBeVisible();
+    // A failed refresh keeps the fixed message and shows the real cause.
+    await app.evaluate(({ BrowserWindow }) => {
+      global.__summaryFailure = "Synthetic summary failure for the UI test.";
+      BrowserWindow.getAllWindows()[0].webContents.send(
+        "workspace-attention",
+        null,
+      );
+    });
+    await expect(
+      page.getByText(
+        "Не удалось обновить список внимания. Кампании сохранены.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    const cause = page.locator(".workspace-empty .technical-details");
+    await cause.locator("summary").click();
+    await expect(cause.locator("pre")).toHaveText(
+      "Synthetic summary failure for the UI test.",
+    );
+    await app.evaluate(() => {
+      global.__summaryFailure = "";
+    });
+    await page.getByRole("button", { name: "Повторить", exact: true }).click();
+    await expect(cause).toHaveCount(0);
     for (const width of [1000, 1380]) {
       await app.evaluate(
         ({ BrowserWindow }, w) =>
