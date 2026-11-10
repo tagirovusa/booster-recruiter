@@ -1,5 +1,6 @@
-// Writes the English catalog of service messages (src/i18n/en/backend.js) as
-// JSON for the parts that cannot import the window's code: the Python
+// Writes the window's English catalog (src/i18n/en/*.js, merged in the same
+// order as src/i18n/en/index.js) as JSON for the parts that cannot import the
+// window's code: the Python
 // service (English exports) and the desktop shell (tray messages).
 //   node scripts/export_i18n_catalog.mjs          write both copies
 //   node scripts/export_i18n_catalog.mjs --check  fail if a copy is stale
@@ -8,17 +9,21 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { strings, templates } = await import(
-  pathToFileURL(path.join(root, "src/i18n/en/backend.js")).href
-);
+// Same parts and order as src/i18n/en/index.js; later parts win.
+const parts = [];
+for (const name of ["shell", "campaign", "outreach", "backend"])
+  parts.push(
+    await import(
+      pathToFileURL(path.join(root, "src/i18n/en", name + ".js")).href
+    ),
+  );
+const strings = Object.assign({}, ...parts.map((p) => p.strings));
+const templates = Object.assign({}, ...parts.map((p) => p.templates));
 const sorted = (o) =>
   Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+// Template order decides between equally specific templates, so it is kept.
 const json =
-  JSON.stringify(
-    { strings: sorted(strings), templates: sorted(templates) },
-    null,
-    1,
-  ) + "\n";
+  JSON.stringify({ strings: sorted(strings), templates }, null, 1) + "\n";
 const targets = [
   "backend/booster_recruiter/i18n_en.json",
   "desktop/i18n_en.json",
