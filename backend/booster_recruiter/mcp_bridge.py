@@ -124,11 +124,6 @@ def create_server(root: Path):
         """Prepare recipients, exact texts and possible InMail cost for desktop approval."""
         return call("outreach.preview", {"id": campaign_id})
 
-    @mcp.tool()
-    def resume_approved_outreach(run_id: str) -> dict:
-        """Resume an unchanged plan already approved in the desktop app."""
-        return call("outreach.resume", {"id": run_id})
-
     @mcp.tool(annotations={"readOnlyHint": True})
     def get_workspace_attention() -> dict:
         """Read replies, account login needs and uncertain actions across campaigns."""
