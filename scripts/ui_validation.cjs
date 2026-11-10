@@ -378,7 +378,9 @@ async function main() {
   );
   assert(render("replied", "cancelled").includes("Ответ получен"));
   assert(!render("replied", "cancelled").includes("План остановлен"));
-  assert(render("needs_review", "cancelled").includes("Требует внимания"));
+  // The person status is worded apart from the "Требует внимания" section.
+  assert(render("needs_review", "cancelled").includes("Нужна проверка"));
+  assert(!render("needs_review", "cancelled").includes("Требует внимания"));
   const renderDetail = (props) =>
     renderToStaticMarkup(React.createElement(DetailMessage, props));
   const rawUnknown =

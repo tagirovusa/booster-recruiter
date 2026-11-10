@@ -17,6 +17,7 @@ export const strings = {
   "Аккаунты": "Accounts",
   "Настройки": "Settings",
   "Требует внимания": "Needs attention",
+  "Нужна проверка": "Needs review",
   "Требуют внимания": "Needs attention",
   "Отправитель": "Sender",
   "Профили": "Profiles",
