@@ -6,6 +6,7 @@ import csv
 import io
 from datetime import datetime
 
+from .export_i18n import translate
 from .store import AppError
 
 GROUPS = {"open": "Open to Work", "neutral": "Обычный текст", "review": "Без группы"}
@@ -169,6 +170,11 @@ def local_time(value, language="ru"):
         return value
 
 
+def service_text(text, language):
+    """Stored service messages are Russian; English exports translate them."""
+    return translate(text) if language == "en" else text
+
+
 def candidate_rows(store, data, language="ru"):
     w = wording(language)
     outreach = {}
@@ -191,7 +197,7 @@ def candidate_rows(store, data, language="ru"):
             local_time(p["observed"], language),
             label(w["states"], contact.get("status") or sent.get("status", "")),
             contact.get("message") or sent.get("message", ""),
-            contact.get("detail") or sent.get("detail", ""),
+            service_text(contact.get("detail") or sent.get("detail", ""), language),
             label(
                 w["relations"],
                 contact.get("relationship")
@@ -222,7 +228,7 @@ def history_rows(data, language="ru"):
                 local_time(action["created"], language),
                 member["subject"] if kind == "inmail" else "",
                 text,
-                action["detail"],
+                service_text(action["detail"], language),
             ]
 
 

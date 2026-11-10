@@ -101,6 +101,91 @@ function t(ru, vars) {
   return fill(text, vars);
 }
 
+// Messages from the service (errors, stored statuses) are translated with the
+// window's catalog (desktop/i18n_en.json, written by
+// scripts/export_i18n_catalog.mjs) and the same order as tr() in src/i18n.js:
+// exact entry, strict template, sentence by sentence, loose template.
+const CYRILLIC = /[А-Яа-яЁё]/;
+const STRICT = "((?:(?![.!?…](?:\\s|$))[\\s\\S])*?)";
+const LOOSE = "([\\s\\S]*?)";
+let catalog = null;
+function loadCatalog() {
+  if (catalog) return catalog;
+  const data = require("./i18n_en.json");
+  const templates = Object.entries(data.templates).map(([ru, english]) => {
+    const names = [];
+    const pieces = ru.split(/(\{\w+\})/).map((part) => {
+      const m = part.match(/^\{(\w+)\}$/);
+      if (m) {
+        names.push(m[1]);
+        return null;
+      }
+      return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    });
+    const build = (slot) =>
+      new RegExp(`^${pieces.map((p) => p ?? slot).join("")}$`);
+    const fixed = ru.replace(/\{\w+\}/g, "").length;
+    return {
+      strict: build(STRICT),
+      loose: build(LOOSE),
+      names,
+      english,
+      fixed,
+    };
+  });
+  templates.sort((a, b) => b.fixed - a.fixed);
+  catalog = { strings: data.strings, templates };
+  return catalog;
+}
+function byTemplate(text, depth, mode) {
+  for (const entry of loadCatalog().templates) {
+    const m = text.match(entry[mode]);
+    if (!m) continue;
+    const vars = {};
+    entry.names.forEach((name, i) => {
+      const part = m[i + 1];
+      vars[name] = CYRILLIC.test(part) ? translateText(part, depth + 1) : part;
+    });
+    return fill(entry.english, vars);
+  }
+  return undefined;
+}
+function exact(text) {
+  const { strings } = loadCatalog();
+  if (Object.hasOwn(strings, text)) return strings[text];
+  const trimmed = text.trim();
+  if (trimmed !== text && Object.hasOwn(strings, trimmed))
+    return text.replace(trimmed, strings[trimmed]);
+  return undefined;
+}
+function translateText(text, depth) {
+  if (!CYRILLIC.test(text) || depth > 4) return text;
+  const known = exact(text) ?? byTemplate(text, depth, "strict");
+  if (known !== undefined) return known;
+  const sentences = text.match(/[^.!?…]+(?:[.!?…]+|$)\s*/g);
+  let split;
+  if (sentences && sentences.length > 1) {
+    split = sentences
+      .map((s) => {
+        const lead = s.match(/^\s*/)[0];
+        const tail = s.match(/\s*$/)[0];
+        return lead + translateText(s.trim(), depth + 1) + tail;
+      })
+      .join("");
+    if (!CYRILLIC.test(split)) return split;
+  }
+  const loose = byTemplate(text, depth, "loose");
+  if (loose !== undefined && !CYRILLIC.test(loose)) return loose;
+  return split ?? loose ?? text;
+}
+
+// A message that came from the service. Text written by the recruiter or
+// taken from LinkedIn must not be passed here.
+function tr(text) {
+  if (current !== "en" || typeof text !== "string" || !text) return text;
+  return translateText(text, 0);
+}
+
 function setLanguage(lang) {
   current = lang === "ru" ? "ru" : "en";
 }
@@ -109,4 +194,4 @@ function getLanguage() {
   return current;
 }
 
-module.exports = { t, setLanguage, getLanguage, en };
+module.exports = { t, tr, setLanguage, getLanguage, en };

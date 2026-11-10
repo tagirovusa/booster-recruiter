@@ -115,6 +115,7 @@ function createTray() {
   const pauseAll = createPauseAllHandler({
     call,
     t,
+    tr: i18n.tr,
     report: async (result) => {
       if (exiting) return;
       showWindow();
