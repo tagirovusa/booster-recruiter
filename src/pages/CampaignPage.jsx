@@ -74,6 +74,20 @@ export default function CampaignPage({ ctx }) {
   const unassigned = detail.candidates.filter(
     (p) => p.segment === "review",
   ).length;
+  // LinkedIn had no more results for this exact query; another search would
+  // only walk the same empty pages.
+  const searchExhausted =
+    campaign.search_exhausted_keywords === campaign.keywords &&
+    detail.candidates.length < campaign.max_profiles;
+  const openEdit = () => {
+    setCampaignEdit({
+      name: campaign.name,
+      max_profiles: campaign.max_profiles,
+      keywords: campaign.keywords,
+      armed: false,
+    });
+    setModal("edit-campaign");
+  };
   return (
     <>
       <button className="text-button muted" onClick={() => setCid(null)}>
@@ -123,18 +137,7 @@ export default function CampaignPage({ ctx }) {
               </Button>
             </>
           ) : (
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setCampaignEdit({
-                  name: campaign.name,
-                  max_profiles: campaign.max_profiles,
-                  keywords: campaign.keywords,
-                  armed: false,
-                });
-                setModal("edit-campaign");
-              }}
-            >
+            <Button disabled={busy} onClick={openEdit}>
               <Pencil size={17} />
               {t("Изменить")}
             </Button>
@@ -194,6 +197,22 @@ export default function CampaignPage({ ctx }) {
               <CheckCircle2 size={17} />
               {t("Поиск завершён")}
             </span>
+          ) : searchExhausted ? (
+            <>
+              <span
+                className="search-complete"
+                title={t(
+                  "Чтобы найти больше людей, упростите запрос в новой кампании или измените число профилей.",
+                )}
+              >
+                <CheckCircle2 size={17} />
+                {t("Поиск завершён — LinkedIn больше ничего не находит")}
+              </span>
+              <Button disabled={busy} onClick={openEdit}>
+                <Pencil size={17} />
+                {t("Изменить поиск")}
+              </Button>
+            </>
           ) : (
             <Button
               kind={tab === "people" ? "primary" : ""}
@@ -260,7 +279,10 @@ export default function CampaignPage({ ctx }) {
       )}
       {tab === "people" && (
         <div className="stats compact">
-          <Stat label={t("Найдено профилей")} value={detail.candidates.length} />
+          <Stat
+            label={t("Найдено профилей")}
+            value={detail.candidates.length}
+          />
           <Stat
             label="Open to Work"
             value={detail.candidates.filter((p) => p.segment === "open").length}
@@ -595,7 +617,9 @@ export default function CampaignPage({ ctx }) {
                       <td>
                         <input
                           type="checkbox"
-                          aria-label={t("Выбрать {name}", { name: p.data.name || p.url })}
+                          aria-label={t("Выбрать {name}", {
+                            name: p.data.name || p.url,
+                          })}
                           checked={!!p.selected && eligible(p)}
                           title={
                             tr(p.outreach_exclusion) ||
@@ -638,7 +662,9 @@ export default function CampaignPage({ ctx }) {
                         <select
                           value={p.segment}
                           disabled={archived || active || busy}
-                          aria-label={t("Группа {name}", { name: p.data.name || p.url })}
+                          aria-label={t("Группа {name}", {
+                            name: p.data.name || p.url,
+                          })}
                           onChange={(e) =>
                             review(
                               p,
