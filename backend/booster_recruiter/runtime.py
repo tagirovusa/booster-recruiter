@@ -449,9 +449,7 @@ class Runtime:
         limit = campaign["max_profiles"]
         # A pasted profile link is one explicit target, not a query to check.
         query = (
-            None
-            if re.match(r"(?i)^\s*https?:", keywords)
-            else compile_query(keywords)
+            None if re.match(r"(?i)^\s*https?:", keywords) else compile_query(keywords)
         )
         rejected = 0
         exhausted = False
