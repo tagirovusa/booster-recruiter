@@ -32,7 +32,9 @@ export function DetailMessage({ detail, status, kind, stopped = false }) {
         <p>
           {t("План остановлен; дальнейшие действия не выполняются.")}
           {/you are already connected with this profile/i.test(text)
-            ? t(" LinkedIn сообщил, что профиль уже в контактах. Новое приглашение не требуется.")
+            ? t(
+                " LinkedIn сообщил, что профиль уже в контактах. Новое приглашение не требуется.",
+              )
             : ""}
         </p>
         <details className="technical-details">
@@ -44,7 +46,9 @@ export function DetailMessage({ detail, status, kind, stopped = false }) {
   if (/you are already connected with this profile/i.test(text))
     return (
       <p className="detail-message">
-        {t("LinkedIn сообщил, что вы уже в контактах. Приглашение не требуется. Нажмите «Уточнить статус», чтобы обновить состояние без отправки.")}
+        {t(
+          "LinkedIn сообщил, что вы уже в контактах. Приглашение не требуется. Нажмите «Уточнить статус», чтобы обновить состояние без отправки.",
+        )}
       </p>
     );
   // Keep readable product guidance intact. Transport envelopes and diagnostics
@@ -53,10 +57,9 @@ export function DetailMessage({ detail, status, kind, stopped = false }) {
     /^[{[]|^(?:Traceback|Error invoking remote method|\w*(?:Error|Exception):)/i.test(
       text,
     ) || /\bCall log:|"(?:message|error|meta)"\s*:/.test(text);
-  const russian =
-    /^(?:[«"'“]?[А-Яа-яЁё]|(?:LinkedIn|InMail|Recruiter)\s+[А-Яа-яЁё])/.test( // i18n-ignore
-      text,
-    );
+  const russianStart =
+    /^(?:[«"'“]?[А-Яа-яЁё]|(?:LinkedIn|InMail|Recruiter)\s+[А-Яа-яЁё])/; // i18n-ignore
+  const russian = russianStart.test(text);
   if (russian && !technical)
     return <p className="detail-message">{tr(original)}</p>;
 
@@ -72,32 +75,47 @@ export function DetailMessage({ detail, status, kind, stopped = false }) {
         kind === "invite"
           ? t("Отправка приглашения подтверждена в LinkedIn.")
           : t("Отправка сообщения подтверждена в LinkedIn."),
-      replied: t("Получен ответ кандидата. Автоматические обращения прекращены."),
-      unknown: t("Результат отправки не подтверждён. {check} Не повторяйте отправку до проверки, чтобы избежать дубликата.",
+      replied: t(
+        "Получен ответ кандидата. Автоматические обращения прекращены.",
+      ),
+      unknown: t(
+        "Результат отправки не подтверждён. {check} Не повторяйте отправку до проверки, чтобы избежать дубликата.",
         { check },
       ),
-      needs_review: t("Результат требует ручной проверки. {check} Не повторяйте действие до проверки.",
+      needs_review: t(
+        "Результат требует ручной проверки. {check} Не повторяйте действие до проверки.",
         { check },
       ),
-      blocked: t("Действие остановлено. {check} Перед новой попыткой изучите технические подробности ниже.",
+      blocked: t(
+        "Действие остановлено. {check} Перед новой попыткой изучите технические подробности ниже.",
         { check },
       ),
-      unavailable: t("Действие сейчас недоступно. {check} Технические подробности сохранены ниже.",
+      unavailable: t(
+        "Действие сейчас недоступно. {check} Технические подробности сохранены ниже.",
         { check },
       ),
-      submitting:
-        t("Действие выполняется. Дождитесь результата и не запускайте его повторно."),
-      waiting_acceptance:
-        t("Приглашение ожидает принятия. Его состояние можно проверить в LinkedIn."),
-      waiting_credits:
-        t("Для продолжения проверьте доступные InMail-кредиты аккаунта."),
-      waiting_budget:
-        t("Проверьте сохранённую причину остановки перед продолжением кампании."),
-      excluded: t("Кандидат исключён из этого плана. Подробности сохранены ниже."),
-      finished:
-        t("Наблюдение за кандидатом завершено. Подробности сохранены ниже."),
+      submitting: t(
+        "Действие выполняется. Дождитесь результата и не запускайте его повторно.",
+      ),
+      waiting_acceptance: t(
+        "Приглашение ожидает принятия. Его состояние можно проверить в LinkedIn.",
+      ),
+      waiting_credits: t(
+        "Для продолжения проверьте доступные InMail-кредиты аккаунта.",
+      ),
+      waiting_budget: t(
+        "Проверьте сохранённую причину остановки перед продолжением кампании.",
+      ),
+      excluded: t(
+        "Кандидат исключён из этого плана. Подробности сохранены ниже.",
+      ),
+      finished: t(
+        "Наблюдение за кандидатом завершено. Подробности сохранены ниже.",
+      ),
       cancelled: t("План остановлен. Подробности сохранены ниже."),
-      paused: t("План приостановлен. Проверьте подробности перед возобновлением."),
+      paused: t(
+        "План приостановлен. Проверьте подробности перед возобновлением.",
+      ),
     }[status] || t("{check} Подробности сохранены ниже.", { check });
   return (
     <div className="detail-message">
@@ -131,8 +149,12 @@ export function ContactState({ person, member }) {
       : relations[contact.relationship] || relations.unknown;
   const detail = stopped
     ? member.invitation_at || member.status === "waiting_acceptance"
-      ? t("Приглашение уже было отправлено. Проверки принятия и последующие сообщения остановлены.")
-      : t("Этот план больше не выполняется. Для новых обращений подготовьте новый план.")
+      ? t(
+          "Приглашение уже было отправлено. Проверки принятия и последующие сообщения остановлены.",
+        )
+      : t(
+          "Этот план больше не выполняется. Для новых обращений подготовьте новый план.",
+        )
     : member?.detail;
   return (
     <div className="contact-state">
