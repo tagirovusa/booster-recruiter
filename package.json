@@ -9,7 +9,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "desktop": "electron .",
-    "test:ui": "node --test scripts/desktop_preferences_test.cjs scripts/tray_pause_test.cjs scripts/patchright_test_driver_test.cjs scripts/attention_notifications_test.cjs scripts/campaign_ux_test.cjs && node scripts/ui_validation.cjs && node scripts/ui_smoke.cjs && node scripts/ui_workflow_regression.cjs && node scripts/ui_workspace_regression.cjs && node scripts/ui_attention_regression.cjs && node scripts/i18n_check.mjs --strict && node scripts/ui_english_tour.cjs",
+    "test:ui": "node --test scripts/command_timeouts_test.cjs scripts/desktop_preferences_test.cjs scripts/tray_pause_test.cjs scripts/patchright_test_driver_test.cjs scripts/attention_notifications_test.cjs scripts/campaign_ux_test.cjs && node scripts/ui_validation.cjs && node scripts/ui_smoke.cjs && node scripts/ui_workflow_regression.cjs && node scripts/ui_workspace_regression.cjs && node scripts/ui_attention_regression.cjs && node scripts/i18n_check.mjs --strict && node scripts/ui_english_tour.cjs",
     "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "package:win": "npm run build && electron-builder --win nsis --publish never",
     "test:ui:workflow": "node scripts/ui_workflow_regression.cjs",

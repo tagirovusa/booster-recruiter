@@ -18,6 +18,7 @@ const { pathToFileURL } = require("node:url");
 const readline = require("node:readline");
 const { createPreferencesStore } = require("./preferences.cjs");
 const { createPauseAllHandler } = require("./tray_pause.cjs");
+const { commandTimeout } = require("./command_timeouts.cjs");
 const { createCloseHandler } = require("./window_lifecycle.cjs");
 const i18n = require("./i18n.cjs");
 const { t } = i18n;
@@ -220,7 +221,7 @@ async function call(op, params = {}) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ op, params }),
-        signal: AbortSignal.timeout(op === "outreach.preview" ? 240000 : 30000),
+        signal: AbortSignal.timeout(commandTimeout(op)),
       },
     );
     result = await response.json();
@@ -298,6 +299,18 @@ async function start() {
     child.stderr.on("data", (chunk) => {
       log = (log + chunk.toString()).slice(-10000);
     });
+  });
+  // Watch the service from the moment it is ready: if it stops while the
+  // window is still loading, the recruiter must still be told.
+  child.on("exit", () => {
+    connection = null;
+    if (!exiting)
+      dialog.showErrorBox(
+        t("Сервис остановлен"),
+        t(
+          "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
+        ),
+      );
   });
   protocol.handle("booster", (request) => {
     const url = new URL(request.url);
@@ -450,16 +463,6 @@ async function start() {
   notificationTimer = setInterval(pollAttention, 30000);
   notificationTimer.unref();
   await win.loadURL("booster://app/");
-  child.on("exit", () => {
-    connection = null;
-    if (!exiting && win && !win.isDestroyed())
-      dialog.showErrorBox(
-        t("Сервис остановлен"),
-        t(
-          "Перезапустите приложение. Сохранённые кампании останутся; незавершённая отправка потребует проверки.",
-        ),
-      );
-  });
 }
 ipcMain.handle("command", async (event, op, params) => {
   trusted(event);
