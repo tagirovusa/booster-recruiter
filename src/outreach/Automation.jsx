@@ -387,7 +387,7 @@ export function Automation({
             </header>
             <nav
               className="setup-steps"
-              aria-label={t("Шаги настройки автоматизации")}
+              aria-label={t("Шаги настройки отправки")}
             >
               {[t("Способ связи"), t("Тексты"), t("Запуск")].map((label, i) => (
                 <button
