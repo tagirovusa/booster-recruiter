@@ -42,7 +42,7 @@ export const personStates = {
   waiting_acceptance: t("Ждём принятия"),
   waiting_credits: t("Ожидаем кредиты"),
   waiting_budget: t("В очереди"),
-  needs_review: t("Требует внимания"),
+  needs_review: t("Нужна проверка"),
   sent: t("Отправлено"),
   replied: t("Ответ получен"),
   excluded: t("Исключён"),
