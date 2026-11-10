@@ -324,7 +324,7 @@ async function main() {
   // The i18n helpers are stubbed with the Russian (source-text) behavior.
   const i18nStub = `
     var t = (s, v) => (v ? s.replace(/\\{(\\w+)\\}/g, (w, k) => (k in v ? String(v[k]) : w)) : s);
-    var tr = (s) => s;
+    var tr = (s) => (typeof __tr === "function" ? __tr(s) : s);
     var locale = () => "ru-RU";
     var formatDateTime = (v) => (v ? new Date(v).toLocaleString("ru-RU") : "—");
     var formatNumber = (v, o) => Number(v).toLocaleString("ru-RU", o);
@@ -349,14 +349,18 @@ async function main() {
       .replace(/import[\s\S]*?from\s*["'][^"']+["'];?/g, "")
       .replace(/export\s*\{[\s\S]*?\};?/g, "")
       .replace(/\bexport\s+(?=(?:function|const))/g, "");
+  // __tr lets one check swap in an English tr(); every other check keeps the
+  // Russian source text.
+  const sandbox = {
+    React,
+    ...React,
+    ...require("lucide-react"),
+    __tr: null,
+  };
   const { ContactState, DetailMessage, DesktopPreferences } =
     vm.runInNewContext(
       componentCode + "\n({ContactState, DetailMessage, DesktopPreferences})",
-      {
-        React,
-        ...React,
-        ...require("lucide-react"),
-      },
+      sandbox,
     );
   const render = (status, run_status) =>
     renderToStaticMarkup(
@@ -445,6 +449,27 @@ async function main() {
   assert(russianMarkup.includes(russianDetail));
   assert(!russianMarkup.includes("Технические подробности"));
   assert.equal(renderDetail({ detail: "  ", status: "unknown" }), "");
+  // In English the guidance is still recognised from the stored Russian text
+  // and shown as guidance, translated, not hidden in technical details.
+  sandbox.__tr = (text) =>
+    text === russianDetail
+      ? "LinkedIn asks you to confirm sign-in. Open the account and sign in again."
+      : text;
+  try {
+    const englishMarkup = renderDetail({
+      detail: russianDetail,
+      status: "blocked",
+    });
+    assert(
+      englishMarkup.includes(
+        "LinkedIn asks you to confirm sign-in. Open the account and sign in again.",
+      ),
+    );
+    assert(!englishMarkup.includes("technical-details"));
+    assert(!/[А-Яа-яЁё]/.test(englishMarkup.replace(/<[^>]*>/g, "")));
+  } finally {
+    sandbox.__tr = null;
+  }
   const settingsLoading = renderToStaticMarkup(
     React.createElement(DesktopPreferences),
   );
