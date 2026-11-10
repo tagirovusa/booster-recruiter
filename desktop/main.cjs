@@ -18,6 +18,7 @@ const { pathToFileURL } = require("node:url");
 const readline = require("node:readline");
 const { createPreferencesStore } = require("./preferences.cjs");
 const { createPauseAllHandler } = require("./tray_pause.cjs");
+const { commandTimeout } = require("./command_timeouts.cjs");
 const { createCloseHandler } = require("./window_lifecycle.cjs");
 const i18n = require("./i18n.cjs");
 const { t } = i18n;
@@ -220,7 +221,7 @@ async function call(op, params = {}) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ op, params }),
-        signal: AbortSignal.timeout(op === "outreach.preview" ? 240000 : 30000),
+        signal: AbortSignal.timeout(commandTimeout(op)),
       },
     );
     result = await response.json();
